@@ -1,0 +1,42 @@
+{
+  "package_schema_version": "1.0",
+  "package_id": "agent_kb_SHIH_0004",
+  "video": {
+    "video_id": "SHIH_0004",
+    "title": "象牙篾丝编织",
+    "slug": "ivory_bamboo_filament_weaving",
+    "source_filename": "象牙篾丝编织.mp4",
+    "source_size_bytes": 921784917,
+    "sha256": "6d4e46c4a7925ce4cf9d54e0ee38e5f30f699a868f3857aae3c05aa7b23c071a",
+    "duration_ms": 1831320,
+    "width": 1920,
+    "height": 1080,
+    "fps": 25.0,
+    "vod_vid": null,
+    "playback_url": null,
+    "rights_status": "pending"
+  },
+  "provider": {
+    "name": "volcengine_vod_long_video_understanding",
+    "run_id": null,
+    "mode": "multimodal",
+    "prompt_version": "ich_multimodal_v1"
+  },
+  "paths": {
+    "knowledge_draft": "knowledge/knowledge_draft.json",
+    "evidence": "knowledge/evidence.jsonl",
+    "claims": "knowledge/claims.jsonl",
+    "process_steps": "knowledge/process_steps.jsonl",
+    "frame_bindings": "media/frame_bindings.json",
+    "keyframes": "media/keyframes",
+    "provider_output": "source/provider_output.json"
+  },
+  "counts": {
+    "evidence": 10,
+    "claims": 6,
+    "process_steps": 4,
+    "keyframes": 37,
+    "verified_claims": 0
+  },
+  "generated_at": "2026-07-17T12:37:50.555952+08:00"
+}

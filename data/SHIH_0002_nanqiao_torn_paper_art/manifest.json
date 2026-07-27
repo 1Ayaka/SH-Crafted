@@ -1,0 +1,42 @@
+{
+  "package_schema_version": "1.0",
+  "package_id": "agent_kb_SHIH_0002",
+  "video": {
+    "video_id": "SHIH_0002",
+    "title": "南桥撕纸",
+    "slug": "nanqiao_torn_paper_art",
+    "source_filename": "南桥撕纸技艺.mp4",
+    "source_size_bytes": 3314059303,
+    "sha256": "acfe3f6c57878c45b907438be2aab3aeefde48446c3c5baf2d7a68b218985b1f",
+    "duration_ms": 1849480,
+    "width": 1920,
+    "height": 1080,
+    "fps": 25.0,
+    "vod_vid": null,
+    "playback_url": null,
+    "rights_status": "pending"
+  },
+  "provider": {
+    "name": "volcengine_vod_long_video_understanding",
+    "run_id": null,
+    "mode": "multimodal",
+    "prompt_version": "ich_multimodal_v1"
+  },
+  "paths": {
+    "knowledge_draft": "knowledge/knowledge_draft.json",
+    "evidence": "knowledge/evidence.jsonl",
+    "claims": "knowledge/claims.jsonl",
+    "process_steps": "knowledge/process_steps.jsonl",
+    "frame_bindings": "media/frame_bindings.json",
+    "keyframes": "media/keyframes",
+    "provider_output": "source/provider_output.json"
+  },
+  "counts": {
+    "evidence": 6,
+    "claims": 5,
+    "process_steps": 4,
+    "keyframes": 21,
+    "verified_claims": 0
+  },
+  "generated_at": "2026-07-17T12:37:45.079590+08:00"
+}

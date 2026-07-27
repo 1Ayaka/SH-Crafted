@@ -1,0 +1,850 @@
+{
+  "schema_version": "1.0",
+  "video": {
+    "video_id": "SHIH_0003",
+    "title": "药斑布",
+    "slug": "medicinal_spotted_cloth",
+    "source_filename": "药斑布.wmv",
+    "source_size_bytes": 96677735,
+    "sha256": "cc58de384dcc2e03132ad0afd380834a610a996a5e60c06e2442d4f9dd768579",
+    "duration_ms": 1227680,
+    "width": 720,
+    "height": 576,
+    "fps": 25.0,
+    "vod_vid": null,
+    "playback_url": null,
+    "rights_status": "pending"
+  },
+  "provider": {
+    "name": "volcengine_vod_long_video_understanding",
+    "run_id": null,
+    "mode": "multimodal",
+    "prompt_version": "ich_multimodal_v1"
+  },
+  "processing_status": {
+    "video_understanding": "succeeded",
+    "normalization": "succeeded",
+    "frame_binding": "succeeded",
+    "human_review": "not_started",
+    "database_import": "not_started"
+  },
+  "summary_candidate": "本视频介绍上海市嘉定区安亭镇非物质文化遗产药斑布印染技艺，涵盖其起源传说、历史发展脉络、图案艺术特征、完整制作工艺流程、产品特性、近代衰落原因，以及当代对该技艺的保护传承现状与发展展望。",
+  "evidence_segments": [
+    {
+      "evidence_id": "ev_SHIH_0003_0060000_0082000",
+      "source_evidence_local_id": "e001",
+      "video_id": "SHIH_0003",
+      "start_ms": 60000,
+      "end_ms": 82000,
+      "transcript_raw": "蓝色和白色是亘古以来最为纯粹悠远的两种颜色，它们的结合看似朴素而低调，却往往绽放出动人心魂的光彩，曜斑布就是仅用蓝白两色勾勒美丽的一种民间印染工艺",
+      "transcript_reviewed": null,
+      "visual_description_raw": "依次展示晾晒的蓝色布料、白色布料、带蓝白花纹的药斑布成品、成卷摆放的药斑布",
+      "visual_description_reviewed": null,
+      "speaker_role": "旁白",
+      "entities_candidate": {
+        "projects": [
+          "药斑布印染技艺"
+        ],
+        "people": [],
+        "places": [],
+        "materials": [
+          "蓝色染料",
+          "白色布料"
+        ],
+        "tools": [],
+        "techniques": [
+          "民间印染"
+        ],
+        "artifacts": [
+          "药斑布"
+        ]
+      },
+      "frame_ids": [
+        64400,
+        71000,
+        77600
+      ],
+      "frame_paths": [
+        "media/keyframes/000064400.jpg",
+        "media/keyframes/000071000.jpg",
+        "media/keyframes/000077600.jpg"
+      ],
+      "quality_flags": [
+        "asr_needs_review"
+      ],
+      "uncertainties": [
+        "文本中“曜斑布”为“药斑布”的同音异写"
+      ],
+      "confirmed_normalizations": [],
+      "review_status": "needs_review"
+    },
+    {
+      "evidence_id": "ev_SHIH_0003_0083000_0105000",
+      "source_evidence_local_id": "e002",
+      "video_id": "SHIH_0003",
+      "start_ms": 83000,
+      "end_ms": 105000,
+      "transcript_raw": "耀斑布是个很形象贴切的名字，耀是指染色原料了兰草，斑则是防染记印后构成的大小斑点，耀斑埠起源于上海市嘉定区安亭镇，它的发明者是当地一名姓归的妇女",
+      "transcript_reviewed": null,
+      "visual_description_raw": "展示两种不同纹样的药斑布、蓼蓝草植株、晾晒的带斑点防染坯布、安亭镇牌坊外观",
+      "visual_description_reviewed": null,
+      "speaker_role": "旁白",
+      "entities_candidate": {
+        "projects": [
+          "药斑布印染技艺"
+        ],
+        "people": [
+          "归氏（药斑布发明者）"
+        ],
+        "places": [
+          "上海市嘉定区安亭镇"
+        ],
+        "materials": [
+          "蓼蓝草（了兰草）",
+          "防染剂"
+        ],
+        "tools": [],
+        "techniques": [
+          "防染印"
+        ],
+        "artifacts": [
+          "药斑布"
+        ]
+      },
+      "frame_ids": [
+        87400,
+        94000,
+        100600
+      ],
+      "frame_paths": [
+        "media/keyframes/000087400.jpg",
+        "media/keyframes/000094000.jpg",
+        "media/keyframes/000100600.jpg"
+      ],
+      "quality_flags": [
+        "asr_needs_review",
+        "person_name_unverified"
+      ],
+      "uncertainties": [
+        "“耀斑布”“耀斑埠”为“药斑布”同音异写，“了兰草”为“蓼蓝草”同音记录"
+      ],
+      "confirmed_normalizations": [],
+      "review_status": "needs_review"
+    },
+    {
+      "evidence_id": "ev_SHIH_0003_0522000_0550000",
+      "source_evidence_local_id": "e003",
+      "video_id": "SHIH_0003",
+      "start_ms": 522000,
+      "end_ms": 550000,
+      "transcript_raw": "了兰草是药斑布制作的重要原材料，兰草亦年生草本植物，当地人俗称青秧，清明后下秧，夏至时割叶，割叶后还能生出来，一年可割三四次，叶渍坑中一叶后，取出叶汁，放入水和石灰搅拌千次，沥去清水，便做成染色用的蓝靛，这道程序叫做制蓝",
+      "transcript_reviewed": null,
+      "visual_description_raw": "展示成片蓼蓝草种植田、农户收割蓼蓝草、蓼蓝草浸坑取汁的操作、古代制蓝工艺插画",
+      "visual_description_reviewed": null,
+      "speaker_role": "旁白",
+      "entities_candidate": {
+        "projects": [
+          "药斑布印染技艺"
+        ],
+        "people": [],
+        "places": [],
+        "materials": [
+          "蓼蓝草（青秧）",
+          "石灰",
+          "蓝靛"
+        ],
+        "tools": [
+          "浸坑"
+        ],
+        "techniques": [
+          "制蓝"
+        ],
+        "artifacts": [
+          "蓝靛"
+        ]
+      },
+      "frame_ids": [
+        527600,
+        536000,
+        544400
+      ],
+      "frame_paths": [
+        "media/keyframes/000527600.jpg",
+        "media/keyframes/000536000.jpg",
+        "media/keyframes/000544400.jpg"
+      ],
+      "quality_flags": [
+        "asr_needs_review"
+      ],
+      "uncertainties": [
+        "“了兰草”为“蓼蓝草”同音记录，“叶渍坑中一叶后”应为“叶渍坑中一夜后”的口误"
+      ],
+      "confirmed_normalizations": [],
+      "review_status": "needs_review"
+    },
+    {
+      "evidence_id": "ev_SHIH_0003_0566000_0628000",
+      "source_evidence_local_id": "e004",
+      "video_id": "SHIH_0003",
+      "start_ms": 566000,
+      "end_ms": 628000,
+      "transcript_raw": "首先是配色，将蓝靛倒入小缸中，比例大致为5斤蓝靛配8斤石灰10斤米酒，加适量的水搅拌，当蓝电水变黄，水面上起淀末时，便可倒入大缸中，待染之后，便进入第二道工序即看缸。旧时调色下缸由专门的看缸师傅艺人做主，一般不传外人，每天清晨由师傅查看大缸里的紫色水是否成熟，用碗舀起缸中秒水，先用食指在头上轻擦一下，手指沾到油脂后再放在秒水中，如果水面迅速推开，则淀水颜色大可以染色，反之则需要经过灰酒调整成熟后方可染色",
+      "transcript_reviewed": null,
+      "visual_description_raw": "展示匠人向缸中倒入蓝靛、搅拌染液、查看染缸染液状态的操作",
+      "visual_description_reviewed": null,
+      "speaker_role": "旁白",
+      "entities_candidate": {
+        "projects": [
+          "药斑布印染技艺"
+        ],
+        "people": [
+          "看缸师傅"
+        ],
+        "places": [],
+        "materials": [
+          "蓝靛",
+          "石灰",
+          "米酒",
+          "染液"
+        ],
+        "tools": [
+          "小缸",
+          "大缸",
+          "搅拌棒",
+          "碗"
+        ],
+        "techniques": [
+          "配色",
+          "看缸"
+        ],
+        "artifacts": []
+      },
+      "frame_ids": [
+        573750,
+        589250,
+        604750,
+        620250
+      ],
+      "frame_paths": [
+        "media/keyframes/000573750.jpg",
+        "media/keyframes/000589250.jpg",
+        "media/keyframes/000604750.jpg",
+        "media/keyframes/000620250.jpg"
+      ],
+      "quality_flags": [
+        "asr_needs_review",
+        "person_name_unverified"
+      ],
+      "uncertainties": [
+        "“蓝电水”为“蓝靛水”同音异写，“秒水”为“苗水”同音异写"
+      ],
+      "confirmed_normalizations": [],
+      "review_status": "needs_review"
+    },
+    {
+      "evidence_id": "ev_SHIH_0003_0653000_0699000",
+      "source_evidence_local_id": "e005",
+      "video_id": "SHIH_0003",
+      "start_ms": 653000,
+      "end_ms": 699000,
+      "transcript_raw": "挑选胚布脱脂画样刻花板等工序也在同时进行，农家一般选择棉质好的上等布料染制耀斑布，之后在纸上画出花样，然后用两到三层油板纸定合在一起，用专用的刀具把花样刻下来，刻时刻刀需竖直，力求上下层花型一致，刻好的花板要反面打磨平整，然后刷熟同油晾干，经过两到三次反复，正反面刷油，最后晾干压平待用",
+      "transcript_reviewed": null,
+      "visual_description_raw": "展示匠人在纸上画纹样、用油板纸刻花版、打磨花版、刷油的操作",
+      "visual_description_reviewed": null,
+      "speaker_role": "旁白",
+      "entities_candidate": {
+        "projects": [
+          "药斑布印染技艺"
+        ],
+        "people": [],
+        "places": [],
+        "materials": [
+          "纯棉胚布",
+          "油板纸",
+          "熟桐油"
+        ],
+        "tools": [
+          "刻刀",
+          "打磨工具"
+        ],
+        "techniques": [
+          "画样",
+          "刻花版"
+        ],
+        "artifacts": [
+          "花版"
+        ]
+      },
+      "frame_ids": [
+        662200,
+        676000,
+        689800
+      ],
+      "frame_paths": [
+        "media/keyframes/000662200.jpg",
+        "media/keyframes/000676000.jpg",
+        "media/keyframes/000689800.jpg"
+      ],
+      "quality_flags": [
+        "asr_needs_review"
+      ],
+      "uncertainties": [
+        "“耀斑布”为“药斑布”同音异写，“熟同油”为“熟桐油”同音异写"
+      ],
+      "confirmed_normalizations": [],
+      "review_status": "needs_review"
+    },
+    {
+      "evidence_id": "ev_SHIH_0003_0701000_0767000",
+      "source_evidence_local_id": "e006",
+      "video_id": "SHIH_0003",
+      "start_ms": 701000,
+      "end_ms": 767000,
+      "transcript_raw": "接下来比较重要的一道工序是刮浆，即把防染剂按照花板的纹路刷在布料上，在民间药斑布防染浆料曾使用过玉米粉小麦粉糯米粉等，经过几代人的摸索和实践，最终选用了粘性适中的黄豆粉，但单纯的黄豆粉容易变质，而且成本高，因此民间都沿用豆粉和石灰做防染浆，比例为1:零点七，这种防染浆不仅上浆好，刮染好后也容易刮掉灰浆。调浆时浆液的厚薄粘稠要适中，黄豆粉越细，浆液越透，粘性也越好，刮浆时用力要均匀，更要注意花板的衔接，花型复杂时对板要尤为仔细",
+      "transcript_reviewed": null,
+      "visual_description_raw": "展示匠人将防染浆按花版纹路刮到布料上的操作，展示玉米粉、小麦粉、黄豆粉的原料图",
+      "visual_description_reviewed": null,
+      "speaker_role": "旁白",
+      "entities_candidate": {
+        "projects": [
+          "药斑布印染技艺"
+        ],
+        "people": [],
+        "places": [],
+        "materials": [
+          "防染浆",
+          "黄豆粉",
+          "石灰",
+          "玉米粉",
+          "小麦粉",
+          "糯米粉"
+        ],
+        "tools": [
+          "花版",
+          "刮浆工具"
+        ],
+        "techniques": [
+          "刮浆",
+          "调浆"
+        ],
+        "artifacts": []
+      },
+      "frame_ids": [
+        709250,
+        725750,
+        742250,
+        758750
+      ],
+      "frame_paths": [
+        "media/keyframes/000709250.jpg",
+        "media/keyframes/000725750.jpg",
+        "media/keyframes/000742250.jpg",
+        "media/keyframes/000758750.jpg"
+      ],
+      "quality_flags": [],
+      "uncertainties": [],
+      "confirmed_normalizations": [],
+      "review_status": "auto_generated"
+    },
+    {
+      "evidence_id": "ev_SHIH_0003_0770000_0844000",
+      "source_evidence_local_id": "e007",
+      "video_id": "SHIH_0003",
+      "start_ms": 770000,
+      "end_ms": 844000,
+      "transcript_raw": "刮浆胚布晾干后即可开始染色，染色前先将布料放入水中浸泡，使浆料软化，之后放入缸内上色，缸水要保持在15摄氏度以上，一般在农历十月初生火加温，燃料为米糠棉籽壳或木屑，它们的特点是基本没有明火，保温性能好。把染好色的布晒干后，绷在支架上，用刮灰刀或菜刀刮去灰浆，为了彻底清除残留在布面上的灰浆和浮色，还要将胚布清洗两到三次，受到刮浆染色晾晒等工业因素的影响，耀斑布的长度一般定在12米以下，由染色师傅用长竹竿将湿布上7米高的晾晒架上，晾晒时情景十分壮观，最后用踹布时将布滚压平整，一匹耀斑布就印染完成了",
+      "transcript_reviewed": null,
+      "visual_description_raw": "展示匠人浸泡胚布、入缸染色、刮去灰浆、清洗布料、晾晒布料、踹布平整的全流程操作，展示晾晒架上悬挂的多匹药斑布",
+      "visual_description_reviewed": null,
+      "speaker_role": "旁白",
+      "entities_candidate": {
+        "projects": [
+          "药斑布印染技艺"
+        ],
+        "people": [
+          "染色师傅"
+        ],
+        "places": [],
+        "materials": [
+          "纯棉胚布",
+          "米糠",
+          "棉籽壳",
+          "木屑"
+        ],
+        "tools": [
+          "染缸",
+          "刮灰刀",
+          "菜刀",
+          "长竹竿",
+          "晾晒架",
+          "踹布石"
+        ],
+        "techniques": [
+          "染色",
+          "刮灰",
+          "清洗",
+          "晾晒",
+          "踹布平整"
+        ],
+        "artifacts": [
+          "成品药斑布"
+        ]
+      },
+      "frame_ids": [
+        779250,
+        797750,
+        816250,
+        834750
+      ],
+      "frame_paths": [
+        "media/keyframes/000779250.jpg",
+        "media/keyframes/000797750.jpg",
+        "media/keyframes/000816250.jpg",
+        "media/keyframes/000834750.jpg"
+      ],
+      "quality_flags": [
+        "asr_needs_review",
+        "person_name_unverified"
+      ],
+      "uncertainties": [
+        "“耀斑布”为“药斑布”同音异写，“踹布时”为“踹布石”同音异写，“工业因素”应为“工艺因素”口误"
+      ],
+      "confirmed_normalizations": [],
+      "review_status": "needs_review"
+    },
+    {
+      "evidence_id": "ev_SHIH_0003_0854000_0926000",
+      "source_evidence_local_id": "e008",
+      "video_id": "SHIH_0003",
+      "start_ms": 854000,
+      "end_ms": 926000,
+      "transcript_raw": "安亭镇药斑部传承人王远昌至今仍记得幼时染坊的情景，我呢从小呢住垃玉林罗镇个东港垃拉，我隔壁有个女方问我小辰光呢稀稀糊糊，因此呢我读书放勒学以后呢，发现礼拜天我经常来到女方去啊，看到女簿女从呢有一位姓张个叫张仁熙，迭个人呢是安徽人，伊呢迭个垃拉女方里向呢迭个技术比较高超，那么我去勒以后呢，跟迭个张师傅呢大家认得仔以后呢，那末有个辰光呢忒来勿及勒，那末叫我呢帮伊做做助手，那末垃做助手个过程当中呢，我呢经常请教伊，哪能样子呢呃研一行药办部个全过程，那末伊呢手把手个教我，那么几年以后呢嗯基本呢掌握勒生产药斑布的一个过程",
+      "transcript_reviewed": null,
+      "visual_description_raw": "展示传承人王元昌受访画面、旧时染坊老照片、王元昌展示药斑布纹样的画面",
+      "visual_description_reviewed": null,
+      "speaker_role": "王元昌（药斑布当代传承人）",
+      "entities_candidate": {
+        "projects": [
+          "药斑布印染技艺"
+        ],
+        "people": [
+          "王元昌",
+          "张仁熙"
+        ],
+        "places": [
+          "安亭镇老东街"
+        ],
+        "materials": [],
+        "tools": [],
+        "techniques": [],
+        "artifacts": [
+          "药斑布"
+        ]
+      },
+      "frame_ids": [
+        863000,
+        881000,
+        899000,
+        917000
+      ],
+      "frame_paths": [
+        "media/keyframes/000863000.jpg",
+        "media/keyframes/000881000.jpg",
+        "media/keyframes/000899000.jpg",
+        "media/keyframes/000917000.jpg"
+      ],
+      "quality_flags": [
+        "asr_needs_review",
+        "person_name_unverified"
+      ],
+      "uncertainties": [
+        "该段为方言转写，存在表述模糊，“药斑部”“药办部”为“药斑布”同音异写，“女方”为“染坊”同音异写"
+      ],
+      "confirmed_normalizations": [],
+      "review_status": "needs_review"
+    },
+    {
+      "evidence_id": "ev_SHIH_0003_0930000_0969000",
+      "source_evidence_local_id": "e009",
+      "video_id": "SHIH_0003",
+      "start_ms": 930000,
+      "end_ms": 969000,
+      "transcript_raw": "耀斑布具有天然透气染而不褪耐洗耐晒图案鲜艳亮丽，纹形愈洗愈明的特点，由于面料用天然药用植物印染而成，有防蛀防霉的功效，长期储存不褪色不霉变，据说还可以防止蚊虫叮咬，其整个工艺流程全部采用手工操作，图案的印纹效果自然和谐，典雅大方，这是任何现代先进的机械印染所不能代替的",
+      "transcript_reviewed": null,
+      "visual_description_raw": "展示药斑布制成的服饰、布料细节特写",
+      "visual_description_reviewed": null,
+      "speaker_role": "旁白",
+      "entities_candidate": {
+        "projects": [
+          "药斑布印染技艺"
+        ],
+        "people": [],
+        "places": [],
+        "materials": [
+          "天然药用植物染料"
+        ],
+        "tools": [],
+        "techniques": [
+          "手工印染"
+        ],
+        "artifacts": [
+          "药斑布"
+        ]
+      },
+      "frame_ids": [
+        937800,
+        949500,
+        961200
+      ],
+      "frame_paths": [
+        "media/keyframes/000937800.jpg",
+        "media/keyframes/000949500.jpg",
+        "media/keyframes/000961200.jpg"
+      ],
+      "quality_flags": [
+        "asr_needs_review"
+      ],
+      "uncertainties": [
+        "“耀斑布”为“药斑布”同音异写"
+      ],
+      "confirmed_normalizations": [],
+      "review_status": "needs_review"
+    },
+    {
+      "evidence_id": "ev_SHIH_0003_1149000_1204000",
+      "source_evidence_local_id": "e010",
+      "video_id": "SHIH_0003",
+      "start_ms": 1149000,
+      "end_ms": 1204000,
+      "transcript_raw": "今天安亭镇通过对非物质文化遗产药斑布工艺的保护和发掘，药斑布又重新回到人们的视野中，2008年11月，安亭镇药班部公益研究会正式成立，并在当地各学校社区农村挂牌建立了5个药班部公益实践基地，每年参与实践人数5,000多人，要颁布印染工艺教育也被纳入社区教育体系，祖先留下的智慧不应该遗忘，而这瑰丽典雅的蓝白传奇更不应该消失在各级文化部门的注视下，相信耀斑布这朵质朴美丽的民间艺术之花将再次绽放迷人的光彩",
+      "transcript_reviewed": null,
+      "visual_description_raw": "展示安亭镇政府外观、药斑布工艺研究会挂牌、学校社区实践活动场景、学生学习药斑布印染的画面",
+      "visual_description_reviewed": null,
+      "speaker_role": "旁白",
+      "entities_candidate": {
+        "projects": [
+          "药斑布印染技艺"
+        ],
+        "people": [],
+        "places": [
+          "上海市嘉定区安亭镇"
+        ],
+        "materials": [],
+        "tools": [],
+        "techniques": [],
+        "artifacts": [
+          "药斑布"
+        ]
+      },
+      "frame_ids": [
+        1160000,
+        1176500,
+        1193000
+      ],
+      "frame_paths": [
+        "media/keyframes/001160000.jpg",
+        "media/keyframes/001176500.jpg",
+        "media/keyframes/001193000.jpg"
+      ],
+      "quality_flags": [
+        "asr_needs_review"
+      ],
+      "uncertainties": [
+        "“药班部”“要颁布”“耀斑布”均为“药斑布”同音异写，“公益研究会”应为“工艺研究会”同音异写，“公益实践基地”应为“工艺实践基地”同音异写"
+      ],
+      "confirmed_normalizations": [],
+      "review_status": "needs_review"
+    }
+  ],
+  "claims": [
+    {
+      "claim_id": "cl_SHIH_0003_0001",
+      "video_id": "SHIH_0003",
+      "subject": null,
+      "predicate": null,
+      "object": null,
+      "statement": "药斑布是仅使用蓝白两色的民间印染技艺，起源于上海市嘉定区安亭镇，发明者为宋朝嘉泰年间当地归姓妇女，是蓝印花布的前身",
+      "evidence_ids": [
+        "ev_SHIH_0003_0060000_0082000",
+        "ev_SHIH_0003_0083000_0105000"
+      ],
+      "confidence_candidate": null,
+      "quality_flags": [
+        "asr_needs_review"
+      ],
+      "uncertainties": [
+        "原文中“圭氏”“龟饰”均为归姓发明者的同音异写"
+      ],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "claim_id": "cl_SHIH_0003_0002",
+      "video_id": "SHIH_0003",
+      "subject": null,
+      "predicate": null,
+      "object": null,
+      "statement": "传统药斑布采用蓼蓝草天然染色，全流程手工操作，具备天然透气、耐洗耐晒、防蛀防霉、长期储存不褪色的特点，其印纹效果是机械印染无法替代的",
+      "evidence_ids": [
+        "ev_SHIH_0003_0930000_0969000"
+      ],
+      "confidence_candidate": null,
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "claim_id": "cl_SHIH_0003_0003",
+      "video_id": "SHIH_0003",
+      "subject": null,
+      "predicate": null,
+      "object": null,
+      "statement": "2008年安亭镇成立药斑布工艺研究会，建立多个实践基地，将药斑布印染纳入社区教育体系，该技艺得到保护与传承",
+      "evidence_ids": [
+        "ev_SHIH_0003_1149000_1204000"
+      ],
+      "confidence_candidate": null,
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "claim_id": "cl_SHIH_0003_0004",
+      "video_id": "SHIH_0003",
+      "subject": null,
+      "predicate": null,
+      "object": null,
+      "statement": "近代以来受化纤洋布冲击，传统药斑布技艺濒临失传，市面现存蓝印花布多为机器生产，丧失了传统药斑布的天然特性",
+      "evidence_ids": [],
+      "confidence_candidate": null,
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    }
+  ],
+  "process_steps": [
+    {
+      "step_id": "step_SHIH_0003_001",
+      "video_id": "SHIH_0003",
+      "order_candidate": 1,
+      "order_verified": null,
+      "name": "制蓝",
+      "materials": [
+        "石灰",
+        "蓝靛",
+        "蓼蓝草（青秧）"
+      ],
+      "tools": [
+        "浸坑"
+      ],
+      "action": "蓼蓝草清明下秧，夏至割叶，一年可割3-4次；将叶片浸坑一夜取汁，加入水和石灰搅拌千次，沥去清水制成染色用蓝靛",
+      "result": null,
+      "interaction_mapping": null,
+      "evidence_ids": [
+        "ev_SHIH_0003_0522000_0550000"
+      ],
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "step_id": "step_SHIH_0003_002",
+      "video_id": "SHIH_0003",
+      "order_candidate": 2,
+      "order_verified": null,
+      "name": "配色",
+      "materials": [
+        "染液",
+        "石灰",
+        "米酒",
+        "蓝靛"
+      ],
+      "tools": [
+        "大缸",
+        "小缸",
+        "搅拌棒",
+        "碗"
+      ],
+      "action": "按5斤蓝靛配8斤石灰、10斤米酒的比例，加适量水搅拌，待蓝靛水变黄、水面起淀末时，倒入大缸待染",
+      "result": null,
+      "interaction_mapping": null,
+      "evidence_ids": [
+        "ev_SHIH_0003_0566000_0628000"
+      ],
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "step_id": "step_SHIH_0003_003",
+      "video_id": "SHIH_0003",
+      "order_candidate": 3,
+      "order_verified": null,
+      "name": "看缸",
+      "materials": [
+        "染液",
+        "石灰",
+        "米酒",
+        "蓝靛"
+      ],
+      "tools": [
+        "大缸",
+        "小缸",
+        "搅拌棒",
+        "碗"
+      ],
+      "action": "每日清晨由看缸师傅检测染液成熟度，沾油脂的手指放入苗水后水面迅速推开则可染色，否则需用灰、酒调整",
+      "result": null,
+      "interaction_mapping": null,
+      "evidence_ids": [
+        "ev_SHIH_0003_0566000_0628000"
+      ],
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "step_id": "step_SHIH_0003_004",
+      "video_id": "SHIH_0003",
+      "order_candidate": 4,
+      "order_verified": null,
+      "name": "预制工序",
+      "materials": [
+        "油板纸",
+        "熟桐油",
+        "纯棉胚布"
+      ],
+      "tools": [
+        "刻刀",
+        "打磨工具"
+      ],
+      "action": "挑选优质纯棉胚布，在纸上画纹样，将2-3层油板纸订合后用专用刻刀竖直刻出花版，刻好的花版打磨平整，正反刷2-3次熟桐油，晾干压平待用",
+      "result": null,
+      "interaction_mapping": null,
+      "evidence_ids": [
+        "ev_SHIH_0003_0653000_0699000"
+      ],
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "step_id": "step_SHIH_0003_005",
+      "video_id": "SHIH_0003",
+      "order_candidate": 5,
+      "order_verified": null,
+      "name": "刮浆",
+      "materials": [
+        "小麦粉",
+        "玉米粉",
+        "石灰",
+        "糯米粉",
+        "防染浆",
+        "黄豆粉"
+      ],
+      "tools": [
+        "刮浆工具",
+        "花版"
+      ],
+      "action": "按1:0.7的比例混合黄豆粉和石灰制成防染浆，将防染浆按花版纹路均匀刮在胚布上，花型复杂时需仔细对齐花版，刮浆完成后晾干胚布",
+      "result": null,
+      "interaction_mapping": null,
+      "evidence_ids": [
+        "ev_SHIH_0003_0701000_0767000"
+      ],
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "step_id": "step_SHIH_0003_006",
+      "video_id": "SHIH_0003",
+      "order_candidate": 6,
+      "order_verified": null,
+      "name": "染色",
+      "materials": [
+        "木屑",
+        "棉籽壳",
+        "米糠",
+        "纯棉胚布"
+      ],
+      "tools": [
+        "刮灰刀",
+        "晾晒架",
+        "染缸",
+        "菜刀",
+        "踹布石",
+        "长竹竿"
+      ],
+      "action": "染缸水温保持15℃以上，农历十月需用米糠、棉籽壳或木屑生火加温；先将胚布浸泡软化浆料，再放入染缸上色",
+      "result": null,
+      "interaction_mapping": null,
+      "evidence_ids": [
+        "ev_SHIH_0003_0770000_0844000"
+      ],
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "step_id": "step_SHIH_0003_007",
+      "video_id": "SHIH_0003",
+      "order_candidate": 7,
+      "order_verified": null,
+      "name": "后处理",
+      "materials": [
+        "木屑",
+        "棉籽壳",
+        "米糠",
+        "纯棉胚布"
+      ],
+      "tools": [
+        "刮灰刀",
+        "晾晒架",
+        "染缸",
+        "菜刀",
+        "踹布石",
+        "长竹竿"
+      ],
+      "action": "染好的布晒干后绷在支架上，用刮灰刀/菜刀刮去灰浆，清洗2-3次去除浮色，将湿布挂到7米高晾晒架上晾干，最后用踹布石滚压平整，成品药斑布制作完成",
+      "result": null,
+      "interaction_mapping": null,
+      "evidence_ids": [
+        "ev_SHIH_0003_0770000_0844000"
+      ],
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    }
+  ],
+  "warnings": [
+    "文本中出现的“曜斑布”“耀斑布”“要颁布”“药斑埠”“药班部”“药办部”均为“药斑布”的同音异写，为同一事物",
+    "“了兰草”为“蓼蓝草”的同音记录，当地俗称“青秧”；“圭氏”“龟饰”为药斑布发明者归氏的同音异写",
+    "存在多处方言转写、口误、同音异字的情况，表述存在模糊性，需人工核实校正",
+    "火山引擎 Vid、RunId 和播放地址未包含在输出文件中，迁移后需在 manifest.json 补录。",
+    "所有知识主张和工艺步骤均为模型候选，正式发布前必须人工审核。",
+    "部分证据超过60秒；原输出没有词级时间码，因此未做可能失真的自动拆分。"
+  ],
+  "generated_at": "2026-07-17T12:37:48.138162+08:00"
+}

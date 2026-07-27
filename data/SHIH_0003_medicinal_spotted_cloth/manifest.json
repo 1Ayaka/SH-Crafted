@@ -1,0 +1,42 @@
+{
+  "package_schema_version": "1.0",
+  "package_id": "agent_kb_SHIH_0003",
+  "video": {
+    "video_id": "SHIH_0003",
+    "title": "药斑布",
+    "slug": "medicinal_spotted_cloth",
+    "source_filename": "药斑布.wmv",
+    "source_size_bytes": 96677735,
+    "sha256": "cc58de384dcc2e03132ad0afd380834a610a996a5e60c06e2442d4f9dd768579",
+    "duration_ms": 1227680,
+    "width": 720,
+    "height": 576,
+    "fps": 25.0,
+    "vod_vid": null,
+    "playback_url": null,
+    "rights_status": "pending"
+  },
+  "provider": {
+    "name": "volcengine_vod_long_video_understanding",
+    "run_id": null,
+    "mode": "multimodal",
+    "prompt_version": "ich_multimodal_v1"
+  },
+  "paths": {
+    "knowledge_draft": "knowledge/knowledge_draft.json",
+    "evidence": "knowledge/evidence.jsonl",
+    "claims": "knowledge/claims.jsonl",
+    "process_steps": "knowledge/process_steps.jsonl",
+    "frame_bindings": "media/frame_bindings.json",
+    "keyframes": "media/keyframes",
+    "provider_output": "source/provider_output.json"
+  },
+  "counts": {
+    "evidence": 10,
+    "claims": 4,
+    "process_steps": 7,
+    "keyframes": 34,
+    "verified_claims": 0
+  },
+  "generated_at": "2026-07-17T12:37:48.138162+08:00"
+}

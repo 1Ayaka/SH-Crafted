@@ -1,0 +1,23 @@
+{
+  "dataset_id": "SHIH_0002",
+  "language": "zh-CN",
+  "retrieval_source": "knowledge/evidence.jsonl",
+  "answer_policy": "candidate_with_disclaimer",
+  "production_filter": {
+    "review_status": "verified"
+  },
+  "citation_fields": [
+    "evidence_id",
+    "start_ms",
+    "end_ms",
+    "transcript_raw",
+    "frame_paths"
+  ],
+  "playback": {
+    "vod_vid": null,
+    "playback_url": null,
+    "time_unit": "ms",
+    "pre_roll_ms": 3000,
+    "post_roll_ms": 3000
+  }
+}

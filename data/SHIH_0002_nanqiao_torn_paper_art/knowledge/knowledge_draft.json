@@ -1,0 +1,543 @@
+{
+  "schema_version": "1.0",
+  "video": {
+    "video_id": "SHIH_0002",
+    "title": "南桥撕纸",
+    "slug": "nanqiao_torn_paper_art",
+    "source_filename": "南桥撕纸技艺.mp4",
+    "source_size_bytes": 3314059303,
+    "sha256": "acfe3f6c57878c45b907438be2aab3aeefde48446c3c5baf2d7a68b218985b1f",
+    "duration_ms": 1849480,
+    "width": 1920,
+    "height": 1080,
+    "fps": 25.0,
+    "vod_vid": null,
+    "playback_url": null,
+    "rights_status": "pending"
+  },
+  "provider": {
+    "name": "volcengine_vod_long_video_understanding",
+    "run_id": null,
+    "mode": "multimodal",
+    "prompt_version": "ich_multimodal_v1"
+  },
+  "processing_status": {
+    "video_understanding": "succeeded",
+    "normalization": "succeeded",
+    "frame_binding": "succeeded",
+    "human_review": "not_started",
+    "database_import": "not_started"
+  },
+  "summary_candidate": "本视频介绍中国传统撕纸艺术的起源、艺术特征，重点讲述上海市奉贤区非物质文化遗产项目南桥撕纸的发展脉络、艺术特色、技法品类、传承传播工作及多元价值，同时说明该项目未来的创新传承方向。",
+  "evidence_segments": [
+    {
+      "evidence_id": "ev_SHIH_0002_0030000_0058000",
+      "source_evidence_local_id": "e001",
+      "video_id": "SHIH_0002",
+      "start_ms": 30000,
+      "end_ms": 58000,
+      "transcript_raw": "方寸之间，以手为简，以丝带写在指尖的青丝蔓扯下，一张张红纸仿佛有了生命一般，一个个五彩斑斓的二维世界就此孕育而生，这其中包含了变化无穷的艺术创造，更是中华旨意的千年缩影。",
+      "transcript_reviewed": null,
+      "visual_description_raw": "展示手撕红色纸张形成镂空图案、多幅不同题材撕纸成品的画面",
+      "visual_description_reviewed": null,
+      "speaker_role": "旁白",
+      "entities_candidate": {
+        "projects": [
+          "撕纸艺术"
+        ],
+        "people": [],
+        "places": [],
+        "materials": [
+          "红纸"
+        ],
+        "tools": [],
+        "techniques": [
+          "手撕"
+        ],
+        "artifacts": [
+          "撕纸作品"
+        ]
+      },
+      "frame_ids": [
+        35600,
+        44000,
+        52400
+      ],
+      "frame_paths": [
+        "media/keyframes/000035600.jpg",
+        "media/keyframes/000044000.jpg",
+        "media/keyframes/000052400.jpg"
+      ],
+      "quality_flags": [
+        "asr_needs_review"
+      ],
+      "uncertainties": [
+        "转写中“丝带”“青丝蔓”“中华旨意”表述存疑，需核实原音"
+      ],
+      "confirmed_normalizations": [],
+      "review_status": "needs_review"
+    },
+    {
+      "evidence_id": "ev_SHIH_0002_0060000_0090000",
+      "source_evidence_local_id": "e002",
+      "video_id": "SHIH_0002",
+      "start_ms": 60000,
+      "end_ms": 90000,
+      "transcript_raw": "中国撕纸艺术源远流长，是最原始古老的民俗艺术之一，和剪纸刻纸一样，都属于中国民间纸艺范畴。在文明还没有启蒙的时代，古人就以手带刀，将树皮树叶等撕成各种抽象的图案和符号，来寄托他们对美好生活的憧憬，这就是撕纸的起源。",
+      "transcript_reviewed": null,
+      "visual_description_raw": "展示多幅民俗风格红色撕纸作品、远古树皮及先民生活相关的动画画面",
+      "visual_description_reviewed": null,
+      "speaker_role": "旁白",
+      "entities_candidate": {
+        "projects": [
+          "撕纸艺术"
+        ],
+        "people": [],
+        "places": [],
+        "materials": [
+          "树皮",
+          "树叶"
+        ],
+        "tools": [],
+        "techniques": [
+          "手撕"
+        ],
+        "artifacts": [
+          "撕纸图案",
+          "撕纸符号"
+        ]
+      },
+      "frame_ids": [
+        66000,
+        75000,
+        84000
+      ],
+      "frame_paths": [
+        "media/keyframes/000066000.jpg",
+        "media/keyframes/000075000.jpg",
+        "media/keyframes/000084000.jpg"
+      ],
+      "quality_flags": [],
+      "uncertainties": [],
+      "confirmed_normalizations": [],
+      "review_status": "auto_generated"
+    },
+    {
+      "evidence_id": "ev_SHIH_0002_0232000_0283000",
+      "source_evidence_local_id": "e003",
+      "video_id": "SHIH_0002",
+      "start_ms": 232000,
+      "end_ms": 283000,
+      "transcript_raw": "南桥撕纸诞生于上海贤文化的发源地上海市奉贤区，在江南水乡的滋润和孕育下，撕纸在这里不断传承发展，融入了海派文化的独特基因，成为了上海市奉贤区非物质文化遗产保护项目，2014年作为第四批奉贤区非物质文化遗产项目被区人民政府命名。",
+      "transcript_reviewed": null,
+      "visual_description_raw": "展示南桥撕纸简介文稿、南桥撕纸主题作品、老年群体参与撕纸学习的画面",
+      "visual_description_reviewed": null,
+      "speaker_role": "旁白/何球红（南桥撕纸代表性传承人）",
+      "entities_candidate": {
+        "projects": [
+          "南桥撕纸"
+        ],
+        "people": [],
+        "places": [
+          "上海市奉贤区"
+        ],
+        "materials": [],
+        "tools": [],
+        "techniques": [],
+        "artifacts": [
+          "南桥撕纸作品"
+        ]
+      },
+      "frame_ids": [
+        242200,
+        257500,
+        272800
+      ],
+      "frame_paths": [
+        "media/keyframes/000242200.jpg",
+        "media/keyframes/000257500.jpg",
+        "media/keyframes/000272800.jpg"
+      ],
+      "quality_flags": [
+        "asr_needs_review"
+      ],
+      "uncertainties": [
+        "转写中“独特期”应为“独特基因”的同音误写，“丝纸”“司纸”均为“撕纸”的同音误写"
+      ],
+      "confirmed_normalizations": [],
+      "review_status": "needs_review"
+    },
+    {
+      "evidence_id": "ev_SHIH_0002_0295000_0409000",
+      "source_evidence_local_id": "e004",
+      "video_id": "SHIH_0002",
+      "start_ms": 295000,
+      "end_ms": 409000,
+      "transcript_raw": "南桥撕纸的创始人为无锡民间撕纸艺术家胡立德，上世纪50年代胡立德将撕纸艺术传承给弟子华兴富，华兴富又将海派撕纸技艺传承给何球红，何球红成为南桥撕纸非遗代表性传承人，后将技艺传承给儿子何玉伟，以及沙秀宏、郭冰仪等为代表的南桥撕纸传承团队。",
+      "transcript_reviewed": null,
+      "visual_description_raw": "展示胡立德、华兴富的老照片，何球红、何玉伟手撕纸张、开展撕纸教学的画面",
+      "visual_description_reviewed": null,
+      "speaker_role": "旁白/何玉伟",
+      "entities_candidate": {
+        "projects": [
+          "南桥撕纸"
+        ],
+        "people": [
+          "胡立德",
+          "华兴富",
+          "何球红",
+          "何玉伟",
+          "沙秀宏",
+          "郭冰仪"
+        ],
+        "places": [
+          "无锡市",
+          "上海市奉贤区"
+        ],
+        "materials": [],
+        "tools": [],
+        "techniques": [
+          "海派撕纸技艺"
+        ],
+        "artifacts": []
+      },
+      "frame_ids": [
+        309250,
+        337750,
+        366250,
+        394750
+      ],
+      "frame_paths": [
+        "media/keyframes/000309250.jpg",
+        "media/keyframes/000337750.jpg",
+        "media/keyframes/000366250.jpg",
+        "media/keyframes/000394750.jpg"
+      ],
+      "quality_flags": [
+        "asr_needs_review",
+        "person_name_unverified"
+      ],
+      "uncertainties": [
+        "转写中“华心富”应为“华兴富”的同音误写，“司职”为“撕纸”的同音误写"
+      ],
+      "confirmed_normalizations": [],
+      "review_status": "needs_review"
+    },
+    {
+      "evidence_id": "ev_SHIH_0002_0480000_0674000",
+      "source_evidence_local_id": "e005",
+      "video_id": "SHIH_0002",
+      "start_ms": 480000,
+      "end_ms": 674000,
+      "transcript_raw": "撕纸是纸艺剪刻撕三大手法中最原始的一种，无需笔墨剪刀，仅靠双手，以废弃画报、挂历、广告纸等为材料，通过撕、抠、摘、掏、挖、折、叠、拼贴等十余种技法创作，作品线条粗犷，边缘带自然毛边，兼具黑白、彩色形式，不打草稿，随性创作，重神韵不拘细节。",
+      "transcript_reviewed": null,
+      "visual_description_raw": "展示撕纸作品毛边细节、何玉伟手撕纸张、多幅彩色及黑白撕纸作品的画面",
+      "visual_description_reviewed": null,
+      "speaker_role": "旁白/何玉伟",
+      "entities_candidate": {
+        "projects": [
+          "撕纸艺术",
+          "南桥撕纸"
+        ],
+        "people": [],
+        "places": [],
+        "materials": [
+          "废弃画报",
+          "挂历",
+          "广告纸",
+          "彩页",
+          "包装纸"
+        ],
+        "tools": [
+          "浆糊"
+        ],
+        "techniques": [
+          "撕",
+          "抠",
+          "摘",
+          "掏",
+          "挖",
+          "折",
+          "叠",
+          "拼贴"
+        ],
+        "artifacts": [
+          "黑白撕纸作品",
+          "彩色撕纸作品"
+        ]
+      },
+      "frame_ids": [
+        504250,
+        552750,
+        601250,
+        649750
+      ],
+      "frame_paths": [
+        "media/keyframes/000504250.jpg",
+        "media/keyframes/000552750.jpg",
+        "media/keyframes/000601250.jpg",
+        "media/keyframes/000649750.jpg"
+      ],
+      "quality_flags": [
+        "asr_needs_review"
+      ],
+      "uncertainties": [
+        "转写中“画苞挂历”应为“画报挂历”的同音误写，“思挖抠斋陋弯折叠心切”为技法表述的谐音误写，需核实"
+      ],
+      "confirmed_normalizations": [],
+      "review_status": "needs_review"
+    },
+    {
+      "evidence_id": "ev_SHIH_0002_0678000_0933000",
+      "source_evidence_local_id": "e006",
+      "video_id": "SHIH_0002",
+      "start_ms": 678000,
+      "end_ms": 933000,
+      "transcript_raw": "撕纸是老少皆宜的民间艺术，兼具美育、益智、健身价值，适合青少年智力开发、中老年人动手动脑，可锻炼左右脑配合、开发右脑形象思维、培养创新能力，操作安全无锋利工具，方便随时随地创作，入门门槛低。",
+      "transcript_reviewed": null,
+      "visual_description_raw": "展示各年龄段人群参与撕纸学习的画面",
+      "visual_description_reviewed": null,
+      "speaker_role": "何球红/何玉伟",
+      "entities_candidate": {
+        "projects": [
+          "撕纸艺术"
+        ],
+        "people": [],
+        "places": [],
+        "materials": [],
+        "tools": [],
+        "techniques": [],
+        "artifacts": []
+      },
+      "frame_ids": [
+        709875,
+        773625,
+        837375,
+        901125
+      ],
+      "frame_paths": [
+        "media/keyframes/000709875.jpg",
+        "media/keyframes/000773625.jpg",
+        "media/keyframes/000837375.jpg",
+        "media/keyframes/000901125.jpg"
+      ],
+      "quality_flags": [
+        "asr_needs_review"
+      ],
+      "uncertainties": [
+        "转写中“狮子”“四子”均为“撕纸”的同音误写"
+      ],
+      "confirmed_normalizations": [],
+      "review_status": "needs_review"
+    }
+  ],
+  "claims": [
+    {
+      "claim_id": "cl_SHIH_0002_0001",
+      "video_id": "SHIH_0002",
+      "subject": null,
+      "predicate": null,
+      "object": null,
+      "statement": "撕纸是中国最古老的民俗纸艺之一，起源早于剪纸，文明未启蒙时期古人就以树皮、树叶撕制图案寄托对生活的美好憧憬。",
+      "evidence_ids": [
+        "ev_SHIH_0002_0060000_0090000"
+      ],
+      "confidence_candidate": null,
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "claim_id": "cl_SHIH_0002_0002",
+      "video_id": "SHIH_0002",
+      "subject": null,
+      "predicate": null,
+      "object": null,
+      "statement": "南桥撕纸是上海市奉贤区非物质文化遗产项目，2014年被正式列入奉贤区第四批非遗名录。",
+      "evidence_ids": [
+        "ev_SHIH_0002_0232000_0283000"
+      ],
+      "confidence_candidate": null,
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "claim_id": "cl_SHIH_0002_0003",
+      "video_id": "SHIH_0002",
+      "subject": null,
+      "predicate": null,
+      "object": null,
+      "statement": "南桥撕纸的传承脉络为：胡立德→华兴富→何球红→何玉伟及核心传承团队，已传承四代。",
+      "evidence_ids": [
+        "ev_SHIH_0002_0295000_0409000"
+      ],
+      "confidence_candidate": null,
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "claim_id": "cl_SHIH_0002_0004",
+      "video_id": "SHIH_0002",
+      "subject": null,
+      "predicate": null,
+      "object": null,
+      "statement": "撕纸创作无需草稿和剪刀等锋利工具，仅靠双手即可完成，技法丰富，可使用多种废弃纸张作为创作材料，作品风格粗犷自然。",
+      "evidence_ids": [
+        "ev_SHIH_0002_0480000_0674000"
+      ],
+      "confidence_candidate": null,
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "claim_id": "cl_SHIH_0002_0005",
+      "video_id": "SHIH_0002",
+      "subject": null,
+      "predicate": null,
+      "object": null,
+      "statement": "撕纸艺术兼具美育、益智、健身多重价值，操作安全、门槛低、便于传播，适合全年龄段人群学习。",
+      "evidence_ids": [
+        "ev_SHIH_0002_0678000_0933000"
+      ],
+      "confidence_candidate": null,
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    }
+  ],
+  "process_steps": [
+    {
+      "step_id": "step_SHIH_0002_001",
+      "video_id": "SHIH_0002",
+      "order_candidate": 1,
+      "order_verified": null,
+      "name": null,
+      "materials": [
+        "包装纸",
+        "广告纸",
+        "废弃画报",
+        "彩页",
+        "挂历"
+      ],
+      "tools": [
+        "浆糊"
+      ],
+      "action": "构思创作主题与内容，无需绘制草稿。",
+      "result": null,
+      "interaction_mapping": null,
+      "evidence_ids": [
+        "ev_SHIH_0002_0480000_0674000"
+      ],
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "step_id": "step_SHIH_0002_002",
+      "video_id": "SHIH_0002",
+      "order_candidate": 2,
+      "order_verified": null,
+      "name": null,
+      "materials": [
+        "包装纸",
+        "广告纸",
+        "废弃画报",
+        "彩页",
+        "挂历"
+      ],
+      "tools": [
+        "浆糊"
+      ],
+      "action": "选取红纸、废弃画报、挂历、广告纸等任意纸张作为创作材料。",
+      "result": null,
+      "interaction_mapping": null,
+      "evidence_ids": [
+        "ev_SHIH_0002_0480000_0674000"
+      ],
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "step_id": "step_SHIH_0002_003",
+      "video_id": "SHIH_0002",
+      "order_candidate": 3,
+      "order_verified": null,
+      "name": null,
+      "materials": [
+        "包装纸",
+        "广告纸",
+        "废弃画报",
+        "彩页",
+        "挂历"
+      ],
+      "tools": [
+        "浆糊"
+      ],
+      "action": "使用双手通过撕、抠、摘、掏、挖、折、叠等技法加工纸张，可结合拼贴技法丰富作品效果。",
+      "result": null,
+      "interaction_mapping": null,
+      "evidence_ids": [
+        "ev_SHIH_0002_0480000_0674000"
+      ],
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "step_id": "step_SHIH_0002_004",
+      "video_id": "SHIH_0002",
+      "order_candidate": 4,
+      "order_verified": null,
+      "name": null,
+      "materials": [
+        "包装纸",
+        "广告纸",
+        "废弃画报",
+        "彩页",
+        "挂历"
+      ],
+      "tools": [
+        "浆糊"
+      ],
+      "action": "完成创作后可选择镜框、团扇、纸扇等载体呈现作品，开发为实用文创产品。",
+      "result": null,
+      "interaction_mapping": null,
+      "evidence_ids": [
+        "ev_SHIH_0002_0480000_0674000"
+      ],
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    }
+  ],
+  "warnings": [
+    "语音转写存在大量同音误写，包括“司纸、丝纸、湿纸、狮子、四子、司职”均为“撕纸”的误写，“华心富”为“华兴富”的误写，“何玉玮”为“何玉伟”的误写，“画苞”为“画报”的误写，需结合原音核实修正。",
+    "部分转写内容如“以丝带写在指尖的青丝蔓扯下”“异曲天成的谱珠”“路虎通行”“思挖抠斋陋弯折叠心切”等表述语义不通，需核实原音确认准确内容。",
+    "火山引擎 Vid、RunId 和播放地址未包含在输出文件中，迁移后需在 manifest.json 补录。",
+    "所有知识主张和工艺步骤均为模型候选，正式发布前必须人工审核。",
+    "部分证据超过60秒；原输出没有词级时间码，因此未做可能失真的自动拆分。"
+  ],
+  "generated_at": "2026-07-17T12:37:45.079590+08:00"
+}

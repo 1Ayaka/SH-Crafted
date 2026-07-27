@@ -1,0 +1,34 @@
+{
+  "catalog_schema_version": "1.0",
+  "packages": [
+    {
+      "package_id": "agent_kb_SHIH_0001",
+      "video_id": "SHIH_0001",
+      "title": "嘉定竹刻",
+      "directory": "SHIH_0001_jiading_bamboo_carving",
+      "manifest": "manifest.json"
+    },
+    {
+      "package_id": "agent_kb_SHIH_0002",
+      "video_id": "SHIH_0002",
+      "title": "南桥撕纸",
+      "directory": "SHIH_0002_nanqiao_torn_paper_art",
+      "manifest": "manifest.json"
+    },
+    {
+      "package_id": "agent_kb_SHIH_0003",
+      "video_id": "SHIH_0003",
+      "title": "药斑布",
+      "directory": "SHIH_0003_medicinal_spotted_cloth",
+      "manifest": "manifest.json"
+    },
+    {
+      "package_id": "agent_kb_SHIH_0004",
+      "video_id": "SHIH_0004",
+      "title": "象牙篾丝编织",
+      "directory": "SHIH_0004_ivory_bamboo_filament_weaving",
+      "manifest": "manifest.json"
+    }
+  ],
+  "generated_at": "2026-07-17T12:37:50.571329+08:00"
+}

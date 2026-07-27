@@ -1,0 +1,40 @@
+{
+  "source": "assets/bg-crafts/src/SHIH_0001.jpg",
+  "generated_at": "2026-07-26T16:29:22+08:00",
+  "width": 1280,
+  "height": 853,
+  "layers": [
+    {
+      "file": "layer-wash.webp",
+      "role": "wash",
+      "parallax": 0.22,
+      "drift": 7,
+      "speed": 0.00011
+    },
+    {
+      "file": "layer-mid.webp",
+      "role": "mid",
+      "parallax": 0.45,
+      "drift": 5,
+      "speed": 0.00016
+    },
+    {
+      "file": "layer-dark.webp",
+      "role": "dark",
+      "parallax": 0.75,
+      "drift": 0,
+      "speed": 0
+    },
+    {
+      "file": "layer-gold.webp",
+      "role": "gold",
+      "parallax": 1.0,
+      "drift": 0,
+      "speed": 0
+    }
+  ],
+  "particle_sources": [
+    "dark",
+    "gold"
+  ]
+}

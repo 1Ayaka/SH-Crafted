@@ -1,0 +1,766 @@
+{
+  "schema_version": "1.0",
+  "video": {
+    "video_id": "SHIH_0004",
+    "title": "象牙篾丝编织",
+    "slug": "ivory_bamboo_filament_weaving",
+    "source_filename": "象牙篾丝编织.mp4",
+    "source_size_bytes": 921784917,
+    "sha256": "6d4e46c4a7925ce4cf9d54e0ee38e5f30f699a868f3857aae3c05aa7b23c071a",
+    "duration_ms": 1831320,
+    "width": 1920,
+    "height": 1080,
+    "fps": 25.0,
+    "vod_vid": null,
+    "playback_url": null,
+    "rights_status": "pending"
+  },
+  "provider": {
+    "name": "volcengine_vod_long_video_understanding",
+    "run_id": null,
+    "mode": "multimodal",
+    "prompt_version": "ich_multimodal_v1"
+  },
+  "processing_status": {
+    "video_understanding": "succeeded",
+    "normalization": "succeeded",
+    "frame_binding": "succeeded",
+    "human_review": "not_started",
+    "database_import": "not_started"
+  },
+  "summary_candidate": "本视频介绍象牙蔑丝编织这一中国传统象牙工艺的历史渊源、发展与失传过程，讲述上海市工艺美术大师陈海龙历经数十年研发，成功复活失传近300年的象牙蔑丝编织技艺，创新研发陈氏牙丝工艺，创作《花好月圆》等优秀作品，同时在国际禁止象牙贸易的背景下探索跨界融合发展，培养女儿陈易等传承人，推动非遗技艺传承与创新的相关事迹。",
+  "evidence_segments": [
+    {
+      "evidence_id": "ev_SHIH_0004_0052000_0074000",
+      "source_evidence_local_id": "e001",
+      "video_id": "SHIH_0004",
+      "start_ms": 52000,
+      "end_ms": 74000,
+      "transcript_raw": "提到象牙工艺品，人们马上会联想到千姿百态的象牙雕刻，象牙雕刻以质地坚实细腻色泽柔润光滑晶莹细刻的雕刻艺术备受人们珍爱，可是有一种象牙制品人们却很少能够见到",
+      "transcript_reviewed": null,
+      "visual_description_raw": "展示多件象牙雕刻工艺品，包括牙雕摆件、佛像、笔筒等",
+      "visual_description_reviewed": null,
+      "speaker_role": "旁白",
+      "entities_candidate": {
+        "projects": [
+          "象牙雕刻技艺"
+        ],
+        "people": [],
+        "places": [],
+        "materials": [
+          "象牙"
+        ],
+        "tools": [],
+        "techniques": [
+          "象牙雕刻"
+        ],
+        "artifacts": [
+          "象牙雕刻工艺品"
+        ]
+      },
+      "frame_ids": [
+        56400,
+        63000,
+        69600
+      ],
+      "frame_paths": [
+        "media/keyframes/000056400.jpg",
+        "media/keyframes/000063000.jpg",
+        "media/keyframes/000069600.jpg"
+      ],
+      "quality_flags": [],
+      "uncertainties": [],
+      "confirmed_normalizations": [],
+      "review_status": "auto_generated"
+    },
+    {
+      "evidence_id": "ev_SHIH_0004_0075000_0107000",
+      "source_evidence_local_id": "e002",
+      "video_id": "SHIH_0004",
+      "start_ms": 75000,
+      "end_ms": 107000,
+      "transcript_raw": "它是用象牙丝编织的妙手绝技，有人会问象牙的特点既硬又脆，用它怎么能编织成柔软的象牙制品呢？中国象牙制品历史悠久，最早可以追溯到距今7,000多年的新石器时期，进入商周时代",
+      "transcript_reviewed": null,
+      "visual_description_raw": "展示象牙丝编织团扇展品，展示河姆渡遗址出土的“双凤朝阳”象牙雕刻文物",
+      "visual_description_reviewed": null,
+      "speaker_role": "旁白",
+      "entities_candidate": {
+        "projects": [
+          "象牙丝编织技艺"
+        ],
+        "people": [],
+        "places": [
+          "河姆渡遗址"
+        ],
+        "materials": [
+          "象牙"
+        ],
+        "tools": [],
+        "techniques": [
+          "象牙丝编织"
+        ],
+        "artifacts": [
+          "象牙丝编织制品",
+          "“双凤朝阳”象牙雕刻"
+        ]
+      },
+      "frame_ids": [
+        81400,
+        91000,
+        100600
+      ],
+      "frame_paths": [
+        "media/keyframes/000081400.jpg",
+        "media/keyframes/000091000.jpg",
+        "media/keyframes/000100600.jpg"
+      ],
+      "quality_flags": [],
+      "uncertainties": [],
+      "confirmed_normalizations": [],
+      "review_status": "auto_generated"
+    },
+    {
+      "evidence_id": "ev_SHIH_0004_0107000_0167000",
+      "source_evidence_local_id": "e003",
+      "video_id": "SHIH_0004",
+      "start_ms": 107000,
+      "end_ms": 167000,
+      "transcript_raw": "牙雕工艺已经具有一定规模，由于象牙精致的雕刻艺术以及象牙本身的价值，多少年来牙雕一直被宫廷控制，禁止民间使用。到了明代，由于非洲象牙大量流入中国，促进了牙雕工艺的发展，民间才可以从事牙雕和把玩牙雕。广东匠人为追求新奇的艺术效果，还拓展了一项独特的技艺象牙蔑丝编织，就是把象牙劈成丝，编织成各种纹饰的席子团扇等工艺品。象牙蔑丝编织在中国象牙工艺史上占有极其重要的地位，也是国际公认的中国象牙雕刻之瑰宝。遗憾的是这项特殊的传统工艺在我国却失传了近300年",
+      "transcript_reviewed": null,
+      "visual_description_raw": "展示古代牙雕文物、象牙丝编织的席子、团扇等文物图片",
+      "visual_description_reviewed": null,
+      "speaker_role": "旁白",
+      "entities_candidate": {
+        "projects": [
+          "象牙蔑丝编织技艺"
+        ],
+        "people": [
+          "广东牙雕匠人"
+        ],
+        "places": [],
+        "materials": [
+          "象牙"
+        ],
+        "tools": [],
+        "techniques": [
+          "象牙劈丝",
+          "象牙蔑丝编织"
+        ],
+        "artifacts": [
+          "象牙席",
+          "象牙编织团扇"
+        ]
+      },
+      "frame_ids": [
+        119000,
+        137000,
+        155000
+      ],
+      "frame_paths": [
+        "media/keyframes/000119000.jpg",
+        "media/keyframes/000137000.jpg",
+        "media/keyframes/000155000.jpg"
+      ],
+      "quality_flags": [
+        "person_name_unverified"
+      ],
+      "uncertainties": [],
+      "confirmed_normalizations": [],
+      "review_status": "auto_generated"
+    },
+    {
+      "evidence_id": "ev_SHIH_0004_0169000_0231000",
+      "source_evidence_local_id": "e004",
+      "video_id": "SHIH_0004",
+      "start_ms": 169000,
+      "end_ms": 231000,
+      "transcript_raw": "上海市静安区雕刻家陈海龙先生历经数十年的辛勤研制改革创新，终于使这门罕见的传统绝技重放异彩，成为目前全国唯一能够成熟掌握象牙蔑丝技艺的工艺美术大师。其实象牙蔑丝编织早在汉代就有，西汉学者柳心编撰的西京杂记中就有汉武帝以象牙簟赐予李夫人的记载，象牙簟就是象牙编织的席子，这说明在汉朝就掌握了象牙席的编织技术",
+      "transcript_reviewed": null,
+      "visual_description_raw": "陈海龙翻看牙雕相关书籍的画面，展示《西京杂记》相关记载的图文",
+      "visual_description_reviewed": null,
+      "speaker_role": "旁白、陈海龙",
+      "entities_candidate": {
+        "projects": [
+          "象牙蔑丝编织技艺"
+        ],
+        "people": [
+          "陈海龙",
+          "柳心",
+          "汉武帝",
+          "李夫人"
+        ],
+        "places": [
+          "上海市静安区"
+        ],
+        "materials": [
+          "象牙"
+        ],
+        "tools": [],
+        "techniques": [
+          "象牙蔑丝编织"
+        ],
+        "artifacts": [
+          "象牙席",
+          "《西京杂记》"
+        ]
+      },
+      "frame_ids": [
+        176750,
+        192250,
+        207750,
+        223250
+      ],
+      "frame_paths": [
+        "media/keyframes/000176750.jpg",
+        "media/keyframes/000192250.jpg",
+        "media/keyframes/000207750.jpg",
+        "media/keyframes/000223250.jpg"
+      ],
+      "quality_flags": [
+        "asr_needs_review",
+        "person_name_unverified"
+      ],
+      "uncertainties": [
+        "转写中“柳心”疑似同音误转，需核实"
+      ],
+      "confirmed_normalizations": [],
+      "review_status": "needs_review"
+    },
+    {
+      "evidence_id": "ev_SHIH_0004_0232000_0328000",
+      "source_evidence_local_id": "e005",
+      "video_id": "SHIH_0004",
+      "start_ms": 232000,
+      "end_ms": 328000,
+      "transcript_raw": "明代文人祝允明在野记中简单地介绍了象牙席的制作原理，按照书上记载的来做我们现在尝试过是做不通的。明清工匠虽然按照古法拓展了牙丝编织技艺，由于象牙劈丝编织等工序非常复杂，数十位能工巧匠要花几年时间，用上百根象牙才能制作出一张象牙席。面对这种耗资巨大费工费时的工艺，雍正皇帝下旨禁止再制作象牙席，广东就停止了象牙席制作，这项技术转而用于制作团扇等小器物，随后也因为工艺繁琐，渐渐淡出人们的视野，最终失传",
+      "transcript_reviewed": null,
+      "visual_description_raw": "展示《野记》相关记载图文、雍正圣旨图文、清代象牙编织团扇文物图片",
+      "visual_description_reviewed": null,
+      "speaker_role": "旁白、陈海龙",
+      "entities_candidate": {
+        "projects": [
+          "象牙蔑丝编织技艺"
+        ],
+        "people": [
+          "祝允明",
+          "雍正皇帝",
+          "明清牙雕工匠"
+        ],
+        "places": [
+          "广东"
+        ],
+        "materials": [
+          "象牙"
+        ],
+        "tools": [],
+        "techniques": [
+          "象牙劈丝",
+          "象牙蔑丝编织"
+        ],
+        "artifacts": [
+          "象牙席",
+          "《野记》",
+          "清代象牙编织团扇"
+        ]
+      },
+      "frame_ids": [
+        244000,
+        268000,
+        292000,
+        316000
+      ],
+      "frame_paths": [
+        "media/keyframes/000244000.jpg",
+        "media/keyframes/000268000.jpg",
+        "media/keyframes/000292000.jpg",
+        "media/keyframes/000316000.jpg"
+      ],
+      "quality_flags": [
+        "person_name_unverified"
+      ],
+      "uncertainties": [
+        "《野记》记载的象牙席古法制做工艺经尝试无法实现，真实性待考证"
+      ],
+      "confirmed_normalizations": [],
+      "review_status": "needs_review"
+    },
+    {
+      "evidence_id": "ev_SHIH_0004_0361000_0480000",
+      "source_evidence_local_id": "e006",
+      "video_id": "SHIH_0004",
+      "start_ms": 361000,
+      "end_ms": 480000,
+      "transcript_raw": "1956年陈海龙出生上海，1973年进入上海长江刻字厂，跟随师傅学习牙雕摆件。十年后当他得知象牙劈丝编织的传统技艺后，复活牙丝编织技艺的欲望日渐强烈。在厂领导的支持下，陈海龙和几个年轻人在没有参考资料和技术指导的情况下开始钻研劈丝工艺，几经挫折1985年，陈海龙和同事们终于复活了牙丝编织工艺",
+      "transcript_reviewed": null,
+      "visual_description_raw": "上海长江刻字厂旧照、陈海龙早年钻研工艺的黑白资料画面",
+      "visual_description_reviewed": null,
+      "speaker_role": "旁白",
+      "entities_candidate": {
+        "projects": [
+          "象牙蔑丝编织技艺复活项目"
+        ],
+        "people": [
+          "陈海龙"
+        ],
+        "places": [
+          "上海",
+          "上海长江刻字厂"
+        ],
+        "materials": [
+          "象牙"
+        ],
+        "tools": [],
+        "techniques": [
+          "象牙劈丝",
+          "象牙蔑丝编织"
+        ],
+        "artifacts": []
+      },
+      "frame_ids": [
+        375875,
+        405625,
+        435375,
+        465125
+      ],
+      "frame_paths": [
+        "media/keyframes/000375875.jpg",
+        "media/keyframes/000405625.jpg",
+        "media/keyframes/000435375.jpg",
+        "media/keyframes/000465125.jpg"
+      ],
+      "quality_flags": [
+        "person_name_unverified"
+      ],
+      "uncertainties": [],
+      "confirmed_normalizations": [],
+      "review_status": "auto_generated"
+    },
+    {
+      "evidence_id": "ev_SHIH_0004_0595000_0702000",
+      "source_evidence_local_id": "e007",
+      "video_id": "SHIH_0004",
+      "start_ms": 595000,
+      "end_ms": 702000,
+      "transcript_raw": "2003年陈海龙开始攻克牙丝热胀冷缩的难关，年复一年经过数不清的失败后，终于成功的研制出陈氏牙丝工艺。取料要顺着象牙的弯丝取料，做成片子后打磨，加入适量的酸处理，同时控制编织时的湿度，使象牙达到最好的韧性后再进行编织。陈海龙研制的牙丝经磨制处理能达到光润细腻的质地，柔韧适度，大大超越前人的技术，打破了牙丝制品因地区温差不能长期外露的缺陷",
+      "transcript_reviewed": null,
+      "visual_description_raw": "陈海龙演示取料、处理牙丝、编织的操作画面，展示成品牙丝",
+      "visual_description_reviewed": null,
+      "speaker_role": "旁白、陈海龙",
+      "entities_candidate": {
+        "projects": [
+          "陈氏牙丝工艺研发项目"
+        ],
+        "people": [
+          "陈海龙"
+        ],
+        "places": [],
+        "materials": [
+          "象牙",
+          "酸"
+        ],
+        "tools": [],
+        "techniques": [
+          "陈氏牙丝工艺",
+          "象牙劈丝",
+          "象牙蔑丝编织"
+        ],
+        "artifacts": []
+      },
+      "frame_ids": [
+        608375,
+        635125,
+        661875,
+        688625
+      ],
+      "frame_paths": [
+        "media/keyframes/000608375.jpg",
+        "media/keyframes/000635125.jpg",
+        "media/keyframes/000661875.jpg",
+        "media/keyframes/000688625.jpg"
+      ],
+      "quality_flags": [
+        "person_name_unverified"
+      ],
+      "uncertainties": [],
+      "confirmed_normalizations": [],
+      "review_status": "auto_generated"
+    },
+    {
+      "evidence_id": "ev_SHIH_0004_0730000_0901000",
+      "source_evidence_local_id": "e008",
+      "video_id": "SHIH_0004",
+      "start_ms": 730000,
+      "end_ms": 901000,
+      "transcript_raw": "陈海龙耗尽整整两年时间，在工艺上几乎用到了所有的牙雕技法，最终独立完成了洁白无瑕奇巧雅致的象牙蔑丝团扇《花好月圆》。整个扇子成型重量只有4两，扇面用不足一毫米的丝编成八角的井地纹，还镶嵌了雕刻薄如宣纸的牡丹花和颇有动感的双蝶。目前在全国牙雕界，能成熟地掌握象牙劈丝技术并进而创新者仅陈海龙先生一人",
+      "transcript_reviewed": null,
+      "visual_description_raw": "展示《花好月圆》团扇的细节特写，陈海龙介绍该作品的画面",
+      "visual_description_reviewed": null,
+      "speaker_role": "旁白、陈海龙",
+      "entities_candidate": {
+        "projects": [
+          "象牙蔑丝编织作品创作"
+        ],
+        "people": [
+          "陈海龙"
+        ],
+        "places": [],
+        "materials": [
+          "象牙"
+        ],
+        "tools": [],
+        "techniques": [
+          "象牙劈丝",
+          "象牙蔑丝编织",
+          "象牙镶嵌",
+          "象牙雕刻"
+        ],
+        "artifacts": [
+          "象牙蔑丝团扇《花好月圆》"
+        ]
+      },
+      "frame_ids": [
+        751375,
+        794125,
+        836875,
+        879625
+      ],
+      "frame_paths": [
+        "media/keyframes/000751375.jpg",
+        "media/keyframes/000794125.jpg",
+        "media/keyframes/000836875.jpg",
+        "media/keyframes/000879625.jpg"
+      ],
+      "quality_flags": [
+        "person_name_unverified"
+      ],
+      "uncertainties": [],
+      "confirmed_normalizations": [],
+      "review_status": "auto_generated"
+    },
+    {
+      "evidence_id": "ev_SHIH_0004_1010000_1081000",
+      "source_evidence_local_id": "e009",
+      "video_id": "SHIH_0004",
+      "start_ms": 1010000,
+      "end_ms": 1081000,
+      "transcript_raw": "陈海龙十年前就有意识地开始培养当时还在上海工艺美术学院读书的女儿陈易，现在陈易进行的就是象牙编织这个工艺的方法，两件作品上面的编织全部是她完成的。陈易从上海工艺美术学校毕业后专心致志跟着父亲认真学习牙雕以及象牙蔑丝编织技艺，在大师工作室担任助手",
+      "transcript_reviewed": null,
+      "visual_description_raw": "陈易进行牙丝编织、牙雕操作的画面",
+      "visual_description_reviewed": null,
+      "speaker_role": "旁白、陈易",
+      "entities_candidate": {
+        "projects": [
+          "象牙蔑丝编织技艺传承项目"
+        ],
+        "people": [
+          "陈海龙",
+          "陈易"
+        ],
+        "places": [
+          "上海工艺美术学院",
+          "陈海龙大师工作室"
+        ],
+        "materials": [
+          "象牙"
+        ],
+        "tools": [],
+        "techniques": [
+          "象牙蔑丝编织",
+          "牙雕"
+        ],
+        "artifacts": []
+      },
+      "frame_ids": [
+        1018875,
+        1036625,
+        1054375,
+        1072125
+      ],
+      "frame_paths": [
+        "media/keyframes/001018875.jpg",
+        "media/keyframes/001036625.jpg",
+        "media/keyframes/001054375.jpg",
+        "media/keyframes/001072125.jpg"
+      ],
+      "quality_flags": [
+        "person_name_unverified"
+      ],
+      "uncertainties": [],
+      "confirmed_normalizations": [],
+      "review_status": "auto_generated"
+    },
+    {
+      "evidence_id": "ev_SHIH_0004_1421000_1717000",
+      "source_evidence_local_id": "e010",
+      "video_id": "SHIH_0004",
+      "start_ms": 1421000,
+      "end_ms": 1717000,
+      "transcript_raw": "由于国际社会全面禁止象牙贸易，象牙贸易性使用已被禁止，陈海龙团队将主要精力转向用玉、琉璃、铜等其他材料创作，进行跨界融合。目前陈海龙大师工作室正在创作大型历史题材上下五千年玉石雕刻系列，涵盖从盘古开天辟地到丝绸之路的中国千年文化科技和社会文明内容",
+      "transcript_reviewed": null,
+      "visual_description_raw": "陈海龙工作室团队创作画面，《上下五千年》玉石雕刻设计稿、琉璃三面观音、铜铸印章等作品展示",
+      "visual_description_reviewed": null,
+      "speaker_role": "旁白、陈海龙",
+      "entities_candidate": {
+        "projects": [
+          "非遗跨界融合创作项目"
+        ],
+        "people": [
+          "陈海龙"
+        ],
+        "places": [
+          "陈海龙大师工作室"
+        ],
+        "materials": [
+          "象牙",
+          "玉",
+          "琉璃",
+          "铜",
+          "紫砂"
+        ],
+        "tools": [],
+        "techniques": [
+          "牙雕",
+          "玉雕",
+          "琉璃制作",
+          "铜浇铸",
+          "紫砂制作"
+        ],
+        "artifacts": [
+          "《上下五千年》玉石雕刻系列",
+          "琉璃三面观音",
+          "铜铸四大菩萨",
+          "紫砂套壶"
+        ]
+      },
+      "frame_ids": [
+        1458000,
+        1532000,
+        1606000,
+        1680000
+      ],
+      "frame_paths": [
+        "media/keyframes/001458000.jpg",
+        "media/keyframes/001532000.jpg",
+        "media/keyframes/001606000.jpg",
+        "media/keyframes/001680000.jpg"
+      ],
+      "quality_flags": [
+        "person_name_unverified"
+      ],
+      "uncertainties": [],
+      "confirmed_normalizations": [],
+      "review_status": "auto_generated"
+    }
+  ],
+  "claims": [
+    {
+      "claim_id": "cl_SHIH_0004_0001",
+      "video_id": "SHIH_0004",
+      "subject": null,
+      "predicate": null,
+      "object": null,
+      "statement": "中国象牙制品历史最早可追溯到距今7000多年的新石器时期",
+      "evidence_ids": [
+        "ev_SHIH_0004_0075000_0107000"
+      ],
+      "confidence_candidate": null,
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "claim_id": "cl_SHIH_0004_0002",
+      "video_id": "SHIH_0004",
+      "subject": null,
+      "predicate": null,
+      "object": null,
+      "statement": "象牙蔑丝编织技艺是广东匠人在明代拓展出的独特牙雕技艺，在中国象牙工艺史上占有重要地位，是国际公认的中国象牙雕刻之瑰宝",
+      "evidence_ids": [
+        "ev_SHIH_0004_0107000_0167000"
+      ],
+      "confidence_candidate": null,
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "claim_id": "cl_SHIH_0004_0003",
+      "video_id": "SHIH_0004",
+      "subject": null,
+      "predicate": null,
+      "object": null,
+      "statement": "象牙蔑丝编织技艺因工艺复杂、耗料耗工巨大，雍正年间被下旨禁止制作，最终失传近300年",
+      "evidence_ids": [
+        "ev_SHIH_0004_0107000_0167000",
+        "ev_SHIH_0004_0232000_0328000"
+      ],
+      "confidence_candidate": null,
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "claim_id": "cl_SHIH_0004_0004",
+      "video_id": "SHIH_0004",
+      "subject": null,
+      "predicate": null,
+      "object": null,
+      "statement": "陈海龙是目前全国唯一能够成熟掌握象牙蔑丝技艺并进行创新的工艺美术大师",
+      "evidence_ids": [
+        "ev_SHIH_0004_0169000_0231000",
+        "ev_SHIH_0004_0730000_0901000"
+      ],
+      "confidence_candidate": null,
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "claim_id": "cl_SHIH_0004_0005",
+      "video_id": "SHIH_0004",
+      "subject": null,
+      "predicate": null,
+      "object": null,
+      "statement": "陈海龙团队研发的陈氏牙丝工艺解决了牙丝热胀冷缩的问题，打破了牙丝制品因地区温差不能长期外露的缺陷，技术超越前人",
+      "evidence_ids": [
+        "ev_SHIH_0004_0595000_0702000"
+      ],
+      "confidence_candidate": null,
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "claim_id": "cl_SHIH_0004_0006",
+      "video_id": "SHIH_0004",
+      "subject": null,
+      "predicate": null,
+      "object": null,
+      "statement": "因国际全面禁止象牙贸易，陈海龙团队转向使用玉、琉璃、铜等材料进行跨界融合创作，推动非遗技艺的传承创新",
+      "evidence_ids": [
+        "ev_SHIH_0004_1421000_1717000"
+      ],
+      "confidence_candidate": null,
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    }
+  ],
+  "process_steps": [
+    {
+      "step_id": "step_SHIH_0004_001",
+      "video_id": "SHIH_0004",
+      "order_candidate": 1,
+      "order_verified": null,
+      "name": null,
+      "materials": [
+        "象牙",
+        "酸"
+      ],
+      "tools": [],
+      "action": "顺着象牙的丝缕纹路，采用水刀切割的方法将象牙加工为片状",
+      "result": null,
+      "interaction_mapping": null,
+      "evidence_ids": [
+        "ev_SHIH_0004_0595000_0702000"
+      ],
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "step_id": "step_SHIH_0004_002",
+      "video_id": "SHIH_0004",
+      "order_candidate": 2,
+      "order_verified": null,
+      "name": null,
+      "materials": [
+        "象牙",
+        "酸"
+      ],
+      "tools": [],
+      "action": "顺着象牙片的丝缕纹路将其切割为牙丝",
+      "result": null,
+      "interaction_mapping": null,
+      "evidence_ids": [
+        "ev_SHIH_0004_0595000_0702000"
+      ],
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "step_id": "step_SHIH_0004_003",
+      "video_id": "SHIH_0004",
+      "order_candidate": 3,
+      "order_verified": null,
+      "name": null,
+      "materials": [
+        "象牙",
+        "酸"
+      ],
+      "tools": [],
+      "action": "对牙丝进行打磨处理，加入比例适当的酸调节牙丝韧性，同时控制编织环境湿度，使牙丝达到适合编织的状态",
+      "result": null,
+      "interaction_mapping": null,
+      "evidence_ids": [
+        "ev_SHIH_0004_0595000_0702000"
+      ],
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "step_id": "step_SHIH_0004_004",
+      "video_id": "SHIH_0004",
+      "order_candidate": 4,
+      "order_verified": null,
+      "name": null,
+      "materials": [
+        "象牙",
+        "酸"
+      ],
+      "tools": [],
+      "action": "使用处理好的牙丝编织成对应的器物造型，搭配雕刻、镶嵌等工艺完成最终作品",
+      "result": null,
+      "interaction_mapping": null,
+      "evidence_ids": [
+        "ev_SHIH_0004_0595000_0702000",
+        "ev_SHIH_0004_0730000_0901000"
+      ],
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    }
+  ],
+  "warnings": [
+    "语音转写中多处出现“象牙灭丝”“象牙涅斯”“象牙密丝”“向阳明师”等同音表述，未明确其准确所指，疑似指代象牙蔑丝编织技艺，需进一步复核",
+    "转写中提及的西汉学者“柳心”疑似为同音误转，其真实身份需核实",
+    "明代祝允明《野记》中记载的象牙席古法制做工艺经尝试无法实现，其真实性有待考证",
+    "转写中“墙外冰丝工艺”“象牙灭尸编织”等表述语义不明，需核实",
+    "火山引擎 Vid、RunId 和播放地址未包含在输出文件中，迁移后需在 manifest.json 补录。",
+    "所有知识主张和工艺步骤均为模型候选，正式发布前必须人工审核。",
+    "部分证据超过60秒；原输出没有词级时间码，因此未做可能失真的自动拆分。"
+  ],
+  "generated_at": "2026-07-17T12:37:50.555952+08:00"
+}

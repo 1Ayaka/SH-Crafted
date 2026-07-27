@@ -1,0 +1,20 @@
+[Unit]
+Description=SH-Crafted web application
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/var/www/sh-crafted
+Environment=NODE_ENV=production
+EnvironmentFile=-/etc/sh-crafted.env
+ExecStart=/usr/bin/node /var/www/sh-crafted/server.mjs --host 127.0.0.1 --port 7100
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
