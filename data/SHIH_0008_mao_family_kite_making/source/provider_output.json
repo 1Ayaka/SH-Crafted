@@ -1,0 +1,371 @@
+{
+  "summary": "本视频介绍了上海市非物质文化遗产毛氏风筝的相关内容：涵盖风筝的历史起源、毛氏风筝从浙江岱山传入上海奉贤的发展脉络，核心传承人毛学官、毛勇、李晓萍等的传承故事，毛氏风筝制扎的描线着色、扎骨架、糊纸、绑栓提线四大核心工序，以及其造型和蔼、易放飞、颜料遇水不褪色等工艺特点，同时提及毛氏风筝当前面临传承面窄、经济来源不稳定的困境，当地政府正通过扩大传承覆盖面、加大扶持力度两类措施推进保护，以及毛氏风筝在各类赛事中屡获荣誉、走出国门的发展现状。",
+  "evidence_segments": [
+    {
+      "evidence_local_id": "e001",
+      "start_ms": 29000,
+      "end_ms": 70000,
+      "transcript_quote": "四月天朗气清，惠风和畅，奉贤海边，一只只风筝乘风扶摇直上，为湛蓝的天空平添了一抹灵动的色彩。而在这些形形色色的风筝中，一只长达数十米的龙风筝显得格外引人注目，翩若惊鸿，皎若游龙的身姿在空中自在遨游，威风凛凛。他的制作者毛勇用父亲般的目光看着自己耗时数月做出来的巨龙，满是自豪之意。",
+      "visual_description": "奉贤海边草地多人放风筝，数十米长的龙风筝在空中飞翔，毛勇注视放飞的龙风筝",
+      "speaker_role": "旁白",
+      "entities": {
+        "projects": [
+          "毛氏风筝制扎技艺"
+        ],
+        "people_candidates": [
+          "毛勇"
+        ],
+        "places": [
+          "奉贤海边"
+        ],
+        "materials": [],
+        "tools": [],
+        "techniques": [],
+        "artifacts": [
+          "龙风筝"
+        ]
+      },
+      "uncertainties": [],
+      "review_status": "auto_generated"
+    },
+    {
+      "evidence_local_id": "e002",
+      "start_ms": 70000,
+      "end_ms": 125000,
+      "transcript_quote": "风筝起源于中国东周春秋时期，至今已2000多年。相传莫迪以木头制成木鸟，研制三年而成，是人类最早的风筝起源。后来鲁班用竹子改进莫迪的风筝材质，更而演进成为今日多线风筝。传墨子为墨渊，三年而成，非一日而败。到南北朝时，风筝开始成为传递信息的工具。从隋唐开始，由于造纸业的发达，民间开始用纸来裱糊风筝。到了宋代，放风筝成为人们喜爱的户外活动。自古以来，中国风筝就有北有潍坊，南有岱山之分。",
+      "visual_description": "展示古代木鸟风筝、鲁班墨子制风筝插画、古代放风筝的画作、潍坊风筝会现场画面",
+      "speaker_role": "旁白",
+      "entities": {
+        "projects": [],
+        "people_candidates": [
+          "墨子",
+          "鲁班"
+        ],
+        "places": [
+          "潍坊",
+          "岱山"
+        ],
+        "materials": [
+          "木头",
+          "竹子",
+          "纸"
+        ],
+        "tools": [],
+        "techniques": [],
+        "artifacts": [
+          "木鸟风筝",
+          "多线风筝"
+        ]
+      },
+      "uncertainties": [
+        "转写中“莫迪”疑似为“墨翟”的同音误写，“墨渊”疑似为“木鸢”的同音误写"
+      ],
+      "review_status": "auto_generated"
+    },
+    {
+      "evidence_local_id": "e003",
+      "start_ms": 125000,
+      "end_ms": 170000,
+      "transcript_quote": "岱山的毛氏风筝制扎从清代流传至今，其制扎技艺独特，取材优质，做工精致，放飞率高，深受四乡巴林的欢迎。毛学官和毛勇父子是上海为数不多的传统文化手艺人，也是毛氏风筝的传承人。其制扎的风筝放得高抗风强，又能把握方向，且象形美观，如今已成为上海市风筝运动比赛的必备体育器具，所制扎的风筝在全国风筝大赛中频频获奖。我们毛氏风筝最早的时候在那个舟山岱山群岛，然后是我们是移民到这边。",
+      "visual_description": "展示多只造型各异的毛氏风筝成品悬挂画面，毛勇接受采访画面",
+      "speaker_role": "旁白、毛勇",
+      "entities": {
+        "projects": [
+          "毛氏风筝制扎技艺"
+        ],
+        "people_candidates": [
+          "毛学官",
+          "毛勇"
+        ],
+        "places": [
+          "舟山岱山群岛",
+          "上海"
+        ],
+        "materials": [],
+        "tools": [],
+        "techniques": [
+          "毛氏风筝制扎技艺"
+        ],
+        "artifacts": [
+          "毛氏风筝"
+        ]
+      },
+      "uncertainties": [
+        "转写中“四乡巴林”疑似为“四乡八邻”的同音误写"
+      ],
+      "review_status": "auto_generated"
+    },
+    {
+      "evidence_local_id": "e004",
+      "start_ms": 248000,
+      "end_ms": 305000,
+      "transcript_quote": "描线着色：风筝在空中经常遇到光从背面射来的情况，这时不同颜料不同材料的风筝就有不同的透光效果，处理的好可以增加风筝的美，处理不好就很难看。描线着色，先在白纸上用墨线绘好1:1的大样，绘出各细部花纹，要求准确均匀流畅对称。凡较大面积的着色，尽量多选用透明水色，小面积着色可用不透明的颜色。如在特殊情况下，要大面积的着不透明颜色时，一定不可上的太浓太厚，否则会引起蒙面的局部僵硬或局部抽缩，使整个蒙面无法使用。",
+      "visual_description": "传承人手持毛笔在风筝蒙面绘制图案的画面",
+      "speaker_role": "旁白",
+      "entities": {
+        "projects": [],
+        "people_candidates": [],
+        "places": [],
+        "materials": [
+          "白纸",
+          "透明水色",
+          "不透明颜料"
+        ],
+        "tools": [
+          "毛笔"
+        ],
+        "techniques": [
+          "描线着色"
+        ],
+        "artifacts": [
+          "风筝蒙面"
+        ]
+      },
+      "uncertainties": [],
+      "review_status": "auto_generated"
+    },
+    {
+      "evidence_local_id": "e005",
+      "start_ms": 334000,
+      "end_ms": 397000,
+      "transcript_quote": "扎骨架：选择笔直的三年生贵竹，将竹裁成4-5毫米见方的长条形，竹茎用刀削成适当粗度，然后用小锯一一锯成所需长度，开始扎架。弯曲部分需用热源加以熏烤，竹茎受热后，执竹两端双手稍加用力使其弯曲，待其稍冷却后再松手，否则竹茎会自行弹回。捆绑竹架应自中央主干部分着手，立体几何形态的风筝有时可做成很多单元形状，然后再粘合在一起。扎架以前，最好在所有竹茎预定扎接处用尺量准，做出记号。扎架完毕后，检查各处是否对称，如有需要，用线绷紧，以防骨架变形。",
+      "visual_description": "传承人处理竹条、熏烤竹条弯折、捆绑竹架的操作画面",
+      "speaker_role": "旁白",
+      "entities": {
+        "projects": [],
+        "people_candidates": [],
+        "places": [],
+        "materials": [
+          "桂竹"
+        ],
+        "tools": [
+          "刀",
+          "小锯",
+          "热源",
+          "尺子"
+        ],
+        "techniques": [
+          "扎骨架"
+        ],
+        "artifacts": [
+          "风筝骨架"
+        ]
+      },
+      "uncertainties": [
+        "转写中“贵竹”疑似为“桂竹”的同音误写"
+      ],
+      "review_status": "auto_generated"
+    },
+    {
+      "evidence_local_id": "e006",
+      "start_ms": 398000,
+      "end_ms": 460000,
+      "transcript_quote": "糊纸：将纸比照骨架的形状，先用铅笔轻描轮廓，在各边预留出一厘米左右的边缘，然后按此边裁剪。糊纸时除将纸边涂抹胶水外，主架部分也应该稍擦胶水，然后互相粘接。有些软面风筝，如蝴蝶蜻蜓等造型的风筝，其翅膀边缘无竹条，可将纸边涂胶后予以折边，折边内的折叠处如再粘一条细线在内，则使纸边更加坚固，不易撕裂。制作中大型风筝，有时需要裁剪数块纸，一一粘在竹架上，如果某块面积较大，可裁出两厘米宽的纸条，铺在背面的竹条或拉线上，这样在施放受力时，纸面不至被风鼓起。",
+      "visual_description": "传承人比照骨架裁剪蒙面纸、涂胶粘接、折边加固的操作画面",
+      "speaker_role": "旁白",
+      "entities": {
+        "projects": [],
+        "people_candidates": [],
+        "places": [],
+        "materials": [
+          "纸",
+          "胶水",
+          "细线"
+        ],
+        "tools": [
+          "铅笔",
+          "剪刀"
+        ],
+        "techniques": [
+          "糊纸"
+        ],
+        "artifacts": []
+      },
+      "uncertainties": [],
+      "review_status": "auto_generated"
+    },
+    {
+      "evidence_local_id": "e007",
+      "start_ms": 461000,
+      "end_ms": 476000,
+      "transcript_quote": "绑栓齐线：选择适宜的施力点，绑栓齐线是依骨架结构情形，即一根或两根以上齐线，风筝的丝线可以选用牛皮线棉线等。",
+      "visual_description": "传承人在风筝骨架上绑定提线的操作画面",
+      "speaker_role": "旁白",
+      "entities": {
+        "projects": [],
+        "people_candidates": [],
+        "places": [],
+        "materials": [
+          "牛皮线",
+          "棉线"
+        ],
+        "tools": [],
+        "techniques": [
+          "绑栓提线"
+        ],
+        "artifacts": []
+      },
+      "uncertainties": [
+        "转写中“齐线”疑似为“提线”的同音误写"
+      ],
+      "review_status": "auto_generated"
+    },
+    {
+      "evidence_local_id": "e008",
+      "start_ms": 860000,
+      "end_ms": 895000,
+      "transcript_quote": "就是我们家的颜料是经过处理的，里面就是他父亲教我怎么调配的，是经过处理的，所以颜料就是风筝画上去，你就是下雨天去放，放在水里面就浸泡，颜色不会退化的。",
+      "visual_description": "李晓萍接受采访画面，展示色彩鲜艳的风筝成品",
+      "speaker_role": "李晓萍",
+      "entities": {
+        "projects": [],
+        "people_candidates": [
+          "李晓萍"
+        ],
+        "places": [],
+        "materials": [
+          "特制调配颜料"
+        ],
+        "tools": [],
+        "techniques": [],
+        "artifacts": []
+      },
+      "uncertainties": [],
+      "review_status": "auto_generated"
+    },
+    {
+      "evidence_local_id": "e009",
+      "start_ms": 1210000,
+      "end_ms": 1330000,
+      "transcript_quote": "毛氏风筝已自成一格，工艺独到，但传授面还不够广泛，除了毛氏一家，民间从事手工扎制风筝的人越来越少，其中的佼佼者更为稀缺，毛氏风筝在技艺传承方面面临着较大困境。实际上最大的困难还是我们自身的，因为我们以风筝为经济来源的话并不多，没有一个合理的经济来源。",
+      "visual_description": "毛勇、毛学官、李晓萍接受采访讲述传承困境的画面",
+      "speaker_role": "旁白、毛勇、毛学官、李晓萍",
+      "entities": {
+        "projects": [],
+        "people_candidates": [],
+        "places": [],
+        "materials": [],
+        "tools": [],
+        "techniques": [],
+        "artifacts": []
+      },
+      "uncertainties": [],
+      "review_status": "auto_generated"
+    },
+    {
+      "evidence_local_id": "e010",
+      "start_ms": 1390000,
+      "end_ms": 1490000,
+      "transcript_quote": "咱们柘林镇啊对毛氏风筝的保护呢一直以来都是不遗余力的，后续呢我们可能主要还是从两方面做这么一个保护工作，一个呢是扩大它的一个传承覆盖面，另一块呢就是咱们政府对于毛氏风筝的一个扶持力度后续还是要加强，特别是在我们沿海区域，我们现在就为毛老师打造了一个风筝工作室，他可能说是集参观与制作于一体的这么一块区域。",
+      "visual_description": "郑江峰接受采访画面，展示毛氏风筝制作基地牌匾、工作室画面",
+      "speaker_role": "郑江峰",
+      "entities": {
+        "projects": [],
+        "people_candidates": [
+          "郑江峰"
+        ],
+        "places": [
+          "柘林镇"
+        ],
+        "materials": [],
+        "tools": [],
+        "techniques": [],
+        "artifacts": [
+          "毛氏风筝工作室"
+        ]
+      },
+      "uncertainties": [],
+      "review_status": "auto_generated"
+    }
+  ],
+  "claims": [
+    {
+      "claim": "风筝起源于中国东周春秋时期，距今已有2000多年历史，中国风筝自古有“北有潍坊，南有岱山”的说法",
+      "evidence_local_ids": [
+        "e002"
+      ],
+      "review_status": "needs_review",
+      "uncertainties": []
+    },
+    {
+      "claim": "毛氏风筝制扎技艺从清代流传至今，传承人是毛学官、毛勇父子，其制作的风筝抗风性强、易放飞、造型美观，是上海风筝赛事的常用器具，多次在全国比赛获奖",
+      "evidence_local_ids": [
+        "e003"
+      ],
+      "review_status": "needs_review",
+      "uncertainties": []
+    },
+    {
+      "claim": "毛氏风筝制扎核心工序包括描线着色、扎骨架、糊纸、绑栓提线四个环节",
+      "evidence_local_ids": [
+        "e004",
+        "e005",
+        "e006",
+        "e007"
+      ],
+      "review_status": "needs_review",
+      "uncertainties": []
+    },
+    {
+      "claim": "毛氏风筝使用的颜料经过特殊调配，浸泡在水中也不会褪色",
+      "evidence_local_ids": [
+        "e008"
+      ],
+      "review_status": "needs_review",
+      "uncertainties": []
+    },
+    {
+      "claim": "毛氏风筝当前面临传承面窄、从业人员少、经济来源不稳定的传承困境",
+      "evidence_local_ids": [
+        "e009"
+      ],
+      "review_status": "needs_review",
+      "uncertainties": []
+    },
+    {
+      "claim": "上海柘林镇政府将从扩大传承覆盖面、加大扶持力度两方面推进毛氏风筝的保护工作，已打造集参观、制作为一体的毛氏风筝工作室",
+      "evidence_local_ids": [
+        "e010"
+      ],
+      "review_status": "needs_review",
+      "uncertainties": []
+    }
+  ],
+  "process_steps": [
+    {
+      "step": "描线着色：先在白纸上用墨线绘制1:1大样及细部花纹，要求准确、均匀、流畅、对称；大面积着色优先选用透明水色，小面积可使用不透明颜料，大面积使用不透明颜料时不可过厚，避免蒙面僵硬抽缩无法使用",
+      "evidence_local_ids": [
+        "e004"
+      ],
+      "review_status": "needs_review",
+      "uncertainties": []
+    },
+    {
+      "step": "扎骨架：选取笔直的三年生桂竹，裁为4-5毫米见方的长条，削至合适粗度后锯成所需长度；需要弯曲的部位用热源熏烤，竹茎受热后弯折，冷却后再松手；从中央主干部分开始捆绑竹架，扎接前提前量准做记号，扎完检查骨架是否对称，必要时用线绷紧防止变形",
+      "evidence_local_ids": [
+        "e005"
+      ],
+      "review_status": "needs_review",
+      "uncertainties": []
+    },
+    {
+      "step": "糊纸：将纸比照骨架轮廓用铅笔轻描，各边预留1厘米边缘后裁剪；纸边和主架都涂抹胶水后粘接；软面风筝无竹条的边缘可涂胶折边，折边内可粘细线加固；中大型风筝需裁剪多块纸粘接，大面积区域背面可粘2厘米宽的纸条加固，避免放飞时纸面被风鼓起",
+      "evidence_local_ids": [
+        "e006"
+      ],
+      "review_status": "needs_review",
+      "uncertainties": []
+    },
+    {
+      "step": "绑栓提线：根据骨架结构选择适宜的施力点，绑定1根或多根提线，提线可选用牛皮线、棉线等材质",
+      "evidence_local_ids": [
+        "e007"
+      ],
+      "review_status": "needs_review",
+      "uncertainties": []
+    }
+  ],
+  "global_uncertainties": [
+    "转写中存在多处疑似同音误写内容，包括“莫迪”疑为“墨翟”、“墨渊”疑为“木鸢”、“四乡巴林”疑为“四乡八邻”、“贵竹”疑为“桂竹”、“齐线”疑为“提线”，需进一步核实"
+  ]
+}

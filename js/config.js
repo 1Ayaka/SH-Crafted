@@ -22,6 +22,87 @@ export const DISTRICTS = [
   { id: 'yangpu',    name: '杨浦区', x: 60, y: 13, w: 8,  h: 5.5, r: 2 },
 ];
 
+// 地区介绍内容。依据上海市人民政府、上海市民政局公开资料压缩整理。
+export const DISTRICT_PROFILES = {
+  jiading:  {
+    name: '嘉定区',
+    origin: '南宋嘉定十年（1217年）置县，以当时的年号“嘉定”为名。',
+    features: '嘉定兼有古镇水乡、文人书画与现代城市风貌，南翔、嘉定镇等地保存了深厚的江南文脉。',
+    heritageOverview: '嘉定竹刻、徐行草编、南翔小笼制作技艺、嘉定道教音乐等项目，呈现出雕刻、编织、饮食与民间音乐并存的地方传统。',
+    sourceLabel: '上海市人民政府 · 嘉定区', sourceUrl: 'https://www.shanghai.gov.cn/jiading/index.html',
+  },
+  fengxian: {
+    name: '奉贤区',
+    origin: '相传孔子弟子言偃曾到此讲学，“奉贤”寄托了敬奉贤人、见贤思齐之意。',
+    features: '奉贤南临杭州湾，江南乡土文化与滨海新城相互交织，“贤文化”是鲜明的区域文化标识。',
+    heritageOverview: '南桥撕纸、奉贤滚灯、江南孙氏二胡艺术等项目，连接民间美术、节庆表演和传统音乐。',
+    sourceLabel: '上海市人民政府 · 奉贤区', sourceUrl: 'https://www.shanghai.gov.cn/fengxian/index.html',
+  },
+  jingan:   {
+    name: '静安区',
+    origin: '静安区因境内古老的静安寺得名，历史上也曾称“静安寺区”。',
+    features: '静安地跨苏州河两岸，历史建筑、红色遗址、剧场与现代商业共同构成浓厚的海派城市文化。',
+    heritageOverview: '龙凤旗袍制作技艺、奉帮裁缝缝纫技艺、鲁庵印泥制作技艺等，体现上海服饰、手工与文房传统。',
+    sourceLabel: '上海市民政局 · 静安区地名文化', sourceUrl: 'https://mzj.sh.gov.cn/2023bsmz/20230611/e814f72c4fdf491b96df2228cd282046.html',
+  },
+  chongming:{
+    name: '崇明区',
+    origin: '“崇明”沿用自五代时期设于长江口沙洲上的崇明镇，后来成为县名并延续为区名。',
+    features: '崇明位于长江口，岛屿由泥沙冲积形成；江海共生的生产生活塑造了鲜明的沙地文化与生态气质。',
+    heritageOverview: '崇明土布、剪纸、灶花、天气谚语等传统，记录了岛民纺织、节俗、居住与观察自然的生活经验。',
+    sourceLabel: '上海市人民政府 · 崇明区', sourceUrl: 'https://www.shanghai.gov.cn/chongming/index.html',
+  },
+  minhang:  {
+    name: '闵行区',
+    origin: '闵行因历史上的闵行镇得名；“闵行”旧有“敏行”写法，明代已见相关地名记载。',
+    features: '闵行连接中心城区与上海西南部，七宝古镇、马桥遗址和浦江乡土文化共同构成多层次的地域记忆。',
+    heritageOverview: '七宝皮影戏、江南丝竹、民族乐器制作技艺及沪谚等项目，保留了古镇表演、音乐制作与口头传统。',
+    sourceLabel: '上海市人民政府 · 闵行区', sourceUrl: 'https://www.shanghai.gov.cn/minhang/index.html',
+  },
+  baoshan: {
+    name: '宝山区',
+    origin: '宝山因山得名。今天的区名沿用历史上的宝山县名，见证了吴淞口一带由江海门户向城市北部城区的发展。',
+    features: '宝山位于长江与黄浦江交汇处，吴淞滨江、工业遗存、罗店古镇与乡村文化共同构成鲜明的江海气质。',
+    heritageOverview: '罗店划龙船习俗、罗泾十字挑花、罗店彩灯与宝山沪剧等项目，连接节庆、织绣、灯彩和地方戏曲传统。',
+    sourceLabel: '上海市人民政府 · 宝山区', sourceUrl: 'https://www.shanghai.gov.cn/baoshan/index.html',
+  },
+  qingpu: {
+    name: '青浦区',
+    origin: '明嘉靖二十一年（1542年）置青浦县，今天的区名沿用这一历史地名。',
+    features: '青浦地处上海西部，河港湖荡密布；朱家角古镇、青龙镇遗址与淀山湖共同保存了浓厚的江南水乡记忆。',
+    heritageOverview: '田山歌、摇快船、船拳及传统镶嵌等地方项目，呈现青浦水乡的生产生活、节庆表演与手工技艺。',
+    sourceLabel: '上海市人民政府 · 青浦区', sourceUrl: 'https://www.shanghai.gov.cn/qingpu/index.html',
+  },
+  songjiang: {
+    name: '松江区',
+    origin: '松江区名沿用松江府、松江县等历史地名。唐天宝十年（751年）设华亭县，是上海地区较早的县级建置。',
+    features: '松江拥有广富林文化遗址、方塔、佘山和松江府城文脉，常被称为“上海之根”。',
+    heritageOverview: '顾绣、松江剪纸、松江皮影及地方传统武术等项目，延续了书画、刺绣、民间美术与表演传统。',
+    sourceLabel: '上海市人民政府 · 松江区', sourceUrl: 'https://www.shanghai.gov.cn/songjiang/index.html',
+  },
+  jinshan: {
+    name: '金山区',
+    origin: '金山区名与杭州湾海域的大金山、小金山等岛屿相关，历史地名在行政建置调整中延续至今。',
+    features: '金山南临杭州湾，枫泾古镇、金山嘴渔村与滨海乡村共同形成水乡、渔业和海洋文化交织的区域面貌。',
+    heritageOverview: '金山农民画、上海黄酒传统酿造技艺、枫泾丁蹄、朱泾花灯与金山堰菜等项目具有鲜明的乡土特色。',
+    sourceLabel: '上海市人民政府 · 金山区', sourceUrl: 'https://www.shanghai.gov.cn/jinshan/index.html',
+  },
+  pudong: {
+    name: '浦东新区',
+    origin: '“浦东”意指黄浦江以东地区。1990年代浦东开发开放后，浦东新区成为正式行政区名并沿用至今。',
+    features: '浦东既有陆家嘴的现代城市景观，也保留川沙、三林、惠南等地的古镇、乡村与滨海文化。',
+    heritageOverview: '上海绒绣、浦东派琵琶、浦东说书、锣鼓书与浦东绕龙灯等项目，覆盖传统美术、音乐、曲艺和舞蹈。',
+    sourceLabel: '上海市人民政府 · 浦东新区', sourceUrl: 'https://www.shanghai.gov.cn/pudong/index.html',
+  },
+  nanhui: {
+    name: '原南汇区域',
+    origin: '南汇是上海历史行政区名称；2009年原南汇区并入浦东新区。地图保留其轮廓，用于呈现浦东东南部的地域文化。',
+    features: '原南汇区域面向东海与杭州湾，惠南、新场、大团等地形成了兼具古镇、盐棉生产和滨海生活的文化景观。',
+    heritageOverview: '鸟哨、灶花、石雕、浦东说书等项目曾以南汇地区申报或广泛流传，记录了当地节俗、手工和口头传统。',
+    sourceLabel: '上海市人民政府 · 南汇区划调整', sourceUrl: 'https://www.shanghai.gov.cn/nw9822/20200906/0001-9822_336024.html',
+  },
+};
+
 // 工艺策展配置：地区归属、类别（待核对）、代表关键帧、空间锚点（策展空间位置，非实际地址）
 export const CRAFT_CONFIG = {
   SHIH_0001: {
@@ -76,9 +157,9 @@ export const CRAFT_CONFIG = {
     craftName: '象牙篾丝编织',
     districtId: 'jingan',
     districtLabel: '静安区',
-    districtVerified: false,         // 仅证据实体出现一次“上海市静安区”（指匠人所在地），地区待核对
-    category: '传统技艺',
-    categoryVerified: false,
+    districtVerified: true,          // 上海市文旅推广网：静安区（原闸北区）市级项目
+    category: '传统美术',
+    categoryVerified: true,          // 上海市文旅推广网项目基本信息
     heroFrame: 'media/keyframes/000091000.jpg',      // 象牙丝编织团扇
     finishFrame: 'media/keyframes/000091000.jpg',
     anchor: { x: 0.5, y: 0.45 },
@@ -88,9 +169,76 @@ export const CRAFT_CONFIG = {
       { frame: 'media/keyframes/000244000.jpg', name: '清代象牙编织团扇文物与记载', evidenceId: 'ev_SHIH_0004_0232000_0328000' },
     ],
   },
+  SHIH_0005: {
+    craftName: '崇明土布纺织技艺',
+    districtId: 'chongming',
+    districtLabel: '崇明区',
+    districtVerified: true,
+    category: '传统技艺',
+    categoryVerified: false,
+    heroFrame: 'media/keyframes/000049200.jpg',
+    finishFrame: 'media/keyframes/001799375.jpg',
+    anchor: { x: 0.38, y: 0.42 },
+    works: [
+      { frame: 'media/keyframes/000049200.jpg', name: '崇明土布纵横纹理', evidenceId: 'ev_SHIH_0005_0042000_0078000' },
+      { frame: 'media/keyframes/000512625.jpg', name: '土布纺织工序', evidenceId: 'ev_SHIH_0005_0492000_0657000' },
+      { frame: 'media/keyframes/001799375.jpg', name: '崇明土布当代传承', evidenceId: 'ev_SHIH_0005_1670000_1877000' },
+    ],
+  },
+  SHIH_0006: {
+    craftName: '上海月份牌年画',
+    districtId: 'jingan',
+    districtLabel: '静安区',
+    districtVerified: true,
+    category: '传统美术',
+    categoryVerified: false,
+    heroFrame: 'media/keyframes/000201750.jpg',
+    finishFrame: 'media/keyframes/000414250.jpg',
+    anchor: { x: 0.66, y: 0.4 },
+    works: [
+      { frame: 'media/keyframes/000201750.jpg', name: '月份牌年画历史图像', evidenceId: 'ev_SHIH_0006_0123000_0213000' },
+      { frame: 'media/keyframes/000414250.jpg', name: '擦笔水彩年画技法', evidenceId: 'ev_SHIH_0006_0353000_0423000' },
+      { frame: 'media/keyframes/000648625.jpg', name: '月份牌年画创作与流传', evidenceId: 'ev_SHIH_0006_0429000_0680000' },
+    ],
+  },
+  SHIH_0007: {
+    craftName: '七宝皮影戏',
+    districtId: 'minhang',
+    districtLabel: '闵行区',
+    districtVerified: true,
+    category: '传统美术',
+    categoryVerified: false,
+    heroFrame: 'media/keyframes/000085000.jpg',
+    finishFrame: 'media/keyframes/000475000.jpg',
+    anchor: { x: 0.48, y: 0.45 },
+    works: [
+      { frame: 'media/keyframes/000085000.jpg', name: '七宝皮影演出', evidenceId: 'ev_SHIH_0007_0075000_0125000' },
+      { frame: 'media/keyframes/000475000.jpg', name: '七宝皮影影人制作', evidenceId: 'ev_SHIH_0007_0395000_0523000' },
+      { frame: 'media/keyframes/001122500.jpg', name: '皮影材料与灯光呈现', evidenceId: 'ev_SHIH_0007_0902000_1154000' },
+    ],
+  },
+  SHIH_0008: {
+    craftName: '毛氏风筝',
+    districtId: 'fengxian',
+    districtLabel: '奉贤区',
+    districtVerified: true,
+    category: '传统技艺',
+    categoryVerified: false,
+    heroFrame: 'media/keyframes/000037200.jpg',
+    finishFrame: 'media/keyframes/001477500.jpg',
+    anchor: { x: 0.68, y: 0.56 },
+    works: [
+      { frame: 'media/keyframes/000037200.jpg', name: '毛氏风筝放飞', evidenceId: 'ev_SHIH_0008_0029000_0070000' },
+      { frame: 'media/keyframes/000405750.jpg', name: '毛氏风筝糊纸工序', evidenceId: 'ev_SHIH_0008_0398000_0460000' },
+      { frame: 'media/keyframes/001477500.jpg', name: '毛氏风筝展示与传播', evidenceId: 'ev_SHIH_0008_1390000_1490000' },
+    ],
+  },
 };
 
-export const CRAFT_ORDER = ['SHIH_0001', 'SHIH_0002', 'SHIH_0003', 'SHIH_0004'];
+export const CRAFT_ORDER = [
+  'SHIH_0001', 'SHIH_0002', 'SHIH_0003', 'SHIH_0004',
+  'SHIH_0005', 'SHIH_0006', 'SHIH_0007', 'SHIH_0008',
+];
 
 // 人工策展的交互规则覆盖层。
 // 原始 process_steps 保留自动抽取结果；这里仅描述页面如何把证据映射为“资源 + 动作”。
@@ -131,8 +279,7 @@ export const MATERIAL_STATES = {
 };
 
 // 粒子化三维模型（js/particlemodel.js 渲染）：原料模型 → 未开始态；成品模型 → 完成态
-// 四门工艺均有原料模型；药斑布无独立成品模型——成品为同一布面 + 纪录片纹样取色（pattern）
-// 南桥撕纸无成品模型，完成态保持平面关键帧呈现
+// 首批四门工艺有原料与成品模型；5—8 的模型稍后接入。
 export const CRAFT_MODEL_PATHS = {
   SHIH_0001: {
     raw: 'assets/models/crafts/bamboo-raw.glb',        // 竹子模型（原料）
@@ -141,16 +288,26 @@ export const CRAFT_MODEL_PATHS = {
   SHIH_0002: {
     raw: 'assets/models/crafts/paper-raw.glb',         // 剪纸原料（纸平面）
     rawTint: 0xD8CCAF,                                 // 未撕白纸（略深于砂底，保证可读）
-    finished: null,                                    // 无成品模型：平面关键帧呈现
+    finished: 'assets/models/crafts/paper-finished.glb?v=20260728', // 剪纸完成品（新模型，版本号用于刷新浏览器缓存）
   },
   SHIH_0003: {
     raw: 'assets/models/crafts/cloth-raw.glb',         // 药斑布原料（布平面）
     rawTint: 0xC4AE8C,                                 // 未染本色棉布（略深于砂底，保证可读）
-    finished: 'assets/models/crafts/cloth-raw.glb',    // 成品 = 同一布面 + 纹样取色
+    finished: 'assets/models/crafts/cloth-finished.glb?v=20260728', // 药斑布完成品（新模型，版本号用于刷新浏览器缓存）
     pattern: 'assets/patterns/yaobanbu-pattern.jpg',   // 纹样取自纪录片关键帧 000937800（蓝白菊花纹）
   },
   SHIH_0004: {
     raw: 'assets/models/crafts/ivory-raw.glb',         // 象牙模型（原料）
     finished: 'assets/models/crafts/ivory-finished.glb',  // 象牙扇子完成品
+  },
+  SHIH_0007: {
+    // 目前仅提供完成品模型，原料态先复用同一模型，避免体验入口回退到平面。
+    raw: 'assets/models/crafts/皮影戏完成品.glb?v=20260801',
+    finished: 'assets/models/crafts/皮影戏完成品.glb?v=20260801',
+  },
+  SHIH_0008: {
+    // 目前仅提供完成品模型，原料态先复用同一模型，后续可替换为骨架/蒙面原料模型。
+    raw: 'assets/models/crafts/风筝完成品.glb?v=20260801',
+    finished: 'assets/models/crafts/风筝完成品.glb?v=20260801',
   },
 };

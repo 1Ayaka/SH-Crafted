@@ -1,5 +1,7 @@
 {
   "source": "assets/t01.jpg",
+  "direct_source": "assets/t01.jpg",
+  "direct_source_opacity": 0.46,
   "generated_at": "2026-07-26T14:18:27+08:00",
   "width": 1280,
   "height": 853,

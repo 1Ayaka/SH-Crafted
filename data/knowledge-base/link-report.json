@@ -1,0 +1,361 @@
+{
+  "schema_version": "1.0",
+  "checked_at": "2026-07-28T15:14:26.145Z",
+  "total": 44,
+  "reachable": 44,
+  "failed": 0,
+  "results": [
+    {
+      "source_id": "src_ihchina_jiading_bamboo",
+      "status": "ok",
+      "http_status": 200,
+      "final_url": "https://www.ihchina.cn/project_details/14031",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 938
+    },
+    {
+      "source_id": "src_shgov_jiading_profile",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://www.shanghai.gov.cn/jiading/index.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 131
+    },
+    {
+      "source_id": "src_jiading_ich_catalog_pdf",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://www.jiading.gov.cn/upload/wenlv/infopublicity/publicinformation/file/201910051455108210.pdf",
+      "content_type": "application/pdf",
+      "elapsed_ms": 164
+    },
+    {
+      "source_id": "src_jiading_culture_plan_2021_2025",
+      "status": "ok",
+      "http_status": 200,
+      "final_url": "https://www.shanghai.gov.cn/gwk/search/content/95c1c22860bb4c6bac0ad233da66685d",
+      "content_type": "text/html;charset=UTF-8",
+      "elapsed_ms": 186
+    },
+    {
+      "source_id": "src_jiading_ich_design_exhibition_2026",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://www.shanghai.gov.cn/nw17239/20260121/280ef9e074234a6a911019d30fc10421.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 305
+    },
+    {
+      "source_id": "src_ihchina_shanghai_papercut",
+      "status": "ok",
+      "http_status": 200,
+      "final_url": "https://www.ihchina.cn/project_details/13943.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 842
+    },
+    {
+      "source_id": "src_fengxian_nanqiao_intro",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://www.fengxian.gov.cn/bmts/20250618/90911.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 109
+    },
+    {
+      "source_id": "src_fengxian_nanqiao_school",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://www.fengxian.gov.cn/jyj/xwzx/xwdt/20230327/39615.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 133
+    },
+    {
+      "source_id": "src_fengxian_nanqiao_exhibition",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://www.fengxian.gov.cn/gzms/20240201/62666.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 112
+    },
+    {
+      "source_id": "src_fengxian_nanqiao_marriage_policy",
+      "status": "ok",
+      "http_status": 200,
+      "final_url": "https://www.fengxian.gov.cn/zwgk-search-front/api/fx/gazette/info?id=b26c1a7c8718ffc4e3b64301ee3f4fc5",
+      "content_type": "text/html;charset=UTF-8",
+      "elapsed_ms": 127
+    },
+    {
+      "source_id": "src_fengxian_nanqiao_zodiac_contest",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://www.fengxian.gov.cn/nqz/jcfc/ksdt/20240201/62599.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 6135
+    },
+    {
+      "source_id": "src_fengxian_ich_catalog_2026",
+      "status": "ok",
+      "http_status": 200,
+      "final_url": "https://www.fengxian.gov.cn/zwgk-search-front/api/fx/gazette/info?id=263d366397a6a7d21d9ab3706a954934",
+      "content_type": "text/html;charset=UTF-8",
+      "elapsed_ms": 8710
+    },
+    {
+      "source_id": "src_sh_agri_textiles",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://nyncw.sh.gov.cn/mtbd/20240909/f29c2154d7d44cd2bfe4b6319c2961ff.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 169
+    },
+    {
+      "source_id": "src_sh_culture_yaobanbu_innovation",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://whlyj.sh.gov.cn/wbzx/20231114/ff0304f4a1264845947a6bae839b8430.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 183
+    },
+    {
+      "source_id": "src_sh_culture_protection_units_2020",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://whlyj.sh.gov.cn/wbzx/20200430/aa83173a5f094abc84bf571df11e1b3b.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 217
+    },
+    {
+      "source_id": "src_sh_2035_ich_catalog",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://ghzyj.sh.gov.cn/cmsres/1c/1c3ad7e8ebf5486c898c02f06616fb8c/1bc3674ead17e0e475c5f1a3b5982ead.pdf",
+      "content_type": "application/pdf",
+      "elapsed_ms": 495
+    },
+    {
+      "source_id": "src_sh_sasac_chongming_cloth",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://www.gzw.sh.gov.cn/shgzw_zxzx_gqdt/20250208/cb175a6b7fa64f56bcb2206ec26f2d0c.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 311
+    },
+    {
+      "source_id": "src_sh_ethnic_chongming_cloth",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://mzzj.sh.gov.cn/2021xwzx_zxdt/20250512/28e63adaf6884a79a7430bca68dcefb5.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 155
+    },
+    {
+      "source_id": "src_sh_culture_calendar_poster",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://whlyj.sh.gov.cn/gqfc/20230613/039f6a60bc064c79b5d0770b3dc60acc.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 102
+    },
+    {
+      "source_id": "src_ihchina_new_year_pictures",
+      "status": "ok",
+      "http_status": 200,
+      "final_url": "https://www.ihchina.cn/news_1_details/10351.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 219
+    },
+    {
+      "source_id": "src_sh_civil_hang_zhiying",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://mzj.sh.gov.cn/lnb-wsws/20250220/860686bbe4f54fd49d86af412b3a0854.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 219
+    },
+    {
+      "source_id": "src_changning_calendar_poster_exhibition",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://www.shcn.gov.cn/col7959/20250428/1284262.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 104
+    },
+    {
+      "source_id": "src_yangpu_calendar_poster_museum",
+      "status": "ok",
+      "http_status": 200,
+      "final_url": "https://www.shyp.gov.cn/shypq/xwzx-bmdt/20240329/451392.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 223
+    },
+    {
+      "source_id": "src_neac_new_year_picture_history",
+      "status": "ok",
+      "http_status": 200,
+      "final_url": "https://www.neac.gov.cn/seac/c103391/202301/1160443.shtml",
+      "content_type": "text/html",
+      "elapsed_ms": 3163
+    },
+    {
+      "source_id": "src_shgov_minhang_profile",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://www.shanghai.gov.cn/minhang/index.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 127
+    },
+    {
+      "source_id": "src_sh_culture_qibao_route",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://whlyj.sh.gov.cn/wljzt/kdxysh/content/04e070ad-e002-4de0-b86e-1fbd5dfe9f24.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 72
+    },
+    {
+      "source_id": "src_sh_civil_qibao_inheritance",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://mzj.sh.gov.cn/MZ_shetuan749_0-2-3-7/20240613/7581657467b04f82ba15a3d1e9379d44.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 63
+    },
+    {
+      "source_id": "src_sh_culture_qibao_inheritor_2025",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://whlyj.sh.gov.cn/zw-hwlf2025/20250402/ddf9287413784a0c98163a5ca047b499.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 278
+    },
+    {
+      "source_id": "src_shgov_songjiang_shadow_puppetry",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://www.shanghai.gov.cn/songjiang/index.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 34
+    },
+    {
+      "source_id": "src_sh_tourism_ivory_weaving",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://www.meet-in-shanghai.net/cn/intangible-cultural-heritage/ivory-bamboo-thread-weaving-401749/",
+      "content_type": "text/html",
+      "elapsed_ms": 286
+    },
+    {
+      "source_id": "src_ihchina_ivory_weaving_demo",
+      "status": "ok",
+      "http_status": 200,
+      "final_url": "https://www.ihchina.cn/project_details/10751.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 218
+    },
+    {
+      "source_id": "src_dpm_woven_ivory_mat",
+      "status": "ok",
+      "http_status": 200,
+      "final_url": "https://www.dpm.org.cn/collection/bamboo/228276.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 235
+    },
+    {
+      "source_id": "src_dpm_woven_ivory_fan",
+      "status": "ok",
+      "http_status": 200,
+      "final_url": "https://www.dpm.org.cn/collection/bamboo/230829.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 217
+    },
+    {
+      "source_id": "src_gov_ivory_trade_ban",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://www.mofcom.gov.cn/zcfb/zgdwjjmywg/art/2017/art_4be6156f14004b149141161a96ffa952.html",
+      "content_type": "text/html",
+      "elapsed_ms": 189
+    },
+    {
+      "source_id": "src_mct_ich_sustainability_speech",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://www.mct.gov.cn/whzx/whyw/201809/t20180911_834728.htm",
+      "content_type": "text/html",
+      "elapsed_ms": 228
+    },
+    {
+      "source_id": "src_sh_tourism_mao_kite",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://www.meet-in-shanghai.net/cn/intangible-cultural-heritage/kitemaking-skills-419573/",
+      "content_type": "text/html",
+      "elapsed_ms": 231
+    },
+    {
+      "source_id": "src_shgov_fengxian_mao_kite",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://www.shanghai.gov.cn/nw17239/20250804/53fee01d39de492a8ab15cc054d1444c.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 337
+    },
+    {
+      "source_id": "src_fengxian_mao_kite_community",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://www.fengxian.gov.cn/wlj/wldj/20190325/2285-3dd555a3-38c8-4e24-9735-a5c369ac3278.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 113
+    },
+    {
+      "source_id": "src_fengxian_mao_kite_history",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://www.fengxian.gov.cn/wlj/whycbh/fwzwhyc/20150724/2302-4b912859-c8a3-4d99-b4af-a4bcb0cf08b7.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 61
+    },
+    {
+      "source_id": "src_fengxian_mao_rabbit_lantern",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://www.fengxian.gov.cn/col70/20240222/63887.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 51
+    },
+    {
+      "source_id": "src_shgov_chongming_profile",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://www.shanghai.gov.cn/chongming/index.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 42
+    },
+    {
+      "source_id": "src_shgov_ich_extension_catalog_pdf",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://www.shanghai.gov.cn/shanghai/download/gongkai/f2.pdf",
+      "content_type": "application/pdf",
+      "elapsed_ms": 118
+    },
+    {
+      "source_id": "src_sh_culture_grants_2025",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://whlyj.sh.gov.cn/cmsres/c6/c6a82fee1ddf4da6b90c484153716d35/82342a38ad8c665d94231fa4d652cfed.pdf",
+      "content_type": "application/pdf",
+      "elapsed_ms": 105
+    },
+    {
+      "source_id": "src_shgov_seventh_ich_catalog",
+      "status": "ok",
+      "http_status": 206,
+      "final_url": "https://www.shanghai.gov.cn/nw12344/20240409/4da467e2f2f3495fa4380adfbe87636d.html",
+      "content_type": "text/html; charset=utf-8",
+      "elapsed_ms": 53
+    }
+  ]
+}

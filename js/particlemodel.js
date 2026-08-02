@@ -1,12 +1,12 @@
 // 粒子化三维模型：把 GLB 表面采样为墨点云（实墨 → 洇散 → 飘散，沿遮罩连续渐变流动）
 // 模型路径注册表在 js/config.js（CRAFT_MODEL_PATHS）；本模块保持通用：
-//   createParticleModel(container, glbUrl, opts) → { el, setActive, scatter, playEnter, playDyeSweep, dispose }
+//   createParticleModel(container, glbUrl, opts) → { el, setActive, scatter, zoomBy, resetZoom, playEnter, playDyeSweep, dispose }
 //   preloadModel(glbUrl) / preloadPattern(imgUrl) → 提前加载（完成态成品模型即时揭晓用）
 // - 表面采样：自写采样器按三角面积加权 + 重心插值（位置 + UV），总量 clamp 在 [MIN_PTS, MAX_PTS]
 // - 遮罩驱动（assets/mask-gradient-ltr.png，左→右 黑→灰）映射模型局部 X 轴，**连续语义**：
 //     v=0（黑）→ 完全稳定、最浓；v→1（灰）→ 漂移更快、更淡，但始终可见（轮廓不丢）
 //     每颗墨点沿 +v 方向缓慢漂移，行尽（行程随 v 增大）渐隐后在自己的家位置重生（数量守恒）
-// - 交互：拖拽旋转（Y 轴为主 + 限幅 X，阻尼）；无拖拽点击 → 散墨：外爆 → 停顿 → 自行合并回家
+// - 交互：拖拽旋转、滚轮/双指缩放；无拖拽点击 → 散墨：外爆 → 停顿 → 自行合并回家
 // - opts.tint：单色原料（未染布 / 白纸）；opts.patternUrl：按平面 UV 从纹样图取色（药斑布成品）
 // - playEnter()：弧线俯冲进场（完成态揭晓）；playDyeSweep()：染色扫过（原料色 → 纹样色）
 // - prefers-reduced-motion：静态密实渲染（仍可拖拽旋转），无漂移/散墨/扫染动画
@@ -30,12 +30,47 @@ const INDIGO = [new THREE.Color(0x1E3A66), new THREE.Color(0x254A7A), new THREE.
 const RESIST = new THREE.Color(0xEDE6D4);
 
 // ---- GLB / 纹样图：全模块共享预载缓存 ----
+// 保留当前项目附近的少量模型即可；已完成的最久未使用项优先淘汰。
+// 加载中的条目暂不淘汰，避免并发预载时对同一 GLB 发起重复请求；完成后会再次收缩。
+const GLTF_CACHE_LIMIT = 3;
 const gltfCache = new Map();
-function loadGLTF(url) {
-  if (!gltfCache.has(url)) gltfCache.set(url, new GLTFLoader().loadAsync(url));
-  return gltfCache.get(url);
+
+function trimGLTFCache() {
+  while (gltfCache.size > GLTF_CACHE_LIMIT) {
+    const oldestSettled = [...gltfCache].find(([, entry]) => entry.settled);
+    if (!oldestSettled) return;
+    gltfCache.delete(oldestSettled[0]);
+  }
 }
-export function preloadModel(url) { if (url) loadGLTF(url).catch(() => gltfCache.delete(url)); }
+
+function loadGLTF(url) {
+  const cached = gltfCache.get(url);
+  if (cached) {
+    // Map 的插入顺序即 LRU 顺序：命中后移到末尾。
+    gltfCache.delete(url);
+    gltfCache.set(url, cached);
+    return cached.promise;
+  }
+
+  const entry = { promise: null, settled: false };
+  entry.promise = new GLTFLoader().loadAsync(url).then(
+    (gltf) => {
+      entry.settled = true;
+      trimGLTFCache();
+      return gltf;
+    },
+    (error) => {
+      entry.settled = true;
+      // 统一清除拒绝态，createParticleModel 与 preloadModel 失败后都可正常重试。
+      if (gltfCache.get(url) === entry) gltfCache.delete(url);
+      throw error;
+    },
+  );
+  gltfCache.set(url, entry);
+  trimGLTFCache();
+  return entry.promise;
+}
+export function preloadModel(url) { if (url) loadGLTF(url).catch(() => {}); }
 
 const patternCache = new Map();
 function loadPattern(url) {
@@ -112,6 +147,59 @@ function makeSoftDotTexture() {
   return new THREE.CanvasTexture(c);
 }
 
+// 成品粒子不再只取默认墨色：如果 GLB 带有 baseColorTexture，先把纹理缩放
+// 到可控的像素缓存，再按采样点的 UV 取色。这样可以保留风筝的彩绘和皮影的
+// 透雕细节，同时避免每个粒子都触发一次 canvas 读回。
+const texturePixelCache = new WeakMap();
+function getTexturePixels(texture) {
+  const image = texture?.image;
+  if (!image) return null;
+  if (texturePixelCache.has(image)) return texturePixelCache.get(image);
+  try {
+    const maxSize = 512;
+    const ratio = Math.min(1, maxSize / Math.max(image.width || maxSize, image.height || maxSize));
+    const width = Math.max(1, Math.round((image.width || maxSize) * ratio));
+    const height = Math.max(1, Math.round((image.height || maxSize) * ratio));
+    const canvas = document.createElement('canvas');
+    canvas.width = width; canvas.height = height;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(image, 0, 0, width, height);
+    const record = { width, height, data: ctx.getImageData(0, 0, width, height).data };
+    texturePixelCache.set(image, record);
+    return record;
+  } catch (_) {
+    texturePixelCache.set(image, null);
+    return null;
+  }
+}
+
+function makeMaterialColorSampler(material) {
+  const base = material?.color?.clone?.() || new THREE.Color(0.72, 0.72, 0.72);
+  const texture = material?.map || null;
+  const pixels = getTexturePixels(texture);
+  const texColor = new THREE.Color();
+  return {
+    sample(u, v, out) {
+      out.copy(base);
+      if (!pixels) return 1;
+      const uu = ((u % 1) + 1) % 1;
+      const vv = ((v % 1) + 1) % 1;
+      const x = Math.max(0, Math.min(pixels.width - 1, Math.floor(uu * pixels.width)));
+      const yCoord = texture?.flipY ? vv : 1 - vv;
+      const y = Math.max(0, Math.min(pixels.height - 1, Math.floor(yCoord * pixels.height)));
+      const i = (y * pixels.width + x) * 4;
+      texColor.setRGB(
+        pixels.data[i] / 255,
+        pixels.data[i + 1] / 255,
+        pixels.data[i + 2] / 255,
+        THREE.SRGBColorSpace,
+      );
+      out.multiply(texColor);
+      return pixels.data[i + 3] / 255;
+    },
+  };
+}
+
 const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
 const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const easeInOutQuart = (t) => (t < 0.5 ? 8 * t ** 4 : 1 - Math.pow(-2 * t + 2, 4) / 2);
@@ -122,6 +210,7 @@ function makeSampler(mesh) {
   const pos = geo.attributes.position;
   const uv = geo.attributes.uv || null;
   const idx = geo.index;
+  const groups = geo.groups || [];
   const triCount = idx ? idx.count / 3 : pos.count / 3;
   const cum = new Float32Array(triCount);
   const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
@@ -143,6 +232,12 @@ function makeSampler(mesh) {
     while (lo < hi) { const mid = (lo + hi) >> 1; if (cum[mid] < r) lo = mid + 1; else hi = mid; }
     return lo;
   };
+  const materialIndexAt = (triangle) => {
+    if (!Array.isArray(mesh.material)) return 0;
+    const start = triangle * 3;
+    const group = groups.find((g) => start >= g.start && start < g.start + g.count);
+    return group?.materialIndex || 0;
+  };
   return {
     area: total,
     sample(outP, outUV) {
@@ -162,6 +257,7 @@ function makeSampler(mesh) {
         outUV.u = uv.getX(i0) * w0 + uv.getX(i1) * w1 + uv.getX(i2) * w2;
         outUV.v = uv.getY(i0) * w0 + uv.getY(i1) * w1 + uv.getY(i2) * w2;
       } else if (outUV) { outUV.u = 0; outUV.v = 0; }
+      return materialIndexAt(t);
     },
   };
 }
@@ -172,7 +268,7 @@ function makeSampler(mesh) {
  *   pointSize / alpha / flowSpeed / diffuseSpeed —— 微调
  *   tint: 0xRRGGBB —— 单色原料（未染布、白纸等），覆盖默认墨绿/鼠尾草/金调色板
  *   patternUrl —— 平面 UV → 纹样图取色（成品药斑布）；patternRepeat: [横, 纵] 平铺次数
- * handle = { el, setActive(v), scatter(), playEnter(), playDyeSweep(dur?), dispose() }
+ * handle = { el, setActive(v), scatter(), zoomBy(factor), resetZoom(), playEnter(), playDyeSweep(dur?), dispose() }
  */
 export async function createParticleModel(container, url, opts = {}) {
   const {
@@ -183,6 +279,9 @@ export async function createParticleModel(container, url, opts = {}) {
     tint = null,
     patternUrl = null,
     patternRepeat = [1, 2],
+    detailMode = false,     // 成品态：提高采样密度并压低漂移，保留小构件和轮廓
+    dropRate = detailMode ? 0.075 : 0, // 成品粒子轻微下坠，渐隐后从原位补回
+    looseAmount = 0,        // 完成前预览：在成品轮廓周围增加细碎离散量；完成态保持 0
   } = opts;
 
   const loadingEl = document.createElement('div');
@@ -202,8 +301,15 @@ export async function createParticleModel(container, url, opts = {}) {
   gltf.scene.traverse((o) => { if (o.isMesh && o.geometry?.attributes?.position) meshes.push(o); });
   if (!meshes.length) throw new Error('GLB 中未找到网格');
   const samplers = meshes.map(makeSampler);
+  const materialSamplers = meshes.map((mesh) => {
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    return materials.map(makeMaterialColorSampler);
+  });
   const totalArea = samplers.reduce((s, x) => s + x.area, 0);
-  const total = Math.max(MIN_PTS, Math.min(MAX_PTS, Math.round(totalArea * DENSITY)));
+  const minPoints = detailMode ? 48000 : MIN_PTS;
+  const maxPoints = detailMode ? 100000 : MAX_PTS;
+  const density = detailMode ? 20000 : DENSITY;
+  const total = Math.max(minPoints, Math.min(maxPoints, Math.round(totalArea * density)));
 
   const home = new Float32Array(total * 3);   // 归一化后的家位置
   const uvs = new Float32Array(total * 2);    // 平面 UV（纹样取色 / 染色扫过用）
@@ -211,11 +317,17 @@ export async function createParticleModel(container, url, opts = {}) {
   const uvTmp = { u: 0, v: 0 };
   let k = 0;
   const rawPts = [];
+  const sampledMeshIndices = new Uint8Array(total);
+  const sampledMaterialIndices = new Uint8Array(total);
   const bbox = new THREE.Box3();
+  // 给每个网格保留最低采样额，避免成品的细小配件因面积占比太低而消失。
+  const perMeshFloor = detailMode ? Math.min(96, Math.floor(total / meshes.length / 2)) : 1;
+  const proportionalBudget = Math.max(0, total - perMeshFloor * meshes.length);
   for (let m = 0; m < meshes.length; m++) {
-    const n = Math.max(1, Math.round((samplers[m].area / totalArea) * total));
+    const n = perMeshFloor + Math.round((samplers[m].area / totalArea) * proportionalBudget);
     for (let i = 0; i < n && k < total; i++, k++) {
-      samplers[m].sample(p, uvTmp);
+      sampledMeshIndices[k] = m;
+      sampledMaterialIndices[k] = samplers[m].sample(p, uvTmp) || 0;
       rawPts.push(p.x, p.y, p.z);
       uvs[k * 2] = uvTmp.u; uvs[k * 2 + 1] = uvTmp.v;
       bbox.expandByPoint(p);
@@ -233,10 +345,12 @@ export async function createParticleModel(container, url, opts = {}) {
   const maskV = new Float32Array(count);      // 遮罩值 v（0=黑 稳定 … 1=灰 稀疏）
   for (let i = 0; i < count; i++) {
     const x = rawPts[i * 3], y = rawPts[i * 3 + 1], z = rawPts[i * 3 + 2];
-    home[i * 3] = (x - center.x) * norm;
-    home[i * 3 + 1] = (y - center.y) * norm;
-    home[i * 3 + 2] = (z - center.z) * norm;
-    maskV[i] = maskAt((x - bbox.min.x) / (size.x || 1));
+    const loosePhase = (i + 1) * 12.9898;
+    const looseScale = looseAmount * (0.38 + ((i * 2654435761 >>> 0) % 997) / 997 * 0.62);
+    home[i * 3] = (x - center.x) * norm + Math.sin(loosePhase) * looseScale;
+    home[i * 3 + 1] = (y - center.y) * norm + Math.cos(loosePhase * 1.37) * looseScale;
+    home[i * 3 + 2] = (z - center.z) * norm + Math.sin(loosePhase * 0.73) * looseScale;
+    maskV[i] = maskAt((x - bbox.min.x) / (size.x || 1)) * (detailMode ? 0.22 : 1);
   }
 
   // ---------- 颜色 / 尺寸 / 状态 ----------
@@ -269,10 +383,18 @@ export async function createParticleModel(container, url, opts = {}) {
       }
     } else if (tintColor) {
       c.copy(tintColor).offsetHSL(0, 0, (h - 0.5) * 0.07);
-    } else if (h % 0.997 < 0.08) c.copy(GOLD); // 约 8% 金箔点
-    else if (h < 0.45) c.copy(INK);
-    else if (h < 0.8) c.copy(INK2);
-    else c.copy(SAGE);
+    } else {
+      const colorSampler = materialSamplers[sampledMeshIndices[i]]?.[sampledMaterialIndices[i]];
+      if (colorSampler) {
+        const textureAlpha = colorSampler.sample(uvs[i * 2], uvs[i * 2 + 1], c);
+        // 透明贴图仍保留少量骨架点，避免细线或操纵杆因采样落在透明像素上消失。
+        alphaMul *= 0.52 + textureAlpha * 0.48;
+        sizeMul *= 0.86 + textureAlpha * 0.14;
+      } else if (h % 0.997 < 0.08) c.copy(GOLD);
+      else if (h < 0.45) c.copy(INK);
+      else if (h < 0.8) c.copy(INK2);
+      else c.copy(SAGE);
+    }
     colorsPat[i * 3] = c.r; colorsPat[i * 3 + 1] = c.g; colorsPat[i * 3 + 2] = c.b;
     // 原料色：有纹样时起点为未染布色；否则与成品同色（无扫染需求）
     if (patternAt) {
@@ -295,6 +417,8 @@ export async function createParticleModel(container, url, opts = {}) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setSize(container.clientWidth, container.clientHeight);
   renderer.domElement.className = 'pm-canvas';
+  renderer.domElement.dataset.modelMode = detailMode ? 'finished-detail' : (looseAmount > 0 ? 'finished-loose-preview' : 'standard');
+  renderer.domElement.dataset.looseAmount = String(looseAmount);
   container.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -340,12 +464,17 @@ export async function createParticleModel(container, url, opts = {}) {
 
   function setUScale() {
     const hpx = renderer.domElement.height; // 绘制缓冲像素高
-    mat.uniforms.uScale.value = hpx / (2 * Math.tan((camera.fov * Math.PI) / 360));
+    mat.uniforms.uScale.value = (hpx * camera.zoom) / (2 * Math.tan((camera.fov * Math.PI) / 360));
   }
   setUScale();
 
-  // ---------- 交互：拖拽旋转 + 点击散墨 ----------
+  // ---------- 交互：拖拽旋转 + 点击散墨 + 滚轮/双指缩放 ----------
   const rot = { x: 0, y: 0, vx: 0, vy: 0, dragging: false, sx: 0, sy: 0, moved: 0, t0: 0 };
+  const zoom = { current: 1, target: 1, min: 0.62, max: 1.9 };
+  const pointers = new Map();
+  let pinchStartDistance = 0;
+  let pinchStartZoom = 1;
+  let pinching = false;
   const el = renderer.domElement;
   el.style.cursor = 'grab';
   let scatterAge = -1;               // <0 无散墨
@@ -354,13 +483,36 @@ export async function createParticleModel(container, url, opts = {}) {
   let enterFrom = null;
   let dyeAge = -1;                   // <0 无染色扫过
   let dyeDur = 2.6;
+  const clampZoom = (value) => Math.max(zoom.min, Math.min(zoom.max, value));
+  const setZoomTarget = (value) => { zoom.target = clampZoom(value); };
+  const pointerDistance = () => {
+    const pts = [...pointers.values()];
+    return pts.length >= 2 ? Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) : 0;
+  };
   const onDown = (e) => {
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    el.setPointerCapture(e.pointerId);
+    if (pointers.size >= 2) {
+      pinching = true;
+      pinchStartDistance = pointerDistance() || 1;
+      pinchStartZoom = zoom.target;
+      rot.dragging = false;
+      rot.moved = 999;
+      el.style.cursor = 'grabbing';
+      return;
+    }
     rot.dragging = true; rot.sx = e.clientX; rot.sy = e.clientY;
     rot.moved = 0; rot.t0 = performance.now(); rot.vx = 0; rot.vy = 0;
-    el.setPointerCapture(e.pointerId);
     el.style.cursor = 'grabbing';
   };
   const onMove = (e) => {
+    if (!pointers.has(e.pointerId)) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size >= 2) {
+      const distance = pointerDistance();
+      if (distance > 0) setZoomTarget(pinchStartZoom * (distance / pinchStartDistance));
+      return;
+    }
     if (!rot.dragging) return;
     const dx = e.clientX - rot.sx, dy = e.clientY - rot.sy;
     rot.moved += Math.abs(dx) + Math.abs(dy);
@@ -369,17 +521,35 @@ export async function createParticleModel(container, url, opts = {}) {
     rot.x = Math.max(-0.5, Math.min(0.5, rot.x + dy * 0.004));
     rot.vy = dx * 0.005; rot.vx = dy * 0.004;
   };
-  const onUp = () => {
+  const onUp = (e) => {
+    pointers.delete(e.pointerId);
+    if (pinching) {
+      if (pointers.size < 2) pinching = false;
+      if (pointers.size === 1) {
+        const remaining = [...pointers.values()][0];
+        rot.sx = remaining.x; rot.sy = remaining.y; rot.dragging = true; rot.moved = 999;
+      } else if (!pointers.size) {
+        rot.dragging = false;
+        el.style.cursor = 'grab';
+      }
+      return;
+    }
     if (!rot.dragging) return;
     rot.dragging = false;
     el.style.cursor = 'grab';
     // 无拖拽点击 → 散墨（外爆 → 停顿 → 自行合并回家）
     if (rot.moved < 6 && performance.now() - rot.t0 < 450 && !reducedMotion) scatterAge = 0;
   };
+  const onWheel = (e) => {
+    e.preventDefault();
+    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? container.clientHeight : 1;
+    setZoomTarget(zoom.target * Math.exp(-e.deltaY * unit * 0.0012));
+  };
   el.addEventListener('pointerdown', onDown);
   el.addEventListener('pointermove', onMove);
   el.addEventListener('pointerup', onUp);
   el.addEventListener('pointercancel', onUp);
+  el.addEventListener('wheel', onWheel, { passive: false });
 
   // ---------- 主循环 ----------
   const posAttr = geo.attributes.position;
@@ -429,6 +599,14 @@ export async function createParticleModel(container, url, opts = {}) {
     group.rotation.y = rot.y;
     group.rotation.x = baseRotX + rot.x;
 
+    // 缩放采用相机 zoom，避免改变模型归一化尺寸；缓动兼容滚轮和触控板的连续输入。
+    if (Math.abs(zoom.current - zoom.target) > 0.0005) {
+      zoom.current += (zoom.target - zoom.current) * Math.min(1, dt * 12);
+      camera.zoom = zoom.current;
+      camera.updateProjectionMatrix();
+      setUScale();
+    }
+
     // 染色扫过（原料色 → 纹样色，front 沿 UV-u 推进，带噪声边缘）
     if (dyeAge >= 0) {
       dyeAge += dt;
@@ -466,17 +644,25 @@ export async function createParticleModel(container, url, opts = {}) {
         let ox = offset[i3] + v * flowSpeed * (0.7 + 0.6 * Math.sin(h * 5)) * dt * driftDamp;
         let oy = offset[i3 + 1] + Math.sin(t * 0.9 + h * 3.7) * diffuseSpeed * v * dt;
         let oz = offset[i3 + 2] + Math.cos(t * 0.8 + h * 2.9) * diffuseSpeed * v * dt;
+        // 成品不是整块同时坠落：不同遮罩密度的点以不同速度向下散开，
+        // 到达下方阈值后淡出并在家位置重新出现，形成自然的呼吸式消散。
+        const dropWeight = detailMode
+          ? Math.max(0, v - 0.012) * (0.82 + 0.18 * Math.sin(h * 23.7))
+          : 0;
+        oy -= dropRate * dropWeight * dt;
         // 稳定区微颤（不累积）
         const tremor = 0.006 * (1 - v * 0.55);
         ox += Math.sin(t * 1.3 + h) * tremor * 0.12;
         oy += Math.cos(t * 1.1 + h * 1.7) * tremor * 0.12;
         const maxTravel = 0.08 + v * 0.32;
         const kT = maxTravel > 0 ? ox / maxTravel : 0;
+        const dropTravel = detailMode ? Math.max(0, -oy) / (0.12 + v * 0.62) : 0;
+        const travel = Math.max(kT, dropTravel);
         let aMul;
-        if (kT >= 1) { ox = 0; oy = 0; oz = 0; fade[i] = 0; aMul = 0; }
+        if (travel >= 1) { ox = 0; oy = 0; oz = 0; fade[i] = 0; aMul = 0; }
         else {
           if (fade[i] < 1) fade[i] = Math.min(1, fade[i] + dt / RESPAWN_FADE);
-          const travelFade = kT > 0.55 ? 1 - ((kT - 0.55) / 0.45) * 0.85 : 1;
+          const travelFade = travel > 0.55 ? 1 - ((travel - 0.55) / 0.45) * 0.85 : 1;
           aMul = fade[i] * travelFade * (1 - FADE_MIN * v);
         }
         offset[i3] = ox; offset[i3 + 1] = oy; offset[i3 + 2] = oz;
@@ -529,6 +715,8 @@ export async function createParticleModel(container, url, opts = {}) {
     el,
     setActive,
     scatter() { if (!reducedMotion) scatterAge = 0; },
+    zoomBy(factor) { setZoomTarget(zoom.target * factor); },
+    resetZoom() { setZoomTarget(1); },
     // 完成态揭晓：相机弧线俯冲进场（模型已预载，立即开始）
     playEnter() {
       if (reducedMotion) return;
@@ -557,6 +745,7 @@ export async function createParticleModel(container, url, opts = {}) {
       el.removeEventListener('pointermove', onMove);
       el.removeEventListener('pointerup', onUp);
       el.removeEventListener('pointercancel', onUp);
+      el.removeEventListener('wheel', onWheel);
       geo.dispose();
       mat.dispose();
       softTex.dispose();

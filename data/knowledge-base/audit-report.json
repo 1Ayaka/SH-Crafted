@@ -1,0 +1,89 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-08-02T06:25:01.898Z",
+  "passed": true,
+  "totals": {
+    "chunks": 850,
+    "sources": 44,
+    "crawlable_sources": 40,
+    "facts": 85,
+    "verified_external": 83,
+    "needs_review": 2
+  },
+  "per_craft": {
+    "SHIH_0001": {
+      "chunks": 206,
+      "external_facts": 10,
+      "video_evidence": 42,
+      "claims": 7,
+      "steps": 6,
+      "entities": 131,
+      "sources": 9
+    },
+    "SHIH_0002": {
+      "chunks": 72,
+      "external_facts": 10,
+      "video_evidence": 6,
+      "claims": 5,
+      "steps": 4,
+      "entities": 35,
+      "sources": 11
+    },
+    "SHIH_0003": {
+      "chunks": 100,
+      "external_facts": 10,
+      "video_evidence": 10,
+      "claims": 4,
+      "steps": 7,
+      "entities": 63,
+      "sources": 5
+    },
+    "SHIH_0004": {
+      "chunks": 96,
+      "external_facts": 12,
+      "video_evidence": 10,
+      "claims": 6,
+      "steps": 4,
+      "entities": 54,
+      "sources": 9
+    },
+    "SHIH_0005": {
+      "chunks": 103,
+      "external_facts": 10,
+      "video_evidence": 8,
+      "claims": 9,
+      "steps": 7,
+      "entities": 61,
+      "sources": 7
+    },
+    "SHIH_0006": {
+      "chunks": 90,
+      "external_facts": 12,
+      "video_evidence": 12,
+      "claims": 7,
+      "steps": 3,
+      "entities": 46,
+      "sources": 9
+    },
+    "SHIH_0007": {
+      "chunks": 123,
+      "external_facts": 11,
+      "video_evidence": 10,
+      "claims": 12,
+      "steps": 3,
+      "entities": 77,
+      "sources": 9
+    },
+    "SHIH_0008": {
+      "chunks": 84,
+      "external_facts": 10,
+      "video_evidence": 10,
+      "claims": 6,
+      "steps": 4,
+      "entities": 44,
+      "sources": 9
+    }
+  },
+  "warnings": [],
+  "errors": []
+}

@@ -1,0 +1,76 @@
+{
+  "package_schema_version": "1.0",
+  "package_id": "agent_kb_SHIH_0008",
+  "video": {
+    "video_id": "SHIH_0008",
+    "title": "毛氏风筝",
+    "slug": "mao_family_kite_making",
+    "source_filename": "风筝制作 技艺.mp4",
+    "source_size_bytes": 2374518847,
+    "sha256": "de1c8f8ed890df02b2c59aa24fc97e0383bd30b15bdec6dbf29b760537d0bc8b",
+    "duration_ms": 1842960,
+    "width": 1920,
+    "height": 1080,
+    "fps": 25.0,
+    "vod_vid": null,
+    "playback_url": null,
+    "rights_status": "pending"
+  },
+  "provider": {
+    "name": "volcengine_vod_long_video_understanding",
+    "run_id": null,
+    "mode": "multimodal",
+    "prompt_version": "ich_multimodal_v1"
+  },
+  "normalization": {
+    "confirmed_terms": [
+      {
+        "from": "莫迪",
+        "to": "墨翟"
+      },
+      {
+        "from": "墨渊",
+        "to": "木鸢"
+      },
+      {
+        "from": "四乡巴林",
+        "to": "四乡八邻"
+      },
+      {
+        "from": "贵竹",
+        "to": "桂竹"
+      },
+      {
+        "from": "齐线",
+        "to": "提线"
+      }
+    ],
+    "research_sources": [
+      {
+        "title": "维基百科：墨子",
+        "url": "https://zh.wikipedia.org/wiki/%E5%A2%A8%E5%AD%90",
+        "supports": [
+          "墨子",
+          "墨翟"
+        ]
+      }
+    ]
+  },
+  "paths": {
+    "knowledge_draft": "knowledge/knowledge_draft.json",
+    "evidence": "knowledge/evidence.jsonl",
+    "claims": "knowledge/claims.jsonl",
+    "process_steps": "knowledge/process_steps.jsonl",
+    "frame_bindings": "media/frame_bindings.json",
+    "keyframes": "media/keyframes",
+    "provider_output": "source/provider_output.json"
+  },
+  "counts": {
+    "evidence": 10,
+    "claims": 6,
+    "process_steps": 4,
+    "keyframes": 32,
+    "verified_claims": 0
+  },
+  "generated_at": "2026-07-27T19:29:28.707793+08:00"
+}

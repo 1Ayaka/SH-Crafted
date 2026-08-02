@@ -19,13 +19,16 @@ const pages = new Map();
 let currentName = null;
 let transitioning = false;
 let pendingEnter = false;
+let unlockTimer = 0;
 
 export function registerPage(name, api) {
+  if (api?.root && !api.root.isConnected) return;
   pages.set(name, api);
   currentName = name;
 }
 
-export function unregisterPage(name) {
+export function unregisterPage(name, root = null) {
+  if (root && pages.get(name)?.root !== root) return;
   pages.delete(name);
   if (currentName === name) currentName = null;
 }
@@ -42,17 +45,21 @@ export function consumeEnter() {
 }
 
 export async function transitionTo(hash) {
-  if (transitioning) return false;
+  if (transitioning || location.hash === hash) return false;
   const cur = currentName ? pages.get(currentName) : null;
   transitioning = true;
-  const release = () => setTimeout(() => { transitioning = false; }, 900);
+  const release = (delay) => {
+    clearTimeout(unlockTimer);
+    unlockTimer = setTimeout(() => { transitioning = false; }, delay);
+  };
   try {
     // reduced-motion 或无分层背景的页面：快速交叉淡入淡出
     if (reducedMotion || !cur?.bg) {
       cur?.root?.classList.add('page-xfade');
       pendingEnter = true;
-      setTimeout(() => navigate(hash), reducedMotion ? 240 : 60);
-      release();
+      const delay = reducedMotion ? 220 : (cur?.root ? 70 : 0);
+      setTimeout(() => navigate(hash), delay);
+      release(delay + 280);
       return true;
     }
     cur.fadeUI?.();                    // 1) UI 淡出
@@ -67,8 +74,8 @@ export async function transitionTo(hash) {
       ghost.style.transition = 'opacity 380ms ease 60ms';
       ghost.style.opacity = '0';
     });
-    setTimeout(() => ghost.remove(), 640);
-    release();
+    setTimeout(() => ghost.remove(), 520);
+    release(560);
     return true;
   } catch (err) {
     console.warn('转场失败，改为直接跳转：', err);

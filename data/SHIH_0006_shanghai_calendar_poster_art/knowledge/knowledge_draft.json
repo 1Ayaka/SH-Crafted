@@ -1,0 +1,1109 @@
+{
+  "schema_version": "1.0",
+  "video": {
+    "video_id": "SHIH_0006",
+    "title": "上海月份牌年画",
+    "slug": "shanghai_calendar_poster_art",
+    "source_filename": "月份牌年画.mp4",
+    "source_size_bytes": 2684559800,
+    "sha256": "c6242654123c21c37ebfec0e9c32fff82c7290cde3debc7616a6d857a2bc9e00",
+    "duration_ms": 1778680,
+    "width": 1920,
+    "height": 1080,
+    "fps": 25.0,
+    "vod_vid": null,
+    "playback_url": null,
+    "rights_status": "pending"
+  },
+  "provider": {
+    "name": "volcengine_vod_long_video_understanding",
+    "run_id": null,
+    "mode": "multimodal",
+    "prompt_version": "ich_multimodal_v1"
+  },
+  "processing_status": {
+    "video_understanding": "succeeded",
+    "normalization": "succeeded",
+    "frame_binding": "succeeded",
+    "human_review": "not_started",
+    "database_import": "not_started"
+  },
+  "summary_candidate": "本视频为静安文化专题片非遗篇内容，围绕上海月份牌年画展开，讲述其近代起源、发展历程，介绍了郑曼陀、杭穉英等代表画家，以及擦笔水彩这一特色创作技法；展现了月份牌年画的题材特点、商业价值与历史文化价值，以及其在新中国成立后转型为新年画的传承发展情况；提及擦笔水彩年画技法于2009年列入上海市非物质文化遗产名录，2015年相关纪念出版物首发，该传统艺术重新获得社会重视。",
+  "normalization": {
+    "confirmed_terms": [
+      {
+        "from": "月份排",
+        "to": "月份牌"
+      },
+      {
+        "from": "岳丰牌",
+        "to": "月份牌"
+      },
+      {
+        "from": "逆纹牌",
+        "to": "月份牌"
+      },
+      {
+        "from": "悦风牌",
+        "to": "月份牌"
+      },
+      {
+        "from": "岳峰牌",
+        "to": "月份牌"
+      },
+      {
+        "from": "岳粪牌",
+        "to": "月份牌"
+      },
+      {
+        "from": "玉文牌",
+        "to": "月份牌"
+      },
+      {
+        "from": "杭志英",
+        "to": "杭穉英"
+      },
+      {
+        "from": "唐智英",
+        "to": "杭穉英"
+      },
+      {
+        "from": "韩智英",
+        "to": "杭穉英"
+      },
+      {
+        "from": "樨英画室",
+        "to": "穉英画室"
+      },
+      {
+        "from": "稚英画室",
+        "to": "穉英画室"
+      },
+      {
+        "from": "知音画室",
+        "to": "穉英画室"
+      },
+      {
+        "from": "自营画室",
+        "to": "穉英画室"
+      },
+      {
+        "from": "碳晶粉",
+        "to": "炭精粉"
+      },
+      {
+        "from": "钛金粉",
+        "to": "炭精粉"
+      },
+      {
+        "from": "木苔粉",
+        "to": "炭精粉"
+      },
+      {
+        "from": "潘金粉",
+        "to": "炭精粉"
+      },
+      {
+        "from": "紫菜画",
+        "to": "水彩画"
+      },
+      {
+        "from": "夕阳擦笔",
+        "to": "西洋擦笔"
+      },
+      {
+        "from": "英丹40布",
+        "to": "阴丹士林布"
+      },
+      {
+        "from": "鲍鱼飞",
+        "to": "包于飞"
+      }
+    ],
+    "research_sources": [
+      {
+        "title": "维基百科：月份牌",
+        "url": "https://zh.wikipedia.org/wiki/%E6%9C%88%E4%BB%BD%E7%89%8C",
+        "supports": [
+          "月份牌",
+          "杭穉英",
+          "郑曼陀",
+          "金梅生",
+          "金雪尘"
+        ]
+      }
+    ]
+  },
+  "evidence_segments": [
+    {
+      "evidence_id": "ev_SHIH_0006_0064000_0111000",
+      "source_evidence_local_id": "e001",
+      "video_id": "SHIH_0006",
+      "start_ms": 64000,
+      "end_ms": 111000,
+      "transcript_raw": "6月的上海，夏天已至，芒种后的一天，我们静安文化专题片摄制组如约来到原上海人民美术出版社资深编辑包于飞老师在闵行的家，想记录下包老师与月份牌年画的不解之缘。自上世纪80年代进入人美社，由于工作的关系，包老师接触了许多月份牌画家，见证了月份牌年画最后的辉煌，并与这些画家乃至画家的后人保持着良好的私人友谊至今。",
+      "transcript_reviewed": null,
+      "visual_description_raw": "摄制组前往居民小区包于飞家中拍摄，包于飞展示收藏的月份牌年画、相关藏书",
+      "visual_description_reviewed": null,
+      "speaker_role": "旁白、包于飞（原上海人民美术出版社资深编辑）",
+      "entities_candidate": {
+        "projects": [
+          "月份牌年画"
+        ],
+        "people": [
+          "包于飞"
+        ],
+        "places": [
+          "上海",
+          "上海闵行"
+        ],
+        "materials": [],
+        "tools": [],
+        "techniques": [],
+        "artifacts": [
+          "月份牌年画藏品"
+        ]
+      },
+      "frame_ids": [
+        73400,
+        87500,
+        101600
+      ],
+      "frame_paths": [
+        "media/keyframes/000073400.jpg",
+        "media/keyframes/000087500.jpg",
+        "media/keyframes/000101600.jpg"
+      ],
+      "quality_flags": [
+        "asr_needs_review",
+        "person_name_unverified"
+      ],
+      "uncertainties": [
+        "转写中“鲍鱼飞”应为包于飞，“月份排”为月份牌的同音转写错误"
+      ],
+      "confirmed_normalizations": [
+        {
+          "from": "月份排",
+          "to": "月份牌"
+        },
+        {
+          "from": "鲍鱼飞",
+          "to": "包于飞"
+        }
+      ],
+      "review_status": "needs_review"
+    },
+    {
+      "evidence_id": "ev_SHIH_0006_0123000_0213000",
+      "source_evidence_local_id": "e002",
+      "video_id": "SHIH_0006",
+      "start_ms": 123000,
+      "end_ms": 213000,
+      "transcript_raw": "从八国联军打开我们国家的这个大门以后，很多外国商人就涌进了中国，尤其是上海。民国初年，政府推广使用公历，以前中国人用农历，对西历和农历的对应搞不清楚，正好列强进来，租界外国人的公司、商品都涌到上海，他们要推销商品，开始赠送圣母像、外国贵妇画片做广告，中国人不接受，后来外国人把画片一边做农历一边做西历，内容选老百姓喜闻乐见的题材，随商品附送，老百姓觉得方便又免费，这种形式就受欢迎，月份牌的名字也由此而来。",
+      "transcript_reviewed": null,
+      "visual_description_raw": "穿插近代上海历史影像、早期月份牌画片展示",
+      "visual_description_reviewed": null,
+      "speaker_role": "包于飞",
+      "entities_candidate": {
+        "projects": [
+          "月份牌年画"
+        ],
+        "people": [],
+        "places": [
+          "上海"
+        ],
+        "materials": [],
+        "tools": [],
+        "techniques": [],
+        "artifacts": [
+          "早期月份牌广告画"
+        ]
+      },
+      "frame_ids": [
+        134250,
+        156750,
+        179250,
+        201750
+      ],
+      "frame_paths": [
+        "media/keyframes/000134250.jpg",
+        "media/keyframes/000156750.jpg",
+        "media/keyframes/000179250.jpg",
+        "media/keyframes/000201750.jpg"
+      ],
+      "quality_flags": [
+        "asr_needs_review"
+      ],
+      "uncertainties": [
+        "转写中“岳丰牌”“逆纹牌”均为月份牌的同音转写错误，部分沪语内容转写存在偏差"
+      ],
+      "confirmed_normalizations": [
+        {
+          "from": "岳丰牌",
+          "to": "月份牌"
+        },
+        {
+          "from": "逆纹牌",
+          "to": "月份牌"
+        }
+      ],
+      "review_status": "needs_review"
+    },
+    {
+      "evidence_id": "ev_SHIH_0006_0215000_0350000",
+      "source_evidence_local_id": "e003",
+      "video_id": "SHIH_0006",
+      "start_ms": 215000,
+      "end_ms": 350000,
+      "transcript_raw": "所谓月份牌是指上海开埠后随商品赠送的广告画，形式借鉴民间年画配有月历节气的样式，融入商品广告。题材包括传统神话故事、民间故事，如西厢记、梁山伯与祝英台、哪吒闹海、牛郎织女等老百姓喜闻乐见的内容，还有时尚美女类题材，要求印刷精美、画面鲜亮，早期上下有铜片方便悬挂、可卷起，大小最初较小，后来发展到晚报、解放日报开张大小。",
+      "transcript_reviewed": null,
+      "visual_description_raw": "展示不同题材、不同尺寸的月份牌年画藏品",
+      "visual_description_reviewed": null,
+      "speaker_role": "包于飞、金韫冰（金雪尘之子）",
+      "entities_candidate": {
+        "projects": [
+          "月份牌年画"
+        ],
+        "people": [
+          "金韫冰"
+        ],
+        "places": [
+          "上海"
+        ],
+        "materials": [],
+        "tools": [
+          "铜片"
+        ],
+        "techniques": [],
+        "artifacts": [
+          "西厢记题材月份牌",
+          "梁山伯与祝英台题材月份牌",
+          "哪吒闹海题材月份牌",
+          "牛郎织女题材月份牌",
+          "时尚美女题材月份牌"
+        ]
+      },
+      "frame_ids": [
+        231875,
+        265625,
+        299375,
+        333125
+      ],
+      "frame_paths": [
+        "media/keyframes/000231875.jpg",
+        "media/keyframes/000265625.jpg",
+        "media/keyframes/000299375.jpg",
+        "media/keyframes/000333125.jpg"
+      ],
+      "quality_flags": [
+        "asr_needs_review",
+        "person_name_unverified"
+      ],
+      "uncertainties": [
+        "转写中“月份排”为月份牌的同音转写错误"
+      ],
+      "confirmed_normalizations": [
+        {
+          "from": "月份排",
+          "to": "月份牌"
+        }
+      ],
+      "review_status": "needs_review"
+    },
+    {
+      "evidence_id": "ev_SHIH_0006_0353000_0423000",
+      "source_evidence_local_id": "e004",
+      "video_id": "SHIH_0006",
+      "start_ms": 353000,
+      "end_ms": 423000,
+      "transcript_raw": "画家郑曼陀原先在照相馆工作，后来发现在炭精粉基础上罩薄薄的水彩颜色会有特殊效果，中国画以线条为主不讲明暗立体，炭精粉画可以画出明暗立体效果，加上水彩后比国画更立体生动、细腻，郑曼陀是最先发明这种形式的。炭精粉实际不是纯黑，有点发紫，暗的地方炭粉稍深，最后加好水彩后看不到底层炭粉的痕迹。",
+      "transcript_reviewed": null,
+      "visual_description_raw": "展示郑曼陀肖像、其创作的月份牌作品，炭精粉材料展示",
+      "visual_description_reviewed": null,
+      "speaker_role": "包于飞、金培根（金梅生之子）",
+      "entities_candidate": {
+        "projects": [
+          "月份牌年画"
+        ],
+        "people": [
+          "郑曼陀",
+          "金培根"
+        ],
+        "places": [],
+        "materials": [
+          "炭精粉",
+          "水彩颜料"
+        ],
+        "tools": [],
+        "techniques": [
+          "擦笔水彩年画技法"
+        ],
+        "artifacts": [
+          "郑曼陀创作的月份牌作品"
+        ]
+      },
+      "frame_ids": [
+        361750,
+        379250,
+        396750,
+        414250
+      ],
+      "frame_paths": [
+        "media/keyframes/000361750.jpg",
+        "media/keyframes/000379250.jpg",
+        "media/keyframes/000396750.jpg",
+        "media/keyframes/000414250.jpg"
+      ],
+      "quality_flags": [
+        "asr_needs_review",
+        "person_name_unverified"
+      ],
+      "uncertainties": [
+        "转写中“碳晶粉”“钛金粉”“木苔粉”“紫菜画”分别为炭精粉、水彩画的同音转写错误"
+      ],
+      "confirmed_normalizations": [
+        {
+          "from": "碳晶粉",
+          "to": "炭精粉"
+        },
+        {
+          "from": "钛金粉",
+          "to": "炭精粉"
+        },
+        {
+          "from": "木苔粉",
+          "to": "炭精粉"
+        },
+        {
+          "from": "紫菜画",
+          "to": "水彩画"
+        }
+      ],
+      "review_status": "needs_review"
+    },
+    {
+      "evidence_id": "ev_SHIH_0006_0429000_0680000",
+      "source_evidence_local_id": "e005",
+      "video_id": "SHIH_0006",
+      "start_ms": 429000,
+      "end_ms": 680000,
+      "transcript_raw": "把月份牌做到顶峰、影响最深远的是杭穉英的樨英画室。杭穉英1901年出生于浙江海宁，自幼爱好绘画，随父来沪进入商务印书馆图画部学画，三年期满成绩优秀，20世纪20年代初自立门户，成立樨英画室，从事包装、商标设计和广告业务，月份牌设计是主要业务之一。金雪尘1904年出生于上海嘉定，考入商务印书馆后，后来杭穉英邀请他加入樨英画室，画室开创时有七八个人，地址位于老闸北山西北路，和吴昌硕故居隔街相望，一直经营到解放后1950年。",
+      "transcript_reviewed": null,
+      "visual_description_raw": "展示杭穉英肖像、樨英画室老照片、金雪尘肖像，金韫冰前往原樨英画室旧址探访",
+      "visual_description_reviewed": null,
+      "speaker_role": "包于飞、金韫冰",
+      "entities_candidate": {
+        "projects": [
+          "月份牌年画",
+          "穉英画室"
+        ],
+        "people": [
+          "杭穉英",
+          "金雪尘"
+        ],
+        "places": [
+          "浙江海宁",
+          "上海商务印书馆",
+          "上海山西北路穉英画室旧址"
+        ],
+        "materials": [],
+        "tools": [],
+        "techniques": [],
+        "artifacts": [
+          "穉英画室创作的月份牌作品"
+        ]
+      },
+      "frame_ids": [
+        460375,
+        523125,
+        585875,
+        648625
+      ],
+      "frame_paths": [
+        "media/keyframes/000460375.jpg",
+        "media/keyframes/000523125.jpg",
+        "media/keyframes/000585875.jpg",
+        "media/keyframes/000648625.jpg"
+      ],
+      "quality_flags": [
+        "asr_needs_review",
+        "person_name_unverified"
+      ],
+      "uncertainties": [
+        "转写中“知音画室”“自营画室”“杭志英”“唐智英”“韩智英”分别为樨英画室、杭穉英的同音转写错误"
+      ],
+      "confirmed_normalizations": [
+        {
+          "from": "杭志英",
+          "to": "杭穉英"
+        },
+        {
+          "from": "唐智英",
+          "to": "杭穉英"
+        },
+        {
+          "from": "韩智英",
+          "to": "杭穉英"
+        },
+        {
+          "from": "樨英画室",
+          "to": "穉英画室"
+        },
+        {
+          "from": "知音画室",
+          "to": "穉英画室"
+        },
+        {
+          "from": "自营画室",
+          "to": "穉英画室"
+        }
+      ],
+      "review_status": "needs_review"
+    },
+    {
+      "evidence_id": "ev_SHIH_0006_0681000_0772000",
+      "source_evidence_local_id": "e006",
+      "video_id": "SHIH_0006",
+      "start_ms": 681000,
+      "end_ms": 772000,
+      "transcript_raw": "典型的月份牌表现手法是西洋擦笔素描加水彩的混合画法：画家确定人物轮廓后，先用扎住大部分笔毫的毛笔锋蘸些许炭精粉，擦出淡淡的体积感，然后罩以透明的水彩色，产生丰润明净的肌肤效果与逼真的衣饰质感。该技法画出来层次多、透明度高、颜色鲜艳，立体效果比单纯水彩更强。",
+      "transcript_reviewed": null,
+      "visual_description_raw": "展示老画家演示擦笔水彩技法的过程，特写月份牌作品的细节纹理",
+      "visual_description_reviewed": null,
+      "speaker_role": "旁白、包于飞、金韫冰",
+      "entities_candidate": {
+        "projects": [
+          "月份牌年画"
+        ],
+        "people": [],
+        "places": [],
+        "materials": [
+          "炭精粉",
+          "水彩颜料"
+        ],
+        "tools": [
+          "扎过的毛笔"
+        ],
+        "techniques": [
+          "擦笔水彩年画技法"
+        ],
+        "artifacts": []
+      },
+      "frame_ids": [
+        692375,
+        715125,
+        737875,
+        760625
+      ],
+      "frame_paths": [
+        "media/keyframes/000692375.jpg",
+        "media/keyframes/000715125.jpg",
+        "media/keyframes/000737875.jpg",
+        "media/keyframes/000760625.jpg"
+      ],
+      "quality_flags": [
+        "asr_needs_review"
+      ],
+      "uncertainties": [
+        "转写中“夕阳擦笔”为西洋擦笔的同音转写错误，“悦风牌”为月份牌的同音转写错误，“潘金粉”为炭精粉的同音转写错误"
+      ],
+      "confirmed_normalizations": [
+        {
+          "from": "悦风牌",
+          "to": "月份牌"
+        },
+        {
+          "from": "潘金粉",
+          "to": "炭精粉"
+        },
+        {
+          "from": "夕阳擦笔",
+          "to": "西洋擦笔"
+        }
+      ],
+      "review_status": "needs_review"
+    },
+    {
+      "evidence_id": "ev_SHIH_0006_0775000_0954000",
+      "source_evidence_local_id": "e007",
+      "video_id": "SHIH_0006",
+      "start_ms": 775000,
+      "end_ms": 954000,
+      "transcript_raw": "樨英画室分工明确，流水作业，勾线、画人物、画背景分开，李慕白专门画人物，金雪尘专门画背景，二人配合默契。杭穉英设计的很多商标沿用至今，如杏花楼月饼盒、雅霜雪花膏、龙虎人丹、冠生园食品商标等。20世纪20年代初到40年代末，署名樨英的月份牌年画流传有1600种之多，杭穉英把月份牌年画推向了炉火纯青的地步，开辟了中国现代平面设计事业。",
+      "transcript_reviewed": null,
+      "visual_description_raw": "展示樨英画室创作的月份牌作品、杭穉英设计的老商标",
+      "visual_description_reviewed": null,
+      "speaker_role": "包于飞、金韫冰",
+      "entities_candidate": {
+        "projects": [
+          "月份牌年画",
+          "穉英画室"
+        ],
+        "people": [
+          "李慕白"
+        ],
+        "places": [],
+        "materials": [],
+        "tools": [],
+        "techniques": [],
+        "artifacts": [
+          "杏花楼月饼盒商标",
+          "雅霜雪花膏商标",
+          "龙虎人丹商标",
+          "冠生园食品商标",
+          "穉英画室月份牌作品"
+        ]
+      },
+      "frame_ids": [
+        797375,
+        842125,
+        886875,
+        931625
+      ],
+      "frame_paths": [
+        "media/keyframes/000797375.jpg",
+        "media/keyframes/000842125.jpg",
+        "media/keyframes/000886875.jpg",
+        "media/keyframes/000931625.jpg"
+      ],
+      "quality_flags": [
+        "asr_needs_review",
+        "person_name_unverified"
+      ],
+      "uncertainties": [
+        "转写中人名、画室名存在多处同音转写错误，“逆纹牌”为月份牌的同音转写错误"
+      ],
+      "confirmed_normalizations": [
+        {
+          "from": "逆纹牌",
+          "to": "月份牌"
+        },
+        {
+          "from": "樨英画室",
+          "to": "穉英画室"
+        }
+      ],
+      "review_status": "needs_review"
+    },
+    {
+      "evidence_id": "ev_SHIH_0006_0978000_1251000",
+      "source_evidence_local_id": "e008",
+      "video_id": "SHIH_0006",
+      "start_ms": 978000,
+      "end_ms": 1251000,
+      "transcript_raw": "月份牌刻画了很多时尚都市时装美女，是当时都市时尚的风向标，杭穉英吸收外国画报的时尚元素，买电影明星照片做参考，给人物画上时尚旗袍，还绘制了高尔夫、泳装、骑马等当时前卫的内容，旗袍的款式变化引领了当时的穿着潮流，月份牌是老上海的名片。阴丹士林布的广告月份牌用了影后陈云裳的形象，实际是参考买的画片创作。",
+      "transcript_reviewed": null,
+      "visual_description_raw": "展示时装美女题材、前卫生活场景题材的月份牌作品",
+      "visual_description_reviewed": null,
+      "speaker_role": "包于飞、金培根",
+      "entities_candidate": {
+        "projects": [
+          "月份牌年画"
+        ],
+        "people": [
+          "陈云裳"
+        ],
+        "places": [],
+        "materials": [],
+        "tools": [],
+        "techniques": [],
+        "artifacts": [
+          "阴丹士林布广告月份牌",
+          "时尚美女题材月份牌"
+        ]
+      },
+      "frame_ids": [
+        1012125,
+        1080375,
+        1148625,
+        1216875
+      ],
+      "frame_paths": [
+        "media/keyframes/001012125.jpg",
+        "media/keyframes/001080375.jpg",
+        "media/keyframes/001148625.jpg",
+        "media/keyframes/001216875.jpg"
+      ],
+      "quality_flags": [
+        "asr_needs_review",
+        "person_name_unverified"
+      ],
+      "uncertainties": [
+        "转写中“岳峰牌”“悦风牌”为月份牌的同音转写错误，“英丹40布”为阴丹士林布的同音转写错误"
+      ],
+      "confirmed_normalizations": [
+        {
+          "from": "悦风牌",
+          "to": "月份牌"
+        },
+        {
+          "from": "岳峰牌",
+          "to": "月份牌"
+        },
+        {
+          "from": "英丹40布",
+          "to": "阴丹士林布"
+        }
+      ],
+      "review_status": "needs_review"
+    },
+    {
+      "evidence_id": "ev_SHIH_0006_1252000_1339000",
+      "source_evidence_local_id": "e009",
+      "video_id": "SHIH_0006",
+      "start_ms": 1252000,
+      "end_ms": 1339000,
+      "transcript_raw": "抗战期间，杭穉英装病婉拒了日本军方的订货，维持了员工和全家40余口人的生计，当时创作了梁红玉抗金、花木兰等题材的月份牌，表明抗战必胜的信心。1947年杭穉英去世后，金雪尘、李慕白依旧维持画室运营，作品仍用樨英画室的名义。",
+      "transcript_reviewed": null,
+      "visual_description_raw": "展示抗战时期历史影像、梁红玉、花木兰题材月份牌作品",
+      "visual_description_reviewed": null,
+      "speaker_role": "旁白、包于飞、金韫冰",
+      "entities_candidate": {
+        "projects": [
+          "月份牌年画",
+          "穉英画室"
+        ],
+        "people": [
+          "杭穉英"
+        ],
+        "places": [],
+        "materials": [],
+        "tools": [],
+        "techniques": [],
+        "artifacts": [
+          "梁红玉抗金题材月份牌",
+          "花木兰题材月份牌"
+        ]
+      },
+      "frame_ids": [
+        1262875,
+        1284625,
+        1306375,
+        1328125
+      ],
+      "frame_paths": [
+        "media/keyframes/001262875.jpg",
+        "media/keyframes/001284625.jpg",
+        "media/keyframes/001306375.jpg",
+        "media/keyframes/001328125.jpg"
+      ],
+      "quality_flags": [
+        "asr_needs_review",
+        "person_name_unverified"
+      ],
+      "uncertainties": [
+        "转写中人名存在同音转写错误"
+      ],
+      "confirmed_normalizations": [
+        {
+          "from": "樨英画室",
+          "to": "穉英画室"
+        }
+      ],
+      "review_status": "needs_review"
+    },
+    {
+      "evidence_id": "ev_SHIH_0006_1354000_1412000",
+      "source_evidence_local_id": "e010",
+      "video_id": "SHIH_0006",
+      "start_ms": 1354000,
+      "end_ms": 1412000,
+      "transcript_raw": "月份牌曾经风靡上海乃至全国，犹如一面镜子，映射出近百年社会的风云变幻和民众的理想生活，对研究中国的近现代史、绘画史、商业史、广告史等具有不可替代的史料价值，是我国最早出现的广告画。",
+      "transcript_reviewed": null,
+      "visual_description_raw": "展示不同时期的月份牌作品合集",
+      "visual_description_reviewed": null,
+      "speaker_role": "旁白、包于飞",
+      "entities_candidate": {
+        "projects": [
+          "月份牌年画"
+        ],
+        "people": [],
+        "places": [
+          "上海"
+        ],
+        "materials": [],
+        "tools": [],
+        "techniques": [],
+        "artifacts": []
+      },
+      "frame_ids": [
+        1365600,
+        1383000,
+        1400400
+      ],
+      "frame_paths": [
+        "media/keyframes/001365600.jpg",
+        "media/keyframes/001383000.jpg",
+        "media/keyframes/001400400.jpg"
+      ],
+      "quality_flags": [],
+      "uncertainties": [],
+      "confirmed_normalizations": [],
+      "review_status": "auto_generated"
+    },
+    {
+      "evidence_id": "ev_SHIH_0006_1416000_1590000",
+      "source_evidence_local_id": "e011",
+      "video_id": "SHIH_0006",
+      "start_ms": 1416000,
+      "end_ms": 1590000,
+      "transcript_raw": "新中国成立后，月份牌年画演变成为兴旺30年的中国新年画，老一辈月份牌画家用擦笔水彩技法创作了大量优秀新年画作品，题材转向合作社、人民公社、工农兵等新时代内容，技法传播到全国各地。上海人民美术出版社吸收了李慕白、金雪尘、金梅生、谢之光等老画家，培养了第二批年画传人，金梅生之子金培根是第二代传人代表。",
+      "transcript_reviewed": null,
+      "visual_description_raw": "展示新中国成立后的新年画作品，上海人民美术出版社相关影像，老画家带徒的老照片",
+      "visual_description_reviewed": null,
+      "speaker_role": "旁白、包于飞、金培根、金韫冰",
+      "entities_candidate": {
+        "projects": [
+          "新年画",
+          "擦笔水彩年画技法"
+        ],
+        "people": [
+          "金梅生",
+          "谢之光",
+          "金培根"
+        ],
+        "places": [
+          "上海人民美术出版社"
+        ],
+        "materials": [],
+        "tools": [],
+        "techniques": [
+          "擦笔水彩年画技法"
+        ],
+        "artifacts": [
+          "新中国新年画作品"
+        ]
+      },
+      "frame_ids": [
+        1437750,
+        1481250,
+        1524750,
+        1568250
+      ],
+      "frame_paths": [
+        "media/keyframes/001437750.jpg",
+        "media/keyframes/001481250.jpg",
+        "media/keyframes/001524750.jpg",
+        "media/keyframes/001568250.jpg"
+      ],
+      "quality_flags": [
+        "asr_needs_review",
+        "person_name_unverified"
+      ],
+      "uncertainties": [
+        "转写中“玉文牌”为月份牌的同音转写错误"
+      ],
+      "confirmed_normalizations": [
+        {
+          "from": "玉文牌",
+          "to": "月份牌"
+        }
+      ],
+      "review_status": "needs_review"
+    },
+    {
+      "evidence_id": "ev_SHIH_0006_1594000_1776000",
+      "source_evidence_local_id": "e012",
+      "video_id": "SHIH_0006",
+      "start_ms": 1594000,
+      "end_ms": 1776000,
+      "transcript_raw": "擦笔水彩年画技法2009年被授予第二批上海市非物质文化遗产名录项目，樨英画室少主人杭鸣时成为该技法最年长的继承人。擦笔水彩年画技法作品内容丰富、数量多、流传广，有独特的审美价值，现在仍用该技法创作年画，不再做商业广告，转向宣传功能。2015年《百年风华上海月份牌100年》首发仪式在上海举行，月份牌艺术重新回到大众视野。",
+      "transcript_reviewed": null,
+      "visual_description_raw": "展示当代画家使用擦笔水彩技法创作的场景，非遗相关授牌影像，《百年风华上海月份牌100年》首发仪式影像",
+      "visual_description_reviewed": null,
+      "speaker_role": "旁白、金韫冰、包于飞",
+      "entities_candidate": {
+        "projects": [
+          "上海市非物质文化遗产擦笔水彩年画技法"
+        ],
+        "people": [
+          "杭鸣时"
+        ],
+        "places": [
+          "上海"
+        ],
+        "materials": [],
+        "tools": [],
+        "techniques": [
+          "擦笔水彩年画技法"
+        ],
+        "artifacts": [
+          "《百年风华上海月份牌100年》"
+        ]
+      },
+      "frame_ids": [
+        1616750,
+        1662250,
+        1707750,
+        1753250
+      ],
+      "frame_paths": [
+        "media/keyframes/001616750.jpg",
+        "media/keyframes/001662250.jpg",
+        "media/keyframes/001707750.jpg",
+        "media/keyframes/001753250.jpg"
+      ],
+      "quality_flags": [
+        "asr_needs_review",
+        "person_name_unverified"
+      ],
+      "uncertainties": [
+        "转写中“岳粪牌”为月份牌的同音转写错误"
+      ],
+      "confirmed_normalizations": [
+        {
+          "from": "岳粪牌",
+          "to": "月份牌"
+        },
+        {
+          "from": "樨英画室",
+          "to": "穉英画室"
+        }
+      ],
+      "review_status": "needs_review"
+    }
+  ],
+  "claims": [
+    {
+      "claim_id": "cl_SHIH_0006_0001",
+      "video_id": "SHIH_0006",
+      "subject": null,
+      "predicate": null,
+      "object": null,
+      "statement": "月份牌年画起源于民国初年的上海，是外国商人为推销商品，结合中西历法与中国传统年画题材创作的广告宣传品",
+      "evidence_ids": [
+        "ev_SHIH_0006_0123000_0213000"
+      ],
+      "confidence_candidate": null,
+      "quality_flags": [
+        "asr_needs_review"
+      ],
+      "uncertainties": [
+        "转写存在同音错误，起源时间需进一步核实"
+      ],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "claim_id": "cl_SHIH_0006_0002",
+      "video_id": "SHIH_0006",
+      "subject": null,
+      "predicate": null,
+      "object": null,
+      "statement": "郑曼陀是擦笔水彩年画技法的首创者，该技法以炭精粉擦出明暗体积感后罩透明水彩，呈现出比传统国画更立体生动的效果",
+      "evidence_ids": [
+        "ev_SHIH_0006_0353000_0423000"
+      ],
+      "confidence_candidate": null,
+      "quality_flags": [
+        "asr_needs_review"
+      ],
+      "uncertainties": [
+        "技法相关材料、步骤的转写存在同音错误，需核实"
+      ],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "claim_id": "cl_SHIH_0006_0003",
+      "video_id": "SHIH_0006",
+      "subject": null,
+      "predicate": null,
+      "object": null,
+      "statement": "杭穉英创办的穉英画室是月份牌年画鼎盛时期的代表机构，20世纪20-40年代累计创作流传的月份牌作品达1600余种，杭穉英还设计了多个沿用至今的知名商品商标",
+      "evidence_ids": [
+        "ev_SHIH_0006_0429000_0680000",
+        "ev_SHIH_0006_0775000_0954000"
+      ],
+      "confidence_candidate": null,
+      "quality_flags": [
+        "asr_needs_review",
+        "person_name_unverified"
+      ],
+      "uncertainties": [
+        "人名、机构名存在多处同音转写错误，作品数量需核实"
+      ],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "claim_id": "cl_SHIH_0006_0004",
+      "video_id": "SHIH_0006",
+      "subject": null,
+      "predicate": null,
+      "object": null,
+      "statement": "擦笔水彩年画技法于2009年被列入第二批上海市非物质文化遗产名录，杭鸣时为该技法的代表性传承人",
+      "evidence_ids": [
+        "ev_SHIH_0006_1594000_1776000"
+      ],
+      "confidence_candidate": null,
+      "quality_flags": [
+        "asr_needs_review",
+        "person_name_unverified"
+      ],
+      "uncertainties": [
+        "传承人姓名转写存在同音误差，需核实"
+      ],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "claim_id": "cl_SHIH_0006_0005",
+      "video_id": "SHIH_0006",
+      "subject": null,
+      "predicate": null,
+      "object": null,
+      "statement": "抗战时期杭穉英拒绝了日本军方的作画要求，保持了民族气节，同期他创作了梁红玉、花木兰等题材的月份牌传递抗战必胜的信念",
+      "evidence_ids": [
+        "ev_SHIH_0006_1252000_1339000"
+      ],
+      "confidence_candidate": null,
+      "quality_flags": [
+        "asr_needs_review",
+        "person_name_unverified"
+      ],
+      "uncertainties": [
+        "人名存在同音转写错误，史实需核实"
+      ],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "claim_id": "cl_SHIH_0006_0006",
+      "video_id": "SHIH_0006",
+      "subject": null,
+      "predicate": null,
+      "object": null,
+      "statement": "月份牌年画是近代上海都市时尚的风向标，其绘制的服装款式、生活场景引领了当时的社会潮流，同时也是研究中国近现代史、商业史、广告史、绘画史的重要史料",
+      "evidence_ids": [
+        "ev_SHIH_0006_0978000_1251000",
+        "ev_SHIH_0006_1354000_1412000"
+      ],
+      "confidence_candidate": null,
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "claim_id": "cl_SHIH_0006_0007",
+      "video_id": "SHIH_0006",
+      "subject": null,
+      "predicate": null,
+      "object": null,
+      "statement": "新中国成立后月份牌年画转型为新年画，题材转向反映新时代内容，擦笔水彩技法得到传承推广，传播到全国各地",
+      "evidence_ids": [
+        "ev_SHIH_0006_1416000_1590000"
+      ],
+      "confidence_candidate": null,
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    }
+  ],
+  "process_steps": [
+    {
+      "step_id": "step_SHIH_0006_001",
+      "video_id": "SHIH_0006",
+      "order_candidate": 1,
+      "order_verified": null,
+      "name": "擦笔水彩年画技法第一步",
+      "materials": [
+        "水彩颜料",
+        "炭精粉"
+      ],
+      "tools": [
+        "扎过的毛笔"
+      ],
+      "action": "确定画面人物轮廓",
+      "result": null,
+      "interaction_mapping": null,
+      "evidence_ids": [
+        "ev_SHIH_0006_0681000_0772000"
+      ],
+      "quality_flags": [
+        "asr_needs_review"
+      ],
+      "uncertainties": [
+        "技法步骤转写存在同音误差，需核实"
+      ],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "step_id": "step_SHIH_0006_002",
+      "video_id": "SHIH_0006",
+      "order_candidate": 2,
+      "order_verified": null,
+      "name": "擦笔水彩年画技法第二步",
+      "materials": [
+        "水彩颜料",
+        "炭精粉"
+      ],
+      "tools": [
+        "扎过的毛笔"
+      ],
+      "action": "用扎住大部分笔毫的毛笔蘸炭精粉，擦出画面暗部、阴影，形成淡淡的体积感",
+      "result": null,
+      "interaction_mapping": null,
+      "evidence_ids": [
+        "ev_SHIH_0006_0353000_0423000",
+        "ev_SHIH_0006_0681000_0772000"
+      ],
+      "quality_flags": [
+        "asr_needs_review",
+        "tool_uncertain"
+      ],
+      "uncertainties": [
+        "材料、工具名称存在同音转写错误，需核实"
+      ],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    },
+    {
+      "step_id": "step_SHIH_0006_003",
+      "video_id": "SHIH_0006",
+      "order_candidate": 3,
+      "order_verified": null,
+      "name": "擦笔水彩年画技法第三步",
+      "materials": [
+        "水彩颜料",
+        "炭精粉"
+      ],
+      "tools": [
+        "扎过的毛笔"
+      ],
+      "action": "在擦好明暗的画面基础上罩透明水彩色，完成绘制",
+      "result": null,
+      "interaction_mapping": null,
+      "evidence_ids": [
+        "ev_SHIH_0006_0353000_0423000",
+        "ev_SHIH_0006_0681000_0772000"
+      ],
+      "quality_flags": [],
+      "uncertainties": [],
+      "review_status": "needs_review",
+      "reviewer": null,
+      "reviewed_at": null
+    }
+  ],
+  "warnings": [
+    "语音转写存在大量同音错误，包括人名（杭穉英被转写为杭志英/唐智英/韩智英等，炭精粉被转写为碳晶粉/钛金粉/木苔粉/潘金粉等）、项目名（月份牌被转写为月份排/岳丰牌/悦风牌/岳粪牌等）、物品名（阴丹士林布被转写为英丹40布等）",
+    "部分沪语内容转写不准确，存在语义不通的情况",
+    "部分人名、机构名存在同音字混淆情况，需进一步核实确认",
+    "火山引擎 Vid、RunId 和播放地址未包含在输出文件中，迁移后需在 manifest.json 补录。",
+    "所有知识主张和工艺步骤均为模型候选，正式发布前必须人工审核。",
+    "部分证据超过60秒；原输出没有词级时间码，因此未做可能失真的自动拆分。"
+  ],
+  "generated_at": "2026-07-27T19:28:19.502085+08:00"
+}

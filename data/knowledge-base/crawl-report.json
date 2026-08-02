@@ -1,0 +1,245 @@
+{
+  "generated_at": "2026-07-28T15:10:30.232Z",
+  "results": [
+    {
+      "source_id": "src_ihchina_jiading_bamboo",
+      "status": "ok",
+      "text_length": 3310,
+      "sha256": "9282ed3c57e04d3cb508559e89488a3e184acc6fc9781d35439fe7119ba5ba53"
+    },
+    {
+      "source_id": "src_shgov_jiading_profile",
+      "status": "ok",
+      "text_length": 33864,
+      "sha256": "8c9d9003b2e29f985ecb51f5004165e8b98cb9601c8eae5956c98df51b0111e4"
+    },
+    {
+      "source_id": "src_jiading_culture_plan_2021_2025",
+      "status": "ok",
+      "text_length": 14449,
+      "sha256": "17ef32bd6b0ee866bd81cf77cf1523c35664c1614a7db706eae43724cad6316d"
+    },
+    {
+      "source_id": "src_jiading_ich_design_exhibition_2026",
+      "status": "ok",
+      "text_length": 1268,
+      "sha256": "394f95e13c76bb36a5b6bcc141c790a7d4d84740761c6ef132812f56c34d5505"
+    },
+    {
+      "source_id": "src_ihchina_shanghai_papercut",
+      "status": "ok",
+      "text_length": 5492,
+      "sha256": "563612b8ef40e0afa9c8de323fd4b52435537502bae0d0b7da0279084aa1db4e"
+    },
+    {
+      "source_id": "src_fengxian_nanqiao_intro",
+      "status": "ok",
+      "text_length": 3698,
+      "sha256": "9d01dc2a92340509325dcdea6e75ced7f8f8c971a370beba20e0b88ae06b4fcc"
+    },
+    {
+      "source_id": "src_fengxian_nanqiao_school",
+      "status": "ok",
+      "text_length": 1387,
+      "sha256": "7c3282335e2389044abd4660774cacfeb99547bb9a530de4b532949515c66961"
+    },
+    {
+      "source_id": "src_fengxian_nanqiao_exhibition",
+      "status": "ok",
+      "text_length": 1090,
+      "sha256": "194d12434de35135e3cac95e6daa3a8c961f4a6cad399b7e0603f5e2a416193a"
+    },
+    {
+      "source_id": "src_fengxian_nanqiao_marriage_policy",
+      "status": "ok",
+      "text_length": 3023,
+      "sha256": "df88ca1d8c71232aae65ff05166b516707d26c50b67966f79f514cc10dbf6ea4"
+    },
+    {
+      "source_id": "src_fengxian_nanqiao_zodiac_contest",
+      "status": "ok",
+      "text_length": 755,
+      "sha256": "31ac81ab571a50dc289a3b24138030ffd3a4ac0afdd5d2912f88c725c4fb7abd"
+    },
+    {
+      "source_id": "src_fengxian_ich_catalog_2026",
+      "status": "ok",
+      "text_length": 4936,
+      "sha256": "36ad71b9000d6918e4dcea2fdee00c13eddb1afe17422e228876094e5834a83e"
+    },
+    {
+      "source_id": "src_sh_agri_textiles",
+      "status": "ok",
+      "text_length": 5486,
+      "sha256": "c894dac30bbada2b978dcf599ff833a839f2b9c04f41de6bad0a18d111de8115"
+    },
+    {
+      "source_id": "src_sh_culture_yaobanbu_innovation",
+      "status": "ok",
+      "text_length": 2715,
+      "sha256": "655bfdc48e1dd179d650d498bc1112670d43dc4dbb0a64bf48f6e108e4122b93"
+    },
+    {
+      "source_id": "src_sh_culture_protection_units_2020",
+      "status": "ok",
+      "text_length": 728,
+      "sha256": "5469751d51197d64f0fd9643926280ad22a1f32b7e51480c310df381cce4b958"
+    },
+    {
+      "source_id": "src_sh_sasac_chongming_cloth",
+      "status": "ok",
+      "text_length": 1435,
+      "sha256": "5f4f5e6c86643a3a5b6c616d3c8fe510839a7f0319a2e40e94a04b9e2066b3bb"
+    },
+    {
+      "source_id": "src_sh_ethnic_chongming_cloth",
+      "status": "ok",
+      "text_length": 1972,
+      "sha256": "2d779621acd561e6af53b1324a811dfa48be54cc5b71b3e7305e48054f498526"
+    },
+    {
+      "source_id": "src_sh_culture_calendar_poster",
+      "status": "ok",
+      "text_length": 972,
+      "sha256": "abbe4a18bba4371e7a5daa2f6080020bc27383233831d1127329eb02affd5075"
+    },
+    {
+      "source_id": "src_ihchina_new_year_pictures",
+      "status": "ok",
+      "text_length": 7861,
+      "sha256": "878c0961eca2efd6f6e15f0de50b7f2082854809a18f8296b2097486edcfc549"
+    },
+    {
+      "source_id": "src_sh_civil_hang_zhiying",
+      "status": "ok",
+      "text_length": 1897,
+      "sha256": "3a69f1776030b28afe988c4d48c8b90554e8e3c03a5b9f7e47f1921c3b7fa9e7"
+    },
+    {
+      "source_id": "src_changning_calendar_poster_exhibition",
+      "status": "ok",
+      "text_length": 1374,
+      "sha256": "d75ddad46feaae4949571e0865dcc61ea37a10222a76a0c216e8d2e8fcbe09d6"
+    },
+    {
+      "source_id": "src_yangpu_calendar_poster_museum",
+      "status": "ok",
+      "text_length": 990,
+      "sha256": "92853b035685420486be189a14e690b8c6d609dd4232f3f14ab1f37ea34ad2dc"
+    },
+    {
+      "source_id": "src_neac_new_year_picture_history",
+      "status": "ok",
+      "text_length": 9154,
+      "sha256": "0703668c8b9f3c4a15dcb7509ec41c6ee72b3edbdc1bbbde3c98e48517e44498"
+    },
+    {
+      "source_id": "src_shgov_minhang_profile",
+      "status": "ok",
+      "text_length": 6008,
+      "sha256": "c0f94df8c537e82235e485235f984f5232c3f9f2b2dd63b7e82c0c04542770d6"
+    },
+    {
+      "source_id": "src_sh_culture_qibao_route",
+      "status": "ok",
+      "text_length": 11991,
+      "sha256": "9d9ee6a8dd2e66ae0330e9544a9db58d80ca7b61c3b72e8a19534995cc76334e"
+    },
+    {
+      "source_id": "src_sh_civil_qibao_inheritance",
+      "status": "ok",
+      "text_length": 1904,
+      "sha256": "2e0e639e98320b3419a521fab93808c672f9ff64da9094f9832c02f1b5803a0c"
+    },
+    {
+      "source_id": "src_sh_culture_qibao_inheritor_2025",
+      "status": "ok",
+      "text_length": 1196,
+      "sha256": "4dfeaecf4dac69b17a5b17ada18cf913e5f9f140478bb8756d16a3bde1d8e65c"
+    },
+    {
+      "source_id": "src_shgov_songjiang_shadow_puppetry",
+      "status": "ok",
+      "text_length": 7978,
+      "sha256": "5a9b8c185ea402fa35ceac5a59e26f618a078d37b45a069b5ac81bc440898e9a"
+    },
+    {
+      "source_id": "src_sh_tourism_ivory_weaving",
+      "status": "ok",
+      "text_length": 1671,
+      "sha256": "a53852482b3422bceac955d04a6540cba0c64e9872169ad4ae5a7f4eabb034d4"
+    },
+    {
+      "source_id": "src_ihchina_ivory_weaving_demo",
+      "status": "ok",
+      "text_length": 5934,
+      "sha256": "db3bff8f4ae36f6a696fbc7e9f9ac59a7b11e4a0f3a669cd4b8fe6ff00e589d6"
+    },
+    {
+      "source_id": "src_dpm_woven_ivory_mat",
+      "status": "ok",
+      "text_length": 2434,
+      "sha256": "ecc21e8a51ad3cd33b66b0bfce6b4e0fa5dd1880ea19396ecf81c47c47597beb"
+    },
+    {
+      "source_id": "src_dpm_woven_ivory_fan",
+      "status": "ok",
+      "text_length": 3034,
+      "sha256": "a027cda50a16e0776c2301c8d1a40e3c3f36434d01a152209c3ec0f83cf41ac9"
+    },
+    {
+      "source_id": "src_gov_ivory_trade_ban",
+      "status": "ok",
+      "text_length": 1433,
+      "sha256": "d0db6d6bd8de2f9f956fab01418de048b177f4808dfdded7b27addaaffc2c71d"
+    },
+    {
+      "source_id": "src_mct_ich_sustainability_speech",
+      "status": "ok",
+      "text_length": 11795,
+      "sha256": "85d003c0e4b37bf182e83ea2cf587040a30711cb7253572ac5a3aca2afc833b8"
+    },
+    {
+      "source_id": "src_sh_tourism_mao_kite",
+      "status": "ok",
+      "text_length": 2350,
+      "sha256": "90793d6356ce93f13ac552492d38abb513c713256ecdf21a0b186047390ec5ac"
+    },
+    {
+      "source_id": "src_shgov_fengxian_mao_kite",
+      "status": "ok",
+      "text_length": 4969,
+      "sha256": "f948aed0ee26d54d9bd14c0109f0da12ee3d2fa2f07736308766ab6abed4c8c9"
+    },
+    {
+      "source_id": "src_fengxian_mao_kite_community",
+      "status": "ok",
+      "text_length": 672,
+      "sha256": "c738993ac3a50e3b69a70c1a6848360ff6a1835f7bdc8aded48494ff397e2430"
+    },
+    {
+      "source_id": "src_fengxian_mao_kite_history",
+      "status": "ok",
+      "text_length": 421,
+      "sha256": "e02f5e4ec4d494330372c226d63c64eb299fbb6dbf50d55f860e95c685cc220c"
+    },
+    {
+      "source_id": "src_fengxian_mao_rabbit_lantern",
+      "status": "ok",
+      "text_length": 907,
+      "sha256": "994095f4148983bd9b06205e98ec0d0f925083423179407b29fc4dcd9352d4bf"
+    },
+    {
+      "source_id": "src_shgov_chongming_profile",
+      "status": "ok",
+      "text_length": 22544,
+      "sha256": "046c74cc7535a8b1ee2c3b524ea73a3247f062cbdf0d44fd5d662abd7fb4d40c"
+    },
+    {
+      "source_id": "src_shgov_seventh_ich_catalog",
+      "status": "ok",
+      "text_length": 2573,
+      "sha256": "f3a2f6fc9bfe5774e4c341cecdf8db8908462c9f8143ebc84795fe1d6f682dbd"
+    }
+  ]
+}

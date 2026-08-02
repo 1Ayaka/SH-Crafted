@@ -28,7 +28,35 @@
       "title": "象牙篾丝编织",
       "directory": "SHIH_0004_ivory_bamboo_filament_weaving",
       "manifest": "manifest.json"
+    },
+    {
+      "package_id": "agent_kb_SHIH_0005",
+      "video_id": "SHIH_0005",
+      "title": "崇明土布纺织技艺",
+      "directory": "SHIH_0005_chongming_handwoven_cloth",
+      "manifest": "manifest.json"
+    },
+    {
+      "package_id": "agent_kb_SHIH_0006",
+      "video_id": "SHIH_0006",
+      "title": "上海月份牌年画",
+      "directory": "SHIH_0006_shanghai_calendar_poster_art",
+      "manifest": "manifest.json"
+    },
+    {
+      "package_id": "agent_kb_SHIH_0007",
+      "video_id": "SHIH_0007",
+      "title": "七宝皮影戏",
+      "directory": "SHIH_0007_qibao_shadow_puppetry",
+      "manifest": "manifest.json"
+    },
+    {
+      "package_id": "agent_kb_SHIH_0008",
+      "video_id": "SHIH_0008",
+      "title": "毛氏风筝",
+      "directory": "SHIH_0008_mao_family_kite_making",
+      "manifest": "manifest.json"
     }
   ],
-  "generated_at": "2026-07-17T12:37:50.571329+08:00"
+  "generated_at": "2026-07-27T19:29:28.725029+08:00"
 }

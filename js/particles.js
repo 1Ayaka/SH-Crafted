@@ -20,6 +20,7 @@ export class InkField {
     this.targets = [];
     this.raf = 0;
     this.running = false;
+    this.disposed = false;
     this.t = 0;
     this._resize = this.resize.bind(this);
     this._tick = this.tick.bind(this);
@@ -41,6 +42,7 @@ export class InkField {
 
   // points: [{x, y, w?}] 画布坐标；w 为可选权重（粒子大小）
   setTargets(points, { scatterFirst = false } = {}) {
+    if (this.disposed) return;
     this.targets = points;
     const n = Math.min(this.max, Math.max(points.length, 60));
     while (this.particles.length < n) this.particles.push(this._spawn(scatterFirst));
@@ -58,6 +60,7 @@ export class InkField {
   }
 
   scatter() {
+    if (this.disposed) return;
     this.particles.forEach((p) => {
       p.gather = false;
       const a = Math.random() * Math.PI * 2;
@@ -79,7 +82,7 @@ export class InkField {
   }
 
   start() {
-    if (this.running || REDUCED) return;
+    if (this.running || this.disposed || REDUCED) return;
     this.running = true;
     this.raf = requestAnimationFrame(this._tick);
   }
@@ -90,6 +93,8 @@ export class InkField {
   }
 
   destroy() {
+    if (this.disposed) return;
+    this.disposed = true;
     this.stop();
     window.removeEventListener('resize', this._resize);
     document.removeEventListener('visibilitychange', this._vis);

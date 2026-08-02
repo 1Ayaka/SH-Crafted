@@ -7,7 +7,15 @@
   "scripts": {
     "start": "node server.mjs",
     "dev": "node server.mjs",
-    "check": "node --check server.mjs"
+    "check": "node --check server.mjs",
+    "kb:build": "node scripts/build-knowledge-base.mjs",
+    "kb:crawl": "node scripts/crawl-knowledge-sources.mjs",
+    "kb:audit": "node scripts/audit-knowledge-base.mjs",
+    "kb:links": "node scripts/check-knowledge-links.mjs",
+    "kb:test-api": "node scripts/smoke-knowledge-api.mjs",
+    "ui:test": "node scripts/smoke-ui.mjs",
+    "content:seed": "node scripts/content-seed.mjs",
+    "admin:test-ui": "node scripts/smoke-admin-ui.mjs"
   },
   "engines": {
     "node": ">=22.0.0"

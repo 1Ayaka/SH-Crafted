@@ -55,6 +55,16 @@ sudo nano /etc/sh-crafted.env
 
 ```dotenv
 DEEPSEEK_API_KEY=你的密钥
+ADMIN_USERNAME=djt
+ADMIN_PASSWORD=12345689
+CONTENT_STORE_PATH=/var/lib/sh-crafted/content.json
+ADMIN_COOKIE_SECURE=true
+```
+
+为在线编辑内容创建独立持久化目录：
+
+```bash
+sudo install -d -o ubuntu -g ubuntu -m 0750 /var/lib/sh-crafted
 ```
 
 ## 3. 配置 systemd
@@ -143,3 +153,7 @@ ubuntu ALL=NOPASSWD: /usr/bin/systemctl restart sh-crafted, /usr/bin/systemctl i
 ```
 
 此后每次推送 `main` 都会自动 SSH 到服务器并执行 `scripts/deploy.sh`。GitHub 私钥不要复用个人日常 SSH 私钥。
+
+## 7. 站内管理
+
+管理员通过 `https://avonana.site/#/admin/login` 登录，在用户页面原位编辑文字，并在工序管理页调整材料与操作。编辑内容保存在 `/var/lib/sh-crafted/content.json`，不随 Git 更新覆盖。完整使用、协作与备份说明见 [`docs/内容后台使用与部署.md`](docs/内容后台使用与部署.md)。

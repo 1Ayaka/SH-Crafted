@@ -4,6 +4,9 @@
 import { el, catSVG, openEvidenceModal } from './ui.js';
 import { evidenceTimecode } from './data.js';
 
+// 用户提供小蕉头像后，只需把这里改成站内图片路径；空值时保留微信式头像位且不显示破图。
+const JIAO_AVATAR_URL = '';
+
 const panel = {
   open: false,
   craft: null,
@@ -12,7 +15,21 @@ const panel = {
   nodes: {},
   modelStatus: 'unknown',   // unknown | ok | down
   degradedNoted: false,     // 降级提示只显示一次
+  generation: 0,
+  requests: new Set(),
 };
+
+function invalidateRequests() {
+  panel.generation++;
+  for (const controller of panel.requests) controller.abort();
+  panel.requests.clear();
+}
+
+function requestIsCurrent(generation, controller) {
+  return generation === panel.generation
+    && !controller.signal.aborted
+    && Boolean(panel.nodes.log?.isConnected);
+}
 
 function ngrams(text, n = 2) {
   const clean = (text || '').replace(/[\s，。！？、；：""''（）《》·…—,.!?;:()"']/g, '');
@@ -24,7 +41,7 @@ function ngrams(text, n = 2) {
 }
 
 function retrieve(query, craft) {
-  if (!craft) return { claims: [], evidence: [] };
+  if (!craft) return { claims: [], evidence: [], externalFacts: [] };
   const q = ngrams(query);
   const score = (text) => {
     const t = ngrams(text);
@@ -44,14 +61,32 @@ function retrieve(query, craft) {
     .sort((a, b) => b.s - a.s)
     .slice(0, 2)
     .map((x) => x.e);
-  return { claims, evidence };
+  const externalFacts = (craft.externalFacts || [])
+    .map((f) => ({ f, s: score(`${f.topic || ''}${f.statement || ''}${(f.sources || []).map((source) => source.title).join('')}`) }))
+    .filter((x) => x.s >= 2)
+    .sort((a, b) => b.s - a.s || (a.f.authority_tier || 'Z').localeCompare(b.f.authority_tier || 'Z'))
+    .slice(0, 4)
+    .map((x) => x.f);
+  return { claims, evidence, externalFacts };
 }
 
 function addMsg(kind, contentNodes, who) {
   const log = panel.nodes.log;
-  const msg = el('div', { class: `ap-msg ${kind}` }, [
+  if (!log?.isConnected) return null;
+  const messageBody = el('div', { class: 'ap-msg-body' }, [
     el('div', { class: 'who', text: who }),
     el('div', { class: 'bubble' }, contentNodes),
+  ]);
+  const avatar = kind === 'agent'
+    ? el('div', {
+      class: `ap-avatar ap-avatar-jiao${JIAO_AVATAR_URL ? ' has-image' : ''}`,
+      'aria-label': '小蕉头像（图片待补充）',
+      title: '小蕉头像待补充',
+    }, JIAO_AVATAR_URL ? [el('img', { src: JIAO_AVATAR_URL, alt: '' })] : [])
+    : null;
+  const msg = el('div', { class: `ap-msg ${kind}` }, [
+    avatar,
+    messageBody,
   ]);
   log.appendChild(msg);
   log.scrollTop = log.scrollHeight;
@@ -74,6 +109,18 @@ function buildAgentContext(retrieved) {
         timecode: evidenceTimecode(e),
         text: (e.transcript_raw || e.visual_description_raw || '').slice(0, 160),
       })),
+      external_facts: retrieved.externalFacts.slice(0, 4).map((fact) => ({
+        fact_id: fact.fact_id,
+        statement: fact.statement,
+        review_status: fact.review_status,
+        sources: (fact.sources || []).map((source) => ({
+          source_id: source.source_id,
+          title: source.title,
+          publisher: source.publisher,
+          url: source.url,
+          authority_tier: source.authority_tier,
+        })),
+      })),
     } : null,
     current_step: step,
     inventory: panel.context.inventory_states.map((i) => `${i.name}(${i.state})`).join('、'),
@@ -81,9 +128,12 @@ function buildAgentContext(retrieved) {
   };
 }
 
-async function askModel(query, retrieved) {
+async function askModel(query, retrieved, parentSignal) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 20000);
+  const relayAbort = () => ctrl.abort();
+  if (parentSignal?.aborted) relayAbort();
+  else parentSignal?.addEventListener('abort', relayAbort, { once: true });
   try {
     const res = await fetch('/api/agent', {
       method: 'POST',
@@ -97,10 +147,56 @@ async function askModel(query, retrieved) {
     if (!res.ok) throw new Error(`http_${res.status}`);
     const data = await res.json();
     if (!data?.content) throw new Error('empty');
-    return data.content;
+    return data;
   } finally {
     clearTimeout(timer);
+    parentSignal?.removeEventListener('abort', relayAbort);
   }
+}
+
+async function searchKnowledgeBase(query, craftId, signal) {
+  try {
+    const res = await fetch('/api/kb/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, craft_id: craftId || null, limit: 8 }),
+      signal,
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data?.results) ? data.results : [];
+  } catch {
+    return [];
+  }
+}
+
+function appendKnowledgeHits(nodes, craft, hits, title = '统一知识库命中：') {
+  if (!hits?.length) return;
+  const hitNodes = [];
+  for (const hit of hits.slice(0, 3)) {
+    hitNodes.push(el('p', {}, [
+      el('span', { text: `${String(hit.text || '').slice(0, 240)}${String(hit.text || '').length > 240 ? '…' : ''} ` }),
+      hit.authority_tier
+        ? el('span', { class: hit.review_status === 'verified_external' ? 'tag tag-verified' : 'tag tag-review', text: `${hit.authority_tier}级·${hit.review_status === 'verified_external' ? '已核验' : '待审核'}` })
+        : el('span', { class: 'tag tag-review', text: '待审核' }),
+    ]));
+    for (const source of (hit.sources || []).slice(0, 2)) {
+      hitNodes.push(el('div', { class: 'refs' }, [el('a', {
+        class: 'ev-link', href: source.url, target: '_blank', rel: 'noopener noreferrer',
+        text: `${source.publisher} · ${source.title}`,
+      })]));
+    }
+    if (craft && hit.evidence_ids?.length) {
+      hitNodes.push(el('div', { class: 'refs' }, [el('button', {
+        class: 'ev-link', text: '查看纪录片证据',
+        onclick: () => openEvidenceModal(craft, hit.evidence_ids.slice(0, 2), { title: '证据 · 统一知识库检索' }),
+      })]));
+    }
+  }
+  nodes.push(el('details', { class: 'ap-kb-details' }, [
+    el('summary', { text: `${title.replace(/[：:]$/, '')}（${Math.min(hits.length, 3)} 条）` }),
+    el('div', { class: 'ap-kb-content' }, hitNodes),
+  ]));
 }
 
 function refreshNotice() {
@@ -114,14 +210,26 @@ function refreshNotice() {
 }
 
 // 检索式占位应答（降级路径）
-function retrievalAnswer(craft, claims, evidence) {
-  if (!claims.length && !evidence.length) {
+function retrievalAnswer(craft, claims, evidence, externalFacts, knowledgeHits = []) {
+  if (!claims.length && !evidence.length && !externalFacts.length && !knowledgeHits.length) {
     addMsg('agent', [
       el('p', { text: '现有资料无法确认。我只能检索本项目的纪录片转写与自动抽取的知识草稿；你可以换个问法，或到“工序与材料”面板查看结构化步骤。' }),
     ], '小蕉');
     return;
   }
   const nodes = [];
+  for (const fact of externalFacts) {
+    nodes.push(el('p', {}, [
+      el('span', { text: fact.statement + ' ' }),
+      el('span', { class: fact.review_status === 'verified_external' ? 'tag tag-verified' : 'tag tag-review', text: fact.review_status === 'verified_external' ? '外部核验' : '待复核' }),
+    ]));
+    if (fact.sources?.length) {
+      nodes.push(el('div', { class: 'refs' }, fact.sources.slice(0, 2).map((source) => el('a', {
+        class: 'ev-link', href: source.url, target: '_blank', rel: 'noopener noreferrer',
+        text: `${source.publisher} · 查看来源`,
+      }))));
+    }
+  }
   for (const c of claims) {
     nodes.push(el('p', {}, [
       el('span', { text: c.statement + ' ' }),
@@ -148,6 +256,7 @@ function retrievalAnswer(craft, claims, evidence) {
       ]));
     }
   }
+  appendKnowledgeHits(nodes, craft, knowledgeHits);
   nodes.push(el('p', { class: 'small muted', text: '以上为检索式占位应答，内容来自未经人工审核的草稿，请以正式审核结果为准。' }));
   addMsg('agent', nodes, '小蕉');
 }
@@ -201,41 +310,65 @@ async function answer(query) {
   }
 
   // 慢路径：优先 DeepSeek 代理（/api/agent）；不可用则静默降级为检索式占位应答
-  const { claims, evidence } = retrieve(query, craft);
-  if (panel.modelStatus !== 'down') {
-    const thinking = addMsg('agent', [el('p', { class: 'ap-thinking', text: '小蕉正在翻资料…' })], '小蕉');
-    try {
-      const content = await askModel(query, { evidence });
-      thinking.remove();
-      panel.modelStatus = 'ok';
-      refreshNotice();
-      const nodes = content.split(/\n+/).filter((line) => line.trim()).map((line) => el('p', { text: line }));
-      if (evidence.length) {
-        nodes.push(el('p', { class: 'small muted', text: '本回答参考的纪录片片段：' }));
-        for (const ev of evidence.slice(0, 2)) {
-          nodes.push(el('div', { class: 'refs' }, [
-            el('button', {
-              class: 'ev-link',
-              text: `时间码 ${evidenceTimecode(ev)} · 查看片段`,
-              onclick: () => openEvidenceModal(craft, [ev.evidence_id], { title: '证据 · 模型回答引用' }),
-            }),
-          ]));
+  const { claims, evidence, externalFacts } = retrieve(query, craft);
+  const generation = panel.generation;
+  const controller = new AbortController();
+  panel.requests.add(controller);
+  try {
+    const knowledgeHits = await searchKnowledgeBase(query, craft?.craftId, controller.signal);
+    if (!requestIsCurrent(generation, controller)) return;
+    if (panel.modelStatus !== 'down') {
+      const thinking = addMsg('agent', [el('p', { class: 'ap-thinking', text: '小蕉正在翻资料…' })], '小蕉');
+      try {
+        const modelResult = await askModel(query, { evidence, externalFacts }, controller.signal);
+        if (!requestIsCurrent(generation, controller)) return;
+        thinking?.remove();
+        panel.modelStatus = 'ok';
+        refreshNotice();
+        const nodes = modelResult.content.split(/\n+/).filter((line) => line.trim()).map((line) => el('p', { text: line }));
+        if (evidence.length) {
+          nodes.push(el('p', { class: 'small muted', text: '本回答参考的纪录片片段：' }));
+          for (const ev of evidence.slice(0, 2)) {
+            nodes.push(el('div', { class: 'refs' }, [
+              el('button', {
+                class: 'ev-link',
+                text: `时间码 ${evidenceTimecode(ev)} · 查看片段`,
+                onclick: () => openEvidenceModal(craft, [ev.evidence_id], { title: '证据 · 模型回答引用' }),
+              }),
+            ]));
+          }
+        }
+        if (externalFacts.length) {
+          nodes.push(el('p', { class: 'small muted', text: '外部权威资料：' }));
+          for (const fact of externalFacts.slice(0, 2)) {
+            for (const source of (fact.sources || []).slice(0, 1)) {
+              nodes.push(el('div', { class: 'refs' }, [el('a', {
+                class: 'ev-link', href: source.url, target: '_blank', rel: 'noopener noreferrer',
+                text: `${source.publisher} · ${source.title}`,
+              })]));
+            }
+          }
+        }
+        appendKnowledgeHits(nodes, craft, modelResult.knowledge || knowledgeHits, '本次回答的统一知识库依据：');
+        nodes.push(el('p', { class: 'small muted', text: '以上由模型依据待审核资料草稿生成，请以正式审核结果为准。' }));
+        addMsg('agent', nodes, '小蕉');
+        return;
+      } catch {
+        thinking?.remove();
+        if (!requestIsCurrent(generation, controller)) return;
+        panel.modelStatus = 'down';
+        refreshNotice();
+        if (!panel.degradedNoted) {
+          panel.degradedNoted = true;
+          addMsg('agent', [el('p', { class: 'small muted', text: '模型不可用，已切换检索式应答。' })], '小蕉');
         }
       }
-      nodes.push(el('p', { class: 'small muted', text: '以上由模型依据待审核资料草稿生成，请以正式审核结果为准。' }));
-      addMsg('agent', nodes, '小蕉');
-      return;
-    } catch {
-      thinking.remove();
-      panel.modelStatus = 'down';
-      refreshNotice();
-      if (!panel.degradedNoted) {
-        panel.degradedNoted = true;
-        addMsg('agent', [el('p', { class: 'small muted', text: '模型不可用，已切换检索式应答。' })], '小蕉');
-      }
     }
+    if (!requestIsCurrent(generation, controller)) return;
+    retrievalAnswer(craft, claims, evidence, externalFacts, knowledgeHits);
+  } finally {
+    panel.requests.delete(controller);
   }
-  retrievalAnswer(craft, claims, evidence);
 }
 
 function contextBanner() {
@@ -250,6 +383,7 @@ function contextBanner() {
 }
 
 function render() {
+  invalidateRequests();
   const root = document.createElement('div');
   root.innerHTML = '';
   document.querySelector('.agent-fab')?.remove();
@@ -304,11 +438,13 @@ const api = {
     panel.nodes.fab.style.display = '';
   },
   unmount() {
+    invalidateRequests();
     panel.nodes.fab?.remove();
     panel.nodes.panel?.remove();
     panel.nodes = {};
     panel.open = false;
     panel.craft = null;
+    panel.onToggle = null;
     document.body.classList.remove('agent-open');
   },
   open() {
@@ -334,7 +470,10 @@ const api = {
   },
   toggle() { (panel.open ? api.close : api.open)(); },
   isOpen: () => panel.open,
-  setCraft(craft) { panel.craft = craft; },
+  setCraft(craft) {
+    if (panel.craft !== craft) invalidateRequests();
+    panel.craft = craft;
+  },
   setContext(ctx) {
     Object.assign(panel.context, ctx);
     if (panel.open) {

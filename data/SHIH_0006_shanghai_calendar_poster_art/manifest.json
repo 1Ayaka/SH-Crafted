@@ -1,0 +1,147 @@
+{
+  "package_schema_version": "1.0",
+  "package_id": "agent_kb_SHIH_0006",
+  "video": {
+    "video_id": "SHIH_0006",
+    "title": "上海月份牌年画",
+    "slug": "shanghai_calendar_poster_art",
+    "source_filename": "月份牌年画.mp4",
+    "source_size_bytes": 2684559800,
+    "sha256": "c6242654123c21c37ebfec0e9c32fff82c7290cde3debc7616a6d857a2bc9e00",
+    "duration_ms": 1778680,
+    "width": 1920,
+    "height": 1080,
+    "fps": 25.0,
+    "vod_vid": null,
+    "playback_url": null,
+    "rights_status": "pending"
+  },
+  "provider": {
+    "name": "volcengine_vod_long_video_understanding",
+    "run_id": null,
+    "mode": "multimodal",
+    "prompt_version": "ich_multimodal_v1"
+  },
+  "normalization": {
+    "confirmed_terms": [
+      {
+        "from": "月份排",
+        "to": "月份牌"
+      },
+      {
+        "from": "岳丰牌",
+        "to": "月份牌"
+      },
+      {
+        "from": "逆纹牌",
+        "to": "月份牌"
+      },
+      {
+        "from": "悦风牌",
+        "to": "月份牌"
+      },
+      {
+        "from": "岳峰牌",
+        "to": "月份牌"
+      },
+      {
+        "from": "岳粪牌",
+        "to": "月份牌"
+      },
+      {
+        "from": "玉文牌",
+        "to": "月份牌"
+      },
+      {
+        "from": "杭志英",
+        "to": "杭穉英"
+      },
+      {
+        "from": "唐智英",
+        "to": "杭穉英"
+      },
+      {
+        "from": "韩智英",
+        "to": "杭穉英"
+      },
+      {
+        "from": "樨英画室",
+        "to": "穉英画室"
+      },
+      {
+        "from": "稚英画室",
+        "to": "穉英画室"
+      },
+      {
+        "from": "知音画室",
+        "to": "穉英画室"
+      },
+      {
+        "from": "自营画室",
+        "to": "穉英画室"
+      },
+      {
+        "from": "碳晶粉",
+        "to": "炭精粉"
+      },
+      {
+        "from": "钛金粉",
+        "to": "炭精粉"
+      },
+      {
+        "from": "木苔粉",
+        "to": "炭精粉"
+      },
+      {
+        "from": "潘金粉",
+        "to": "炭精粉"
+      },
+      {
+        "from": "紫菜画",
+        "to": "水彩画"
+      },
+      {
+        "from": "夕阳擦笔",
+        "to": "西洋擦笔"
+      },
+      {
+        "from": "英丹40布",
+        "to": "阴丹士林布"
+      },
+      {
+        "from": "鲍鱼飞",
+        "to": "包于飞"
+      }
+    ],
+    "research_sources": [
+      {
+        "title": "维基百科：月份牌",
+        "url": "https://zh.wikipedia.org/wiki/%E6%9C%88%E4%BB%BD%E7%89%8C",
+        "supports": [
+          "月份牌",
+          "杭穉英",
+          "郑曼陀",
+          "金梅生",
+          "金雪尘"
+        ]
+      }
+    ]
+  },
+  "paths": {
+    "knowledge_draft": "knowledge/knowledge_draft.json",
+    "evidence": "knowledge/evidence.jsonl",
+    "claims": "knowledge/claims.jsonl",
+    "process_steps": "knowledge/process_steps.jsonl",
+    "frame_bindings": "media/frame_bindings.json",
+    "keyframes": "media/keyframes",
+    "provider_output": "source/provider_output.json"
+  },
+  "counts": {
+    "evidence": 12,
+    "claims": 7,
+    "process_steps": 3,
+    "keyframes": 46,
+    "verified_claims": 0
+  },
+  "generated_at": "2026-07-27T19:28:19.502085+08:00"
+}

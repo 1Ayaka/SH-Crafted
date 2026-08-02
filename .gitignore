@@ -12,6 +12,7 @@ build/
 *.log
 .cache/
 .tmp/
+.content/
 
 # Editor and operating-system files
 .DS_Store

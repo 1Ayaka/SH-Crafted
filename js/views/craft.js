@@ -2,17 +2,90 @@
 // 状态机：CRAFT_READING → CRAFT_PLAYING → finishing（一键完成作品）→ CRAFT_COMPLETED
 // 规则判定全部来自 process_steps.jsonl（真实数据），失败分级提示，绝不自动完成
 // 本页已接入跨页系统：assets/bg-crafts/<id>/ 分层背景 + 底层环境墨晕 + transitions 转场登记
-// 工作台背景：assets/bg-workbench/（进入工作台时与工艺背景交叉淡融）
-// 模型（config.CRAFT_MODEL_PATHS）：未开始态原料粒子模型；完成态成品居中揭晓（外爆 → 俯冲进场）
+// 工作区桌面：assets/t工作台.png；页面大背景始终沿用当前非遗详情页背景。
+// 模型（config.CRAFT_MODEL_PATHS）：未开始态显示松散细碎的成品预览；完成态用高精度成品揭晓。
 import { el, reviewTag, openEvidenceModal, jiaoToast } from '../ui.js';
 import { InkField, blotTargets, imageTargets, loadImage } from '../particles.js';
-import { getCraft, evidenceTimecode } from '../data.js';
+import { craftAssetUrl, getCraft, evidenceTimecode } from '../data.js';
 import { MATERIAL_STATES, CRAFT_MODEL_PATHS } from '../config.js';
 import { topNav } from './home.js';
 import { agent } from '../agent.js';
 import { createLayerBG } from '../layerbg.js';
 import { createInkBloom } from '../inkbloom.js';
 import { registerPage, unregisterPage, transitionTo, consumeEnter } from '../transitions.js';
+import { isAdmin, saveCraft } from '../admin.js';
+import { mountEditableModule } from '../editable.js';
+import { createWorkbenchSurface } from '../workbench-preview.js';
+
+const OUTPUT_PALETTE = [
+  '#6F8C73', '#A56A4E', '#B48A42', '#5D7F84', '#9C6B76',
+  '#7B8061', '#C47B55', '#6E7890', '#A3815E', '#557866',
+  '#B46C59', '#8B7A9E', '#6B8C9B', '#A27C55', '#7D8D62',
+  '#B77A6A', '#6D8275', '#9A734B', '#657D93', '#9A8662',
+];
+const RAW_RESOURCE_COLOR = '#8B9D83';
+const TOOL_RESOURCE_COLOR = '#747D71';
+
+function materialLevelColor(identity, level) {
+  let hash = 0;
+  for (const char of String(identity)) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return OUTPUT_PALETTE[(hash + Math.max(1, level) * 5) % OUTPUT_PALETTE.length];
+}
+
+const STEP_FOCUS_TERMS = [
+  '挑选', '处理', '晾晒', '风干', '阴干', '制皮', '过稿', '绘刻', '着色', '固色', '组装',
+  '开刃', '勾勒', '粗雕', '精刻', '修光', '编织', '裁剪', '打磨', '上色', '定型', '装裱',
+];
+
+function conciseStepText(step) {
+  const source = String(step.action || step.description || '').replace(/\s+/g, ' ').trim();
+  if (!source) return `完成“${step.displayName}”所需的材料准备与操作。`;
+  if (source.length <= 112) return source;
+  const clipped = source.slice(0, 112);
+  const stop = Math.max(clipped.lastIndexOf('；'), clipped.lastIndexOf('。'), clipped.lastIndexOf('，'));
+  return `${clipped.slice(0, stop > 62 ? stop : 108)}……`;
+}
+
+function highlightedStepText(step) {
+  const text = conciseStepText(step);
+  const rule = step.interactionRule;
+  const terms = [
+    step.displayName,
+    rule?.action?.label,
+    ...(rule?.allowed_resources || []),
+    ...STEP_FOCUS_TERMS.filter((term) => text.includes(term)),
+    ...(text.match(/\d+(?:\s*[-—至]\s*\d+)?(?:\.\d+)?\s*(?:年|月|天|日|毫米|厘米|米|度|类|道|次|层)?/g) || []),
+  ]
+    .filter((term) => term && String(term).length > 1 && text.includes(term))
+    .map(String)
+    .sort((a, b) => b.length - a.length);
+  const uniqueTerms = [...new Set(terms)].slice(0, 8);
+  if (!uniqueTerms.length) return [document.createTextNode(text)];
+  const matcher = new RegExp(`(${uniqueTerms.map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'g');
+  return text.split(matcher).filter(Boolean).map((part) => (
+    uniqueTerms.includes(part) ? el('strong', { text: part }) : document.createTextNode(part)
+  ));
+}
+
+function stepFloatingGuide(step, index, total) {
+  const resources = step.interactionRule?.allowed_resources || [];
+  return el('section', { class: 'wb-step-float', 'aria-label': `当前工序说明：${step.displayName}` }, [
+    el('p', { class: 'wb-step-float-index', text: `工序 ${String(index + 1).padStart(2, '0')} / ${String(total).padStart(2, '0')}` }),
+    el('h3', {}, [el('strong', { text: step.displayName })]),
+    el('p', { class: 'wb-step-float-copy' }, highlightedStepText(step)),
+    resources.length ? el('p', { class: 'wb-step-float-resources' }, [
+      document.createTextNode('本步使用：'),
+      el('strong', { text: resources.slice(0, 5).join('、') }),
+      resources.length > 5 ? document.createTextNode(` 等 ${resources.length} 项`) : null,
+    ]) : el('p', { class: 'wb-step-float-resources', text: '本步无需额外材料或工具' }),
+  ]);
+}
+
+function resourceColor(name) {
+  let hash = 0;
+  for (const char of String(name)) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return OUTPUT_PALETTE[hash % OUTPUT_PALETTE.length];
+}
 
 export async function craftView(root, { id }) {
   const craft = getCraft(id);
@@ -34,6 +107,8 @@ export async function craftView(root, { id }) {
     stepIndex: 0,                // 当前待完成步骤
     resourceStates: new Map(craft.allResources.map((name) => [name, 'raw'])),
     selectedResources: new Set(),
+    materialItems: new Map(),
+    workbenchPhysics: new Map(),
     actionSlot: null,
     failures: 0,                 // 连续失败
     helpRefusedStep: null,
@@ -42,10 +117,12 @@ export async function craftView(root, { id }) {
   const fields = [];
   const cleanups = [];
   const pmHandles = [];          // 粒子模型句柄（clearWorkbench/cleanup 时 dispose）
+  const wbPreviewHandles = [];
 
   // ---------- 工艺专属分层背景 + 底层环境墨晕（与首页同一管线）----------
   const entering = consumeEnter();
-  const bg = await createLayerBG(`assets/bg-crafts/${id}/manifest.json`, {
+  const bgManifest = craft.config.backgroundManifest || `assets/bg-crafts/${id}/manifest.json`;
+  const bg = await createLayerBG(bgManifest, {
     scrim: 'left', enter: entering, parallax: true, fixed: true,
   });
   const ambientCanvas = el('canvas', { class: 'bg-bloom', 'aria-hidden': 'true', style: { zIndex: '1' } });
@@ -53,32 +130,36 @@ export async function craftView(root, { id }) {
   bg.fadeEls.push(ambientCanvas);
 
   // ---------- 页面骨架 ----------
+  const craftTitle = el('h2', { text: craft.title });
+  const craftCategory = el('span', { text: craft.config.category || '类别待核对' });
   const head = el('div', { class: 'craft-head' }, [
     el('button', { class: 'back-btn', onclick: () => transitionTo('#/explore') }, ['← 返回地图']),
-    el('h2', { text: craft.title }),
+    craftTitle,
     el('span', { class: 'meta' }, [
-      el('span', { text: `${craft.config.districtLabel || '地区待核对'} · ${craft.config.category || '类别待核对'} ` }),
+      el('span', { text: `${craft.config.districtLabel || '地区待核对'} · ` }),
+      craftCategory,
       el('span', { class: 'tag tag-pending', text: '类别待核对' }),
       craft.config.districtVerified ? null : el('span', { class: 'tag tag-pending', text: ' 地区待核对' }),
     ]),
     el('span', { class: 'spacer' }),
+    isAdmin() ? el('a', { href: `#/admin/craft/${craft.craftId}`, class: 'small admin-process-link', text: '编辑工序' }) : null,
     el('a', { href: '#/passport', class: 'small', text: '数据护照 →' }),
   ]);
+  mountEditableModule(head, [
+    { key: 'title', element: craftTitle },
+    { key: 'category', element: craftCategory },
+  ], (values) => saveCraft(craft.craftId, values));
 
   const body = el('div', { class: 'craft-body' });
   const readingCol = el('div', { class: 'reading-col' });
   const workbench = el('div', { class: 'workbench-col' });
-  const restoreBtn = el('button', {
-    class: 'restore-handle', text: '展开资料',
-    onclick: () => restorePanels(),
-  });
-  body.append(readingCol, restoreBtn, workbench);
+  body.append(readingCol, workbench);
   const page = el('section', { class: 'view craft-page' }, [bg.el, topNav('craft'), head, body]);
   root.appendChild(page);
 
   // ---------- 工作台专属分层背景（进入工作台时与工艺背景交叉淡融）----------
   const wbBg = await createLayerBG('assets/bg-workbench/manifest.json', {
-    scrim: 'left', enter: false, parallax: false, drift: true, fixed: true,
+    scrim: 'left', enter: false, parallax: false, drift: true, fixed: true, active: false,
   });
   wbBg.el.classList.add('wb-bg');
   page.appendChild(wbBg.el);        // 与工艺背景同 z-index，DOM 居后 → 叠于其上
@@ -88,6 +169,8 @@ export async function craftView(root, { id }) {
   function setWorkbenchBg(on) {
     wbBg.el.classList.toggle('show', on);
     bg.el.classList.toggle('dimmed', on);
+    bg.setActive(!on);
+    wbBg.setActive(on);
   }
 
   // 底层环境墨晕（克制，与首页同参数族；面板区域不透明无需避让）
@@ -141,7 +224,12 @@ export async function craftView(root, { id }) {
 
   function buildIntro() {
     const frag = el('div', {});
-    frag.appendChild(el('p', {}, [el('span', { text: craft.summary + ' ' }), reviewTag()]));
+    const summary = el('span', { text: craft.summary });
+    const summaryBlock = el('div', { class: 'craft-summary-editable' }, [
+      el('p', {}, [summary, document.createTextNode(' '), reviewTag()]),
+    ]);
+    mountEditableModule(summaryBlock, [{ key: 'summary', element: summary }], (values) => saveCraft(craft.craftId, values));
+    frag.appendChild(summaryBlock);
     frag.appendChild(el('p', { class: 'small muted', text: '以上简介为 AI 从纪录片自动生成的草稿（summary_candidate），人工审核尚未完成。' }));
     frag.appendChild(el('h5', { text: '资料中的事实陈述（自动抽取）' }));
     if (!craft.claims.length) frag.appendChild(el('p', { class: 'empty-state', text: '资料待补充' }));
@@ -244,24 +332,31 @@ export async function craftView(root, { id }) {
     body.classList.add('panels-collapsed');
     body.classList.remove('reading-open');   // 小蕉展开时，阅读面板让位（布局区域互斥）
   }
-  function restorePanels() {
-    body.classList.remove('panels-collapsed');
-    if (S.phase !== 'reading') body.classList.add('reading-open');
-    renderPanels();
-    if (agent.isOpen()) agent.close();
-  }
-
   // ---------- 右：工作台 ----------
   function currentStep() { return craft.steps[S.stepIndex] || null; }
+
+  function carriedMaterialFor(name) {
+    return [...S.materialItems.values()].find((item) => item.currentName === name) || null;
+  }
+
+  function effectiveSelectedResources(step = currentStep()) {
+    const selected = new Set(S.selectedResources);
+    for (const name of step?.interactionRule?.allowed_resources || []) {
+      if (craft.resourceKinds.get(name) !== 'implement' && carriedMaterialFor(name)) selected.add(name);
+    }
+    return selected;
+  }
 
   function syncAgentContext() {
     agent.setContext({
       page: 'craft_experience',
       current_step_id: currentStep()?.step_id || null,
-      inventory_states: [...S.resourceStates.entries()].map(([name, st]) => ({
-        name,
-        state: craft.resourceKinds.get(name) === 'implement' ? '物件' : MATERIAL_STATES[st].label,
-      })),
+      inventory_states: [
+        ...[...S.materialItems.values()].map((item) => ({ name: item.currentName, state: `${item.level}级材料 · 已在工作台` })),
+        ...[...S.resourceStates.entries()]
+          .filter(([name]) => craft.resourceKinds.get(name) === 'implement')
+          .map(([name]) => ({ name, state: '工具' })),
+      ],
       recent_actions: S.log.slice(-5).map((l) => l.text),
       failure_count: S.failures,
     });
@@ -276,15 +371,16 @@ export async function craftView(root, { id }) {
     fields.splice(0).forEach((f) => f.destroy());
     // 卸载粒子模型并释放 GPU 资源
     pmHandles.splice(0).forEach((h) => { try { h.dispose(); } catch (_) {} });
+    wbPreviewHandles.splice(0).forEach((h) => { try { h.dispose(); } catch (_) {} });
     workbench.innerHTML = '';
   }
 
-  // --- 未开始：有模型展示原料三维墨点模型；无模型回退平面墨粒框 ---
+  // --- 未开始：用成品模型显示松散细碎的预览；无模型回退平面墨粒框 ---
   // 平面回退：粒子框 + 代表物（0002/0003 无模型，或模型加载失败时）
   function renderIdleFlat(noteText) {
     const frameWrap = el('div', { class: 'frame-wrap' }, [
       el('canvas', { 'aria-hidden': 'true' }),
-      el('img', { src: craft.baseUrl + craft.config.heroFrame, alt: `${craft.title}代表物（纪录片关键帧）` }),
+      el('img', { src: craftAssetUrl(craft, craft.config.heroFrame), alt: `${craft.title}代表物（纪录片关键帧）` }),
     ]);
     workbench.appendChild(el('div', { class: 'wb-idle' }, [
       frameWrap,
@@ -325,26 +421,77 @@ export async function craftView(root, { id }) {
     workbench.appendChild(el('div', { class: 'wb-idle' }, [
       stage,
       el('h3', { text: '粒子工作台' }),
-      el('p', { class: 'note', text: '原料三维墨点模型 · 拖拽旋转 · 点击散墨；基于纪录片与审核资料简化，不构成真实工艺教学。' }),
+      el('p', { class: 'note', text: '成品轮廓预览 · 完成前粒子更松散细碎 · 拖拽旋转 · 点击散墨；完成全部工序后将显示高精度成品。' }),
       el('button', { class: 'btn btn-primary', text: '进入工作台', onclick: startPlay }),
     ]));
-    mountParticleModel(stage, modelSet.raw,
+    const previewModel = modelSet.finished || modelSet.raw;
+    mountParticleModel(stage, previewModel,
       () => { clearWorkbench(); renderIdleFlat('模型加载失败，已回退为平面关键帧；建议先查看工序。'); },
-      modelSet.rawTint != null ? { tint: modelSet.rawTint } : {});
+      {
+        looseAmount: 0.14,
+        pointSize: 0.0085,
+        alpha: 0.68,
+        flowSpeed: 0.042,
+        diffuseSpeed: 0.018,
+        ...(modelSet.pattern ? { tint: modelSet.rawTint, patternUrl: modelSet.pattern } : {}),
+      }).then((handle) => {
+        if (handle && modelSet.pattern) handle.playDyeSweep(0.12);
+      });
   }
 
   function startPlay() {
     S.phase = 'playing';
     body.classList.add('playing');
     body.classList.remove('reading-open');
-    setWorkbenchBg(true);       // 交叉淡融到工作台背景
+    setWorkbenchBg(false);      // 大背景继续使用当前非遗详情页；桌子图仅用于中央工作区
     preloadFinished();          // 成品模型提前预载，完成时瞬时揭晓
     logAction('开始工艺体验');
     renderPlay();
   }
 
+  function quickFillCurrentStep() {
+    const step = currentStep();
+    if (!step) return;
+    const rule = step.interactionRule;
+    S.selectedResources.clear();
+    const presetResources = Array.isArray(rule.quick_fill?.resources)
+      ? rule.quick_fill.resources.filter((name) => rule.allowed_resources.includes(name))
+      : [];
+    if (presetResources.length) {
+      presetResources.forEach((name) => {
+        if (craft.resourceKinds.get(name) === 'implement' || !carriedMaterialFor(name)) S.selectedResources.add(name);
+      });
+    } else {
+      for (const group of rule.resource_groups) {
+        if (group.mode === 'all') {
+          group.options.forEach((name) => {
+            if (craft.resourceKinds.get(name) === 'implement' || !carriedMaterialFor(name)) S.selectedResources.add(name);
+          });
+        } else {
+          const required = Math.max(0, group.min || 0);
+          const alreadyCarried = group.options.filter((name) => carriedMaterialFor(name)).length;
+          group.options
+            .filter((name) => !carriedMaterialFor(name))
+            .slice(0, Math.max(0, required - alreadyCarried))
+            .forEach((name) => S.selectedResources.add(name));
+        }
+      }
+    }
+    // 兼容没有必选分组的旧数据：工作台当前仍要求至少选择一项资源。
+    if (!S.selectedResources.size && rule.allowed_resources.length) {
+      S.selectedResources.add(rule.allowed_resources[0]);
+    }
+    S.actionSlot = rule.quick_fill?.action_id || rule.action.id;
+    renderPlay();
+    const filledFeedback = workbench.querySelector('.wb-feedback');
+    if (filledFeedback) {
+      filledFeedback.className = 'wb-feedback ok';
+      filledFeedback.textContent = '已填入本步新增材料与动作；上一步产物已自动保留在工作台。';
+    }
+  }
+
   // --- 加工进行 ---
-  function renderPlay() {
+  function renderPlayLegacy() {
     clearWorkbench();
     const step = currentStep();
 
@@ -410,6 +557,7 @@ export async function craftView(root, { id }) {
       actionSelect,
     ]);
 
+    let physicsHandle = null;
     const feedback = el('p', { class: 'wb-feedback', role: 'status' });
     const canvasArea = el('div', { class: 'wb-canvas-area' }, [resourceSlotEl, actionSlotEl]);
 
@@ -425,6 +573,11 @@ export async function craftView(root, { id }) {
       canvasArea,
       feedback,
       el('div', { class: 'wb-actions' }, [
+        el('button', {
+          class: 'btn-quick-fill', text: '一键填入',
+          title: '自动填入当前步骤所需材料与动作',
+          onclick: quickFillCurrentStep,
+        }),
         el('button', { class: 'btn btn-primary', text: '执行动作', onclick: () => processStep(feedback, resourceSlotEl, actionSlotEl) }),
         el('button', {
           class: 'btn-ghost', text: '查看纪录片片段',
@@ -435,6 +588,410 @@ export async function craftView(root, { id }) {
     ]);
 
     workbench.appendChild(el('div', { class: 'wb-play' }, [backpack, main]));
+    syncAgentContext();
+  }
+
+  function renderPlayPrevious() {
+    clearWorkbench();
+    document.body.classList.remove('wb-dragging');
+    const step = currentStep();
+    if (!step) return;
+    const rule = step.interactionRule;
+    const allowed = new Set(rule.allowed_resources);
+    const actions = rule.actions?.length ? rule.actions : [rule.action];
+    const toolNeeded = [...allowed].some((name) => craft.resourceKinds.get(name) === 'implement');
+
+    const backpack = el('aside', { class: 'backpack', 'aria-label': '材料与物件' }, [
+      el('h4', { text: '材料与物件' }),
+      el('div', { class: 'bp-sec' }, [
+        el('p', { class: 'sec-label', text: '当前步骤候选资源 · 可多选' }),
+        ...craft.allResources.map((name) => {
+          const kind = craft.resourceKinds.get(name) || 'material';
+          const st = MATERIAL_STATES[S.resourceStates.get(name) || 'raw'];
+          const selected = S.selectedResources.has(name);
+          const isAllowed = allowed.has(name);
+          const unavailable = !isAllowed || (kind === 'implement' && !toolNeeded);
+          return el('button', {
+            class: `bp-item ${kind === 'implement' ? 'resource-implement' : st.cls}${selected ? ' selected' : ''}${unavailable ? ' is-unavailable' : ''}`,
+            type: 'button', disabled: unavailable,
+            title: unavailable
+              ? (kind === 'implement' && !toolNeeded ? '该工序不需要工具' : '该资源不属于当前工序')
+              : `选择${name}`,
+            onclick: () => {
+              if (unavailable) return;
+              if (selected) S.selectedResources.delete(name);
+              else S.selectedResources.add(name);
+              renderPlay();
+            },
+          }, [
+            el('i', { class: 'state-dot' }),
+            el('i', { class: 'resource-swatch', style: { background: resourceColor(name) } }),
+            el('span', { text: name }),
+            el('span', { class: 'bp-state', text: selected ? '已选' : (kind === 'implement' ? '工具' : st.label) }),
+          ]);
+        }),
+      ]),
+      el('p', { class: 'small muted', text: rule.source === 'legacy_candidate'
+        ? '候选资源来自旧数据兼容规则，组合关系待人工审核。'
+        : '当前步骤使用人工配置的交互规则。' }),
+      el('div', { class: 'bp-legend' }, [
+        el('div', {}, [el('i', { style: { background: '#8B9D83' } }), '原料']),
+        el('div', {}, [el('i', { style: { background: '#C08E3A' } }), '加工中 / 中间态']),
+        el('div', {}, [el('i', { style: { background: '#606C38' } }), '可装配']),
+        el('div', {}, [el('i', { style: { background: '#7A8172' } }), '工具等可复用物件']),
+      ]),
+    ]);
+
+    const selected = [...S.selectedResources];
+    const resourceSlotEl = el('div', {
+      class: `slot resource-slot${selected.length ? ' filled' : ''}`, 'data-slot': 'resources',
+    }, [
+      el('span', { class: 'slot-label', text: '已选材料' }),
+      selected.length
+        ? el('div', { class: 'selected-resource-list' }, selected.map((name) => el('button', {
+            class: 'selected-resource', type: 'button', text: `${name} ×`, title: `移出 ${name}`,
+            onclick: () => { S.selectedResources.delete(name); renderPlay(); },
+          })))
+        : el('span', { text: '可选择一种或多种材料与物件' }),
+    ]);
+
+    const gallery = el('div', {
+      class: `wb-object-gallery${selected.length ? '' : ' empty'}`,
+      'aria-label': '已选资源的粒子立体预览',
+    }, selected.length ? [] : [el('span', { text: '选择左侧材料，粒子会在工作区生成预览' })]);
+    selected.forEach((name) => {
+      const card = el('div', { class: 'wb-preview-card', title: '拖动旋转，点击随机摆放' }, [
+        el('span', { class: 'wb-preview-label', text: name }),
+      ]);
+      gallery.appendChild(card);
+      try { wbPreviewHandles.push(createWorkbenchPreview(card, name, resourceColor(name))); } catch (_) { /* WebGL 不可用时保留文字 */ }
+    });
+
+    const actionSlotEl = el('div', {
+      class: `slot action-slot action-drop-slot${S.actionSlot ? ' filled' : ''}`, 'data-slot': 'action',
+      ondragover: (event) => { event.preventDefault(); event.currentTarget.classList.add('drop-target'); },
+      ondragleave: (event) => { if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.classList.remove('drop-target'); },
+      ondrop: (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        event.currentTarget.classList.remove('drop-target');
+        const actionId = event.dataTransfer?.getData('text/plain');
+        if (!actionId || !actions.some((action) => action.id === actionId)) return;
+        S.actionSlot = actionId;
+        renderPlay();
+        requestAnimationFrame(() => {
+          const fb = workbench.querySelector('.wb-feedback');
+          const rs = workbench.querySelector('[data-slot="resources"]');
+          const as = workbench.querySelector('[data-slot="action"]');
+          if (fb && rs && as) processStep(fb, rs, as);
+        });
+      },
+    }, [
+      el('span', { class: 'slot-label', text: '动作' }),
+      S.actionSlot
+        ? el('span', { class: 'slot-action-label', text: actions.find((action) => action.id === S.actionSlot)?.label || '已选择动作' })
+        : el('span', { class: 'drop-hint', text: '将右侧动作拖到这里' }),
+    ]);
+
+    const actionPalette = el('div', { class: 'action-palette', 'aria-label': '可拖动动作' }, actions.map((action) => el('button', {
+      class: `action-card${S.actionSlot === action.id ? ' selected' : ''}`,
+      type: 'button', draggable: true, 'data-action': action.id,
+      title: '拖到工作区执行，点击可先选择',
+      ondragstart: (event) => {
+        event.dataTransfer?.setData('text/plain', action.id);
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+        document.body.classList.add('wb-dragging');
+      },
+      ondragend: () => document.body.classList.remove('wb-dragging'),
+      onclick: () => { S.actionSlot = action.id; renderPlay(); },
+    }, [el('span', { text: action.label })])));
+
+    const dropAreaHandlers = {
+      ondragover: (event) => { event.preventDefault(); event.currentTarget.classList.add('drop-target'); },
+      ondragleave: (event) => { if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.classList.remove('drop-target'); },
+      ondrop: (event) => {
+        event.preventDefault();
+        event.currentTarget.classList.remove('drop-target');
+        const actionId = event.dataTransfer?.getData('text/plain');
+        if (!actionId || !actions.some((action) => action.id === actionId)) return;
+        S.actionSlot = actionId;
+        renderPlay();
+        requestAnimationFrame(() => {
+          const fb = workbench.querySelector('.wb-feedback');
+          const rs = workbench.querySelector('[data-slot="resources"]');
+          const as = workbench.querySelector('[data-slot="action"]');
+          if (fb && rs && as) processStep(fb, rs, as);
+        });
+      },
+    };
+    const canvasArea = el('div', { class: 'wb-canvas-area', ...dropAreaHandlers }, [gallery, resourceSlotEl, actionSlotEl, actionPalette]);
+
+    const feedback = el('p', { class: 'wb-feedback', role: 'status' });
+    const progress = el('span', { class: 'wb-progress' }, craft.steps.map((s, i) =>
+      el('i', { class: `pg${i < S.stepIndex ? ' done' : i === S.stepIndex ? ' now' : ''}`, title: s.displayName })));
+    const main = el('div', { class: 'wb-main' }, [
+      el('div', { class: 'wb-step-bar' }, [
+        el('span', { class: 'cur', text: `当前工序 ${S.stepIndex + 1}/${craft.steps.length}：${step.displayName}` }),
+        reviewTag(), progress,
+      ]),
+      canvasArea, feedback,
+      el('div', { class: 'wb-actions' }, [
+        el('button', { class: 'btn-quick-fill', text: '一键填入', title: '自动填入当前步骤所需材料与动作', onclick: quickFillCurrentStep }),
+        el('button', { class: 'btn btn-primary', text: '执行动作', onclick: () => processStep(feedback, resourceSlotEl, actionSlotEl) }),
+        el('button', { class: 'btn-ghost', text: '查看纪录片片段', onclick: () => openEvidenceModal(craft, step.evidence_ids, { title: `证据 · ${step.displayName}` }) }),
+        el('span', { class: 'wb-note', text: '基于纪录片与审核资料简化，不构成真实工艺教学。卡住时可以问小蕉。' }),
+      ]),
+    ]);
+    workbench.appendChild(el('div', { class: 'wb-play' }, [backpack, main]));
+    syncAgentContext();
+  }
+
+  function renderPlay() {
+    clearWorkbench();
+    document.body.classList.remove('wb-dragging');
+    const step = currentStep();
+    if (!step) return;
+    const rule = step.interactionRule;
+    const allowed = new Set(rule.allowed_resources);
+    const actions = craft.actions.length ? craft.actions : (rule.actions?.length ? rule.actions : [rule.action]);
+    const materialNames = rule.allowed_resources.filter((name) => craft.resourceKinds.get(name) !== 'implement');
+    const toolNames = craft.allResources.filter((name) => craft.resourceKinds.get(name) === 'implement');
+
+    const resourceButton = (name, kind) => {
+      const selected = S.selectedResources.has(name);
+      const carried = kind === 'material' ? carriedMaterialFor(name) : null;
+      const available = allowed.has(name) && !carried;
+      const state = MATERIAL_STATES[S.resourceStates.get(name) || 'raw'];
+      return el('button', {
+        class: `bp-item ${kind === 'implement' ? 'resource-implement' : state.cls}${selected || carried ? ' selected' : ''}${available ? '' : ' is-unavailable'}${carried ? ' is-carried' : ''}`,
+        type: 'button', disabled: !available,
+        title: carried ? `${carried.currentName}已从上一步保留在工作台` : (available ? `放置${name}` : '当前工序不使用该工具'),
+        onclick: () => {
+          if (!available) return;
+          if (selected) S.selectedResources.delete(name);
+          else S.selectedResources.add(name);
+          renderPlay();
+        },
+      }, [
+        el('i', { class: 'resource-swatch', style: { background: carried?.color || (kind === 'implement' ? TOOL_RESOURCE_COLOR : RAW_RESOURCE_COLOR) } }),
+        el('span', { text: carried?.currentName || name }),
+        el('span', { class: 'bp-state', text: carried ? `${carried.level}级 · 已在桌面` : (selected ? '待加工' : (kind === 'implement' ? '工具' : state.label)) }),
+      ]);
+    };
+
+    const unmatchedCarried = [...S.materialItems.values()].filter((item) => !materialNames.includes(item.currentName));
+    const inheritedButtons = unmatchedCarried.map((item) => el('button', {
+      class: 'bp-item selected is-unavailable is-carried', type: 'button', disabled: true,
+      title: `${item.currentName}由上一步自动带入`,
+    }, [
+      el('i', { class: 'resource-swatch', style: { background: item.color } }),
+      el('span', { text: item.currentName }),
+      el('span', { class: 'bp-state', text: `${item.level}级 · 已在桌面` }),
+    ]));
+
+    const backpack = el('aside', { class: 'backpack', 'aria-label': '本步材料、继承材料与工具' }, [
+      el('h4', { text: '背包' }),
+      inheritedButtons.length ? el('div', { class: 'bp-sec bp-inherited' }, [
+        el('p', { class: 'sec-label', text: '上一步产物 · 自动使用' }),
+        ...inheritedButtons,
+      ]) : null,
+      el('div', { class: 'bp-sec' }, [
+        el('p', { class: 'sec-label', text: '本步所需材料' }),
+        ...(materialNames.length ? materialNames.map((name) => resourceButton(name, 'material')) : [
+          el('p', { class: 'bp-empty', text: '本步没有新增材料' }),
+        ]),
+      ]),
+      el('div', { class: 'bp-sec bp-tools' }, [
+        el('p', { class: 'sec-label', text: '工具' }),
+        ...(toolNames.length ? toolNames.map((name) => resourceButton(name, 'implement')) : [
+          el('p', { class: 'bp-empty', text: '该项目没有登记工具' }),
+        ]),
+      ]),
+      el('p', { class: 'bp-help', text: '绿色材料已由上一步带入，无需重复点击；本步新增材料需要手动放上桌面。' }),
+    ]);
+
+    const tableObjects = [
+      ...[...S.materialItems.values()].map((item) => ({
+        id: item.id,
+        name: item.currentName,
+        color: item.color,
+        shapeName: item.currentName,
+      })),
+      ...[...S.selectedResources]
+        .filter((name) => craft.resourceKinds.get(name) !== 'implement' && !carriedMaterialFor(name))
+        .map((name) => ({
+        id: `material:${S.stepIndex}:${name}`,
+        name,
+        color: RAW_RESOURCE_COLOR,
+        shapeName: name,
+      })),
+      ...[...S.selectedResources]
+        .filter((name) => craft.resourceKinds.get(name) === 'implement')
+        .map((name) => ({ id: `tool:${name}`, name, color: TOOL_RESOURCE_COLOR, shapeName: name })),
+    ];
+
+    let physicsHandle = null;
+    const feedback = el('p', { class: 'wb-feedback', role: 'status' });
+    let tableSurface;
+    const executeDroppedAction = (actionId, clientX, clientY) => {
+      document.body.classList.remove('wb-dragging');
+      tableSurface?.classList.remove('drop-target');
+      if (!actionId || !actions.some((action) => action.id === actionId)) return false;
+      S.actionSlot = actionId;
+      if (actionId === rule.action.id) {
+        if (tableSurface.dataset.processing === 'true') return false;
+        tableSurface.dataset.processing = 'true';
+        feedback.className = 'wb-feedback ok';
+        feedback.textContent = '动作已落到桌面，正在完成这道工序。';
+        physicsHandle?.ripple(clientX, clientY);
+        setTimeout(() => {
+          if (tableSurface.isConnected) processStep(feedback, tableSurface, tableSurface);
+        }, 520);
+        return true;
+      }
+      processStep(feedback, tableSurface, tableSurface);
+      return false;
+    };
+
+    const beginPointerActionDrag = (event, action, card) => {
+      if (event.button !== 0 || tableSurface.dataset.processing === 'true') return;
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const pointerId = event.pointerId;
+      let dragging = false;
+      let ghost = null;
+
+      const isOverTable = (clientX, clientY) => {
+        const rect = tableSurface.getBoundingClientRect();
+        return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+      };
+      const moveGhost = (clientX, clientY) => {
+        if (!ghost) return;
+        ghost.style.left = `${clientX}px`;
+        ghost.style.top = `${clientY}px`;
+      };
+      const cleanupDrag = () => {
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerUp);
+        window.removeEventListener('pointercancel', onPointerCancel);
+        try { card.releasePointerCapture?.(pointerId); } catch (_) {}
+        ghost?.remove();
+        card.classList.remove('is-pointer-dragging');
+        tableSurface.classList.remove('drop-target');
+        document.body.classList.remove('wb-dragging');
+      };
+      const onPointerMove = (moveEvent) => {
+        if (moveEvent.pointerId !== pointerId) return;
+        if (!dragging && Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) >= 5) {
+          dragging = true;
+          card.dataset.suppressClick = 'true';
+          card.classList.add('is-pointer-dragging');
+          document.body.classList.add('wb-dragging');
+          ghost = el('div', { class: 'action-drag-ghost', text: action.label, 'aria-hidden': 'true' });
+          document.body.appendChild(ghost);
+        }
+        if (!dragging) return;
+        moveEvent.preventDefault();
+        moveGhost(moveEvent.clientX, moveEvent.clientY);
+        tableSurface.classList.toggle('drop-target', isOverTable(moveEvent.clientX, moveEvent.clientY));
+      };
+      const onPointerUp = (upEvent) => {
+        if (upEvent.pointerId !== pointerId) return;
+        const shouldDrop = dragging && isOverTable(upEvent.clientX, upEvent.clientY);
+        cleanupDrag();
+        if (shouldDrop) executeDroppedAction(action.id, upEvent.clientX, upEvent.clientY);
+        setTimeout(() => { delete card.dataset.suppressClick; }, 0);
+      };
+      const onPointerCancel = (cancelEvent) => {
+        if (cancelEvent.pointerId === pointerId) cleanupDrag();
+      };
+
+      try { card.setPointerCapture?.(pointerId); } catch (_) {}
+      window.addEventListener('pointermove', onPointerMove, { passive: false });
+      window.addEventListener('pointerup', onPointerUp);
+      window.addEventListener('pointercancel', onPointerCancel);
+    };
+
+    tableSurface = el('div', {
+      class: `wb-table-surface${tableObjects.length ? ' has-objects' : ''}`,
+      'data-slot': 'resources',
+      'aria-label': '桌面工作区',
+      ondragover: (event) => {
+        const types = [...(event.dataTransfer?.types || [])];
+        if (types.length && !types.includes('text/plain') && !types.includes('text')) return;
+        event.preventDefault();
+        event.currentTarget.classList.add('drop-target');
+      },
+      ondragleave: (event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.classList.remove('drop-target');
+      },
+      ondrop: (event) => {
+        event.preventDefault();
+        document.body.classList.remove('wb-dragging');
+        event.currentTarget.classList.remove('drop-target');
+        const actionId = event.dataTransfer?.getData('text/plain');
+        executeDroppedAction(actionId, event.clientX, event.clientY);
+      },
+    }, [
+      el('div', { class: 'wb-table-head' }, [
+        el('span', { class: 'wb-table-title', text: '桌面工作区' }),
+        el('span', { class: 'wb-table-tip', text: tableObjects.length ? '拖动物体调整位置；点击物体重新落下' : '从左侧背包选择物品' }),
+      ]),
+      stepFloatingGuide(step, S.stepIndex, craft.steps.length),
+    ]);
+
+    let actionPalette;
+    const actionCards = actions.map((action) => {
+      let card;
+      card = el('button', {
+        class: `action-card${S.actionSlot === action.id ? ' selected' : ''}`,
+        type: 'button', 'data-action': action.id, 'data-drag-mode': 'pointer',
+        title: '按住并向左拖到桌面，松开即可执行',
+        onpointerdown: (event) => beginPointerActionDrag(event, action, card),
+        onclick: () => {
+          if (card.dataset.suppressClick === 'true') {
+            delete card.dataset.suppressClick;
+            return;
+          }
+          S.actionSlot = action.id;
+          [...actionPalette.querySelectorAll('.action-card')].forEach((node) => node.classList.toggle('selected', node.dataset.action === action.id));
+          feedback.className = 'wb-feedback';
+          feedback.textContent = '已选择动作，请按住动作卡并向左拖到桌面工作区执行。';
+        },
+      }, [el('span', { text: action.label })]);
+      return card;
+    });
+    actionPalette = el('aside', { class: 'action-palette', 'aria-label': '动作列表' }, [
+      el('p', { class: 'action-title', text: '动作' }),
+      ...actionCards,
+    ]);
+
+    const progress = el('span', { class: 'wb-progress' }, craft.steps.map((s, i) =>
+      el('i', { class: `pg${i < S.stepIndex ? ' done' : i === S.stepIndex ? ' now' : ''}`, title: s.displayName })));
+    const main = el('div', { class: 'wb-main' }, [
+      el('div', { class: 'wb-step-bar' }, [
+        el('span', { class: 'cur', text: `当前工序 ${S.stepIndex + 1}/${craft.steps.length}：${step.displayName}` }),
+        reviewTag(), progress,
+      ]),
+      el('div', { class: 'wb-stage-layout' }, [tableSurface, actionPalette]),
+      feedback,
+      el('div', { class: 'wb-actions' }, [
+        el('button', { class: 'btn-quick-fill', text: '一键填入', title: '自动把当前步骤所需物品放到桌面', onclick: quickFillCurrentStep }),
+        el('button', { class: 'btn-ghost', text: '查看纪录片片段', onclick: () => openEvidenceModal(craft, step.evidence_ids, { title: `证据 · ${step.displayName}` }) }),
+        el('span', { class: 'wb-note', text: '动作需要拖到桌面工作区后才会执行。' }),
+      ]),
+    ]);
+
+    workbench.appendChild(el('div', { class: 'wb-play wb-play-physics' }, [backpack, main]));
+    requestAnimationFrame(() => {
+      if (!tableSurface.isConnected) return;
+      try {
+        physicsHandle = createWorkbenchSurface(tableSurface, tableObjects, { stateStore: S.workbenchPhysics });
+        wbPreviewHandles.push(physicsHandle);
+      } catch (error) {
+        tableSurface.appendChild(el('p', { class: 'wb-table-error', text: '当前浏览器无法显示粒子桌面，请继续使用背包和动作。' }));
+      }
+    });
     syncAgentContext();
   }
 
@@ -473,8 +1030,9 @@ export async function craftView(root, { id }) {
     const step = currentStep();
     if (!step) return;
     const rule = step.interactionRule;
-    const selected = [...S.selectedResources];
-    if (!selected.length) {
+    const effectiveSelected = effectiveSelectedResources(step);
+    const selected = [...effectiveSelected];
+    if (rule.allowed_resources.length && !selected.length) {
       fail('请先选择这一步使用的材料或物件。可以多选。', feedback, resourceSlotEl);
       return;
     }
@@ -495,9 +1053,9 @@ export async function craftView(root, { id }) {
     }
 
     for (const group of rule.resource_groups) {
-      const chosen = group.options.filter((name) => S.selectedResources.has(name));
+      const chosen = group.options.filter((name) => effectiveSelected.has(name));
       if (group.mode === 'all') {
-        const missing = group.options.filter((name) => !S.selectedResources.has(name));
+        const missing = group.options.filter((name) => !effectiveSelected.has(name));
         if (missing.length) {
           fail(`还缺少${group.label}。请检查当前选择。`, feedback, resourceSlotEl);
           return;
@@ -523,7 +1081,42 @@ export async function craftView(root, { id }) {
     for (const name of selected) {
       if (craft.resourceKinds.get(name) !== 'implement') S.resourceStates.set(name, 'mid');
     }
-    logAction(`完成工序「${step.displayName}」：${selected.join(' + ')} → ${rule.action.label}`, step.evidence_ids);
+    logAction(`完成工序「${step.displayName}」：${selected.join(' + ') || '无需材料'} → ${rule.action.label}`, step.evidence_ids);
+    // 本步新材料从被点击的那一刻起就拥有稳定身份；完成动作后沿用同一
+    // Three.js 对象位置，仅升级名称、等级和颜色，不再生成“公共工序产物”。
+    for (const name of selected) {
+      if (craft.resourceKinds.get(name) === 'implement' || carriedMaterialFor(name)) continue;
+      const itemId = `material:${S.stepIndex}:${name}`;
+      S.materialItems.set(itemId, {
+        id: itemId,
+        currentName: name,
+        level: 0,
+        color: RAW_RESOURCE_COLOR,
+      });
+    }
+    const transforms = Array.isArray(step.material_transforms) ? step.material_transforms : [];
+    const upgrades = [];
+    for (const [itemId, item] of [...S.materialItems.entries()]) {
+      const inputName = item.currentName;
+      const mapping = transforms.find((entry) => entry.input_name === inputName);
+      // 缺少旧数据映射时同名延续；明确保存为空则表示本步消耗、无产物。
+      const outputName = mapping ? String(mapping.output_name || '').trim() : inputName;
+      if (!outputName) {
+        S.materialItems.delete(itemId);
+        S.workbenchPhysics.delete(itemId);
+        upgrades.push(`${inputName}（已消耗）`);
+        continue;
+      }
+      item.level += 1;
+      item.currentName = outputName;
+      item.color = materialLevelColor(item.id, item.level);
+      const physics = S.workbenchPhysics.get(itemId);
+      if (physics) physics.velocity = [0, 0.18, 0];
+      upgrades.push(`${inputName} → ${outputName}（${item.level}级）`);
+    }
+    [...S.selectedResources]
+      .filter((name) => craft.resourceKinds.get(name) === 'implement')
+      .forEach((name) => S.workbenchPhysics.delete(`tool:${name}`));
     S.stepIndex++;
     S.selectedResources.clear();
     S.actionSlot = null;
@@ -542,7 +1135,7 @@ export async function craftView(root, { id }) {
     const fb = workbench.querySelector('.wb-feedback');
     fb.className = 'wb-feedback ok';
     fb.append(
-      el('span', { text: `完成「${step.displayName}」：${selected.join('、')}，执行${rule.action.label}。` }),
+      el('span', { text: `完成「${step.displayName}」：${upgrades.join('；') || '本步没有材料变化'}。` }),
       el('button', {
         class: 'ev-link', text: '查看纪录片片段',
         onclick: () => openEvidenceModal(craft, step.evidence_ids, { title: `证据 · ${step.displayName}` }),
@@ -581,7 +1174,7 @@ export async function craftView(root, { id }) {
     const cv = el('canvas', { class: 'finish-flat-canvas', 'aria-label': '墨粒聚成的成品影像' });
     const pzWrap = el('div', { class: 'pz-wrap' });
     const pzInner = el('div', { class: 'pz-inner' }, [
-      el('img', { src: craft.baseUrl + craft.config.finishFrame, alt: `${craft.title}成品（纪录片关键帧）`, draggable: 'false' }),
+      el('img', { src: craftAssetUrl(craft, craft.config.finishFrame), alt: `${craft.title}成品（纪录片关键帧）`, draggable: 'false' }),
     ]);
     pzWrap.appendChild(pzInner);
     stageWrap.append(cv, pzWrap, el('span', { class: 'stage-tip', text: '拖拽平移 · 滚轮缩放' }));
@@ -605,7 +1198,7 @@ export async function craftView(root, { id }) {
 
     const field = new InkField(cv, { maxParticles: 1500 });
     fields.push(field);
-    loadImage(craft.baseUrl + craft.config.finishFrame).then((img) => {
+    loadImage(craftAssetUrl(craft, craft.config.finishFrame)).then((img) => {
       const run = () => {
         field.resize();
         const pts = imageTargets(img, cv.clientWidth, cv.clientHeight, { maxPoints: 1300 });
@@ -628,19 +1221,28 @@ export async function craftView(root, { id }) {
     // 中央主舞台：爆炸画布 + 成品模型舞台叠放
     const burstCv = el('canvas', { class: 'finish-burst', 'aria-hidden': 'true' });
     const pmStage = hasModel ? el('div', { class: 'pm-stage finish-model', style: { opacity: '0' } }) : null;
-    const stageWrap = el('div', { class: 'finish-stage' }, [burstCv, ...(pmStage ? [pmStage] : [])]);
+    let finishedModelHandle = null;
+    const zoomControls = hasModel ? el('div', { class: 'pm-zoom-controls', 'aria-label': '模型缩放' }, [
+      el('button', { type: 'button', text: '缩小', disabled: true, onclick: () => finishedModelHandle?.zoomBy(0.82) }),
+      el('button', { type: 'button', text: '还原', disabled: true, onclick: () => finishedModelHandle?.resetZoom() }),
+      el('button', { type: 'button', text: '放大', disabled: true, onclick: () => finishedModelHandle?.zoomBy(1.22) }),
+    ]) : null;
+    const stageWrap = el('div', { class: 'finish-stage' }, [burstCv, ...(pmStage ? [pmStage, zoomControls] : [])]);
     const stageCap = el('p', {
       class: 'pm-cap',
       text: hasModel
         ? (modelSet.pattern
-          ? '成品三维墨点模型 · 花纹来自纪录片真实影像取样 · 拖拽旋转 · 点击散墨'
-          : '成品三维墨点模型 · 拖拽旋转 · 点击散墨')
+          ? '成品三维墨点模型 · 花纹来自纪录片真实影像取样 · 拖拽旋转 · 滚轮或双指缩放 · 点击散墨'
+          : '成品三维墨点模型 · 拖拽旋转 · 滚轮或双指缩放 · 点击散墨')
         : '墨粒聚成成品影像 · 拖拽平移 · 滚轮缩放',
     });
 
-    // 侧栏：代表作品 + 操作回看（置于主舞台侧边，不把模型挤离中心）
+    // 侧栏：代表影像 + 已核验的外部资料（置于主舞台侧边，不把模型挤离中心）
+    const featuredFacts = (craft.externalFacts || [])
+      .filter((fact) => fact.review_status === 'verified_external')
+      .slice(0, 3);
     const side = el('aside', { class: 'complete-side' }, [
-      el('h4', { text: '代表作品 / 影像' }),
+      el('h4', { text: '代表影像作品' }),
       ...craft.config.works.map((w) => {
         const ev = craft.evMap.get(w.evidenceId);
         return el('figure', {
@@ -648,27 +1250,33 @@ export async function craftView(root, { id }) {
           onclick: () => openEvidenceModal(craft, [w.evidenceId], { title: w.name }),
           onkeydown: (e) => { if (e.key === 'Enter') openEvidenceModal(craft, [w.evidenceId], { title: w.name }); },
         }, [
-          el('img', { src: craft.baseUrl + w.frame, alt: w.name, loading: 'lazy' }),
+          el('img', { src: craftAssetUrl(craft, w.frame), alt: w.name, loading: 'lazy' }),
           el('figcaption', { class: 'wi-cap', text: `${w.name} · 来源：纪录片《${craft.title}》关键帧${ev ? `，时间码 ${evidenceTimecode(ev)}` : ''}` }),
         ]);
       }),
-      el('h4', { text: '操作回看', style: { marginTop: '18px' } }),
-      ...S.log.map((l) => el('div', { class: 'replay-item' }, [
-        el('span', { class: 'rt', text: `${String(l.t.getHours()).padStart(2, '0')}:${String(l.t.getMinutes()).padStart(2, '0')}:${String(l.t.getSeconds()).padStart(2, '0')}` }),
-        el('span', { text: l.text + ' ' }),
-        l.evidenceIds.length
-          ? el('button', {
-              class: 'ev-link', text: '证据',
-              onclick: () => openEvidenceModal(craft, l.evidenceIds, { title: '证据 · 操作回放' }),
-            })
-          : null,
-      ])),
+      ...(featuredFacts.length ? [
+        el('h4', { text: '延伸资料', style: { marginTop: '20px' } }),
+        ...featuredFacts.map((fact) => {
+          const source = fact.sources?.[0];
+          return el('article', { class: 'heritage-note' }, [
+            el('div', { class: 'hn-head' }, [
+              el('strong', { text: fact.topic || '项目资料' }),
+              el('span', { class: 'tag tag-verified', text: `${fact.authority_tier || 'A'}级·已核验` }),
+            ]),
+            el('p', { text: fact.statement }),
+            source ? el('a', {
+              class: 'ev-link', href: source.url, target: '_blank', rel: 'noopener noreferrer',
+              text: `${source.publisher} · 查看原文`,
+            }) : null,
+          ]);
+        }),
+      ] : []),
       el('div', { style: { marginTop: '16px' } }, [
         el('button', {
           class: 'btn-ghost', text: '重新体验',
           onclick: () => {
             S.phase = 'reading'; S.stepIndex = 0; S.failures = 0;
-            S.selectedResources.clear(); S.actionSlot = null;
+            S.selectedResources.clear(); S.materialItems.clear(); S.workbenchPhysics.clear(); S.actionSlot = null;
             craft.allResources.forEach((name) => S.resourceStates.set(name, 'raw'));
             body.classList.remove('playing');
             setWorkbenchBg(false);
@@ -702,15 +1310,24 @@ export async function craftView(root, { id }) {
         pmStage.remove();
         renderCompleteFlat(stageWrap);
         stageCap.textContent = '成品模型加载失败，已回退为平面呈现 · 拖拽平移 · 滚轮缩放';
-      }, modelSet.pattern ? { tint: modelSet.rawTint, patternUrl: modelSet.pattern } : {});
+      }, {
+        detailMode: true,
+        pointSize: 0.012,
+        alpha: 0.96,
+        flowSpeed: 0.032,
+        diffuseSpeed: 0.007,
+        ...(modelSet.pattern ? { tint: modelSet.rawTint, patternUrl: modelSet.pattern } : {}),
+      });
       if (!h) return;
+      finishedModelHandle = h;
+      zoomControls.querySelectorAll('button').forEach((button) => { button.disabled = false; });
       pmStage.style.opacity = '1';
       h.playEnter();
       if (modelSet.pattern) setTimeout(() => h.playDyeSweep(2.8), 1500);
     }, 1400);
 
     logAction('完成作品，进入成果展示');
-    agent.say('恭喜你完成了全部工序。成品已在中央展开；侧边可以看到代表作品与影像来源，也可以打开「操作回看」。');
+    agent.say('恭喜你完成了全部工序。成品已在中央展开；侧边可以查看代表影像和已经外部核验的延伸资料。');
     syncAgentContext();
   }
 
@@ -746,11 +1363,12 @@ export async function craftView(root, { id }) {
       cleanups.forEach((fn) => fn());
       fields.splice(0).forEach((f) => f.destroy());
       pmHandles.splice(0).forEach((h) => { try { h.dispose(); } catch (_) {} });
+      wbPreviewHandles.splice(0).forEach((h) => { try { h.dispose(); } catch (_) {} });
       agent.unmount();
       ambientBloom.destroy();
       wbBg.destroy();
       bg.destroy();
-      unregisterPage('craft');
+      unregisterPage('craft', page);
     },
   };
 }

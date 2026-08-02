@@ -1,0 +1,202 @@
+[
+  {
+    "evidence_id": "ev_SHIH_0006_0064000_0111000",
+    "start_ms": 64000,
+    "end_ms": 111000,
+    "frame_ids": [
+      73400,
+      87500,
+      101600
+    ],
+    "frame_paths": [
+      "media/keyframes/000073400.jpg",
+      "media/keyframes/000087500.jpg",
+      "media/keyframes/000101600.jpg"
+    ]
+  },
+  {
+    "evidence_id": "ev_SHIH_0006_0123000_0213000",
+    "start_ms": 123000,
+    "end_ms": 213000,
+    "frame_ids": [
+      134250,
+      156750,
+      179250,
+      201750
+    ],
+    "frame_paths": [
+      "media/keyframes/000134250.jpg",
+      "media/keyframes/000156750.jpg",
+      "media/keyframes/000179250.jpg",
+      "media/keyframes/000201750.jpg"
+    ]
+  },
+  {
+    "evidence_id": "ev_SHIH_0006_0215000_0350000",
+    "start_ms": 215000,
+    "end_ms": 350000,
+    "frame_ids": [
+      231875,
+      265625,
+      299375,
+      333125
+    ],
+    "frame_paths": [
+      "media/keyframes/000231875.jpg",
+      "media/keyframes/000265625.jpg",
+      "media/keyframes/000299375.jpg",
+      "media/keyframes/000333125.jpg"
+    ]
+  },
+  {
+    "evidence_id": "ev_SHIH_0006_0353000_0423000",
+    "start_ms": 353000,
+    "end_ms": 423000,
+    "frame_ids": [
+      361750,
+      379250,
+      396750,
+      414250
+    ],
+    "frame_paths": [
+      "media/keyframes/000361750.jpg",
+      "media/keyframes/000379250.jpg",
+      "media/keyframes/000396750.jpg",
+      "media/keyframes/000414250.jpg"
+    ]
+  },
+  {
+    "evidence_id": "ev_SHIH_0006_0429000_0680000",
+    "start_ms": 429000,
+    "end_ms": 680000,
+    "frame_ids": [
+      460375,
+      523125,
+      585875,
+      648625
+    ],
+    "frame_paths": [
+      "media/keyframes/000460375.jpg",
+      "media/keyframes/000523125.jpg",
+      "media/keyframes/000585875.jpg",
+      "media/keyframes/000648625.jpg"
+    ]
+  },
+  {
+    "evidence_id": "ev_SHIH_0006_0681000_0772000",
+    "start_ms": 681000,
+    "end_ms": 772000,
+    "frame_ids": [
+      692375,
+      715125,
+      737875,
+      760625
+    ],
+    "frame_paths": [
+      "media/keyframes/000692375.jpg",
+      "media/keyframes/000715125.jpg",
+      "media/keyframes/000737875.jpg",
+      "media/keyframes/000760625.jpg"
+    ]
+  },
+  {
+    "evidence_id": "ev_SHIH_0006_0775000_0954000",
+    "start_ms": 775000,
+    "end_ms": 954000,
+    "frame_ids": [
+      797375,
+      842125,
+      886875,
+      931625
+    ],
+    "frame_paths": [
+      "media/keyframes/000797375.jpg",
+      "media/keyframes/000842125.jpg",
+      "media/keyframes/000886875.jpg",
+      "media/keyframes/000931625.jpg"
+    ]
+  },
+  {
+    "evidence_id": "ev_SHIH_0006_0978000_1251000",
+    "start_ms": 978000,
+    "end_ms": 1251000,
+    "frame_ids": [
+      1012125,
+      1080375,
+      1148625,
+      1216875
+    ],
+    "frame_paths": [
+      "media/keyframes/001012125.jpg",
+      "media/keyframes/001080375.jpg",
+      "media/keyframes/001148625.jpg",
+      "media/keyframes/001216875.jpg"
+    ]
+  },
+  {
+    "evidence_id": "ev_SHIH_0006_1252000_1339000",
+    "start_ms": 1252000,
+    "end_ms": 1339000,
+    "frame_ids": [
+      1262875,
+      1284625,
+      1306375,
+      1328125
+    ],
+    "frame_paths": [
+      "media/keyframes/001262875.jpg",
+      "media/keyframes/001284625.jpg",
+      "media/keyframes/001306375.jpg",
+      "media/keyframes/001328125.jpg"
+    ]
+  },
+  {
+    "evidence_id": "ev_SHIH_0006_1354000_1412000",
+    "start_ms": 1354000,
+    "end_ms": 1412000,
+    "frame_ids": [
+      1365600,
+      1383000,
+      1400400
+    ],
+    "frame_paths": [
+      "media/keyframes/001365600.jpg",
+      "media/keyframes/001383000.jpg",
+      "media/keyframes/001400400.jpg"
+    ]
+  },
+  {
+    "evidence_id": "ev_SHIH_0006_1416000_1590000",
+    "start_ms": 1416000,
+    "end_ms": 1590000,
+    "frame_ids": [
+      1437750,
+      1481250,
+      1524750,
+      1568250
+    ],
+    "frame_paths": [
+      "media/keyframes/001437750.jpg",
+      "media/keyframes/001481250.jpg",
+      "media/keyframes/001524750.jpg",
+      "media/keyframes/001568250.jpg"
+    ]
+  },
+  {
+    "evidence_id": "ev_SHIH_0006_1594000_1776000",
+    "start_ms": 1594000,
+    "end_ms": 1776000,
+    "frame_ids": [
+      1616750,
+      1662250,
+      1707750,
+      1753250
+    ],
+    "frame_paths": [
+      "media/keyframes/001616750.jpg",
+      "media/keyframes/001662250.jpg",
+      "media/keyframes/001707750.jpg",
+      "media/keyframes/001753250.jpg"
+    ]
+  }
+]
