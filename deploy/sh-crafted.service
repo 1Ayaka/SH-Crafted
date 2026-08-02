@@ -10,7 +10,7 @@ Group=ubuntu
 WorkingDirectory=/var/www/sh-crafted
 Environment=NODE_ENV=production
 EnvironmentFile=-/etc/sh-crafted.env
-ExecStart=/usr/bin/node /var/www/sh-crafted/server.mjs --host 127.0.0.1 --port 7100
+ExecStart=/usr/local/bin/node /var/www/sh-crafted/server.mjs --host 127.0.0.1 --port 7100
 Restart=on-failure
 RestartSec=5
 UMask=0077
