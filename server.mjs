@@ -681,10 +681,38 @@ const server = http.createServer(async (req, res) => {
     }
     const st = await stat(resolved).catch(() => null);
     const target = st && st.isDirectory() ? join(resolved, 'index.html') : resolved;
+    const targetStat = await stat(target).catch(() => null);
+    if (!targetStat?.isFile()) {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('404 Not Found');
+      return;
+    }
+    const extension = extname(target).toLowerCase();
+    const etag = `W/\"${targetStat.size.toString(16)}-${Math.trunc(targetStat.mtimeMs).toString(16)}\"`;
+    const modifiedSince = req.headers['if-modified-since'];
+    const notModified = req.headers['if-none-match'] === etag
+      || (modifiedSince && Math.trunc(new Date(modifiedSince).getTime() / 1000) >= Math.trunc(targetStat.mtimeMs / 1000));
+    const cacheControl = ['.glb', '.gltf', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.woff', '.woff2']
+      .includes(extension)
+      ? 'public, max-age=86400, stale-while-revalidate=604800'
+      : 'public, max-age=0, must-revalidate';
+    const headers = {
+      'Content-Type': MIME[extension] || 'application/octet-stream',
+      'Cache-Control': cacheControl,
+      ETag: etag,
+      'Last-Modified': targetStat.mtime.toUTCString(),
+    };
+    if (notModified) {
+      res.writeHead(304, headers).end();
+      return;
+    }
+    if (req.method === 'HEAD') {
+      res.writeHead(200, { ...headers, 'Content-Length': targetStat.size }).end();
+      return;
+    }
     const body = await readFile(target);
     res.writeHead(200, {
-      'Content-Type': MIME[extname(target).toLowerCase()] || 'application/octet-stream',
-      'Cache-Control': 'no-cache',
+      ...headers,
+      'Content-Length': body.length,
     });
     res.end(body);
   } catch {

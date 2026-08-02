@@ -152,7 +152,9 @@ export async function loadAll(onProgress) {
     editorialGallery.get(work.craft_id).push(work);
   }
 
-  for (const pkg of store.catalog.packages) {
+  // Each package is independent. Loading them concurrently avoids multiplying
+  // network round-trip latency by the number of heritage packages.
+  await Promise.all(store.catalog.packages.map(async (pkg) => {
     const dir = base + pkg.directory + '/';
     const [manifest, draft, steps, evidence, claims] = await Promise.all([
       fetchJson(dir + 'manifest.json'),
@@ -256,7 +258,7 @@ export async function loadAll(onProgress) {
     };
     store.crafts.set(pkg.video_id, record);
     onProgress?.(pkg.title);
-  }
+  }));
   return store;
 }
 

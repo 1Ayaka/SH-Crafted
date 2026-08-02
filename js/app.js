@@ -35,19 +35,15 @@ try {
   throw err;
 }
 
-const { homeView } = await import('./views/home.js');
-const { exploreView } = await import('./views/explore.js');
-const { craftView } = await import('./views/craft.js');
-const { passportView } = await import('./views/passport.js');
-const { adminLoginView, adminHomeView, adminCraftView } = await import('./views/admin.js');
-
-route('/', (root) => homeView(root));
-route('/explore', (root) => exploreView(root));
-route('/craft/:id', (root, p) => craftView(root, p));
-route('/passport', (root) => passportView(root));
-route('/admin/login', (root) => adminLoginView(root));
-route('/admin', (root) => adminHomeView(root));
-route('/admin/craft/:id', (root, p) => adminCraftView(root, p));
+// Views are intentionally imported per route. In particular, the home page no
+// longer waits for the map/Three.js and workbench modules before it can render.
+route('/', async (root) => (await import('./views/home.js')).homeView(root));
+route('/explore', async (root) => (await import('./views/explore.js')).exploreView(root));
+route('/craft/:id', async (root, p) => (await import('./views/craft.js')).craftView(root, p));
+route('/passport', async (root) => (await import('./views/passport.js')).passportView(root));
+route('/admin/login', async (root) => (await import('./views/admin.js')).adminLoginView(root));
+route('/admin', async (root) => (await import('./views/admin.js')).adminHomeView(root));
+route('/admin/craft/:id', async (root, p) => (await import('./views/admin.js')).adminCraftView(root, p));
 
 app.innerHTML = '';
 startRouter(app);
