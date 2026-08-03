@@ -3,6 +3,7 @@ const state = {
   authenticated: false,
   username: null,
   revision: '',
+  communityRevision: '',
 };
 
 async function api(path, options = {}) {
@@ -21,7 +22,7 @@ async function api(path, options = {}) {
     error.payload = payload;
     throw error;
   }
-  if (payload.revision) state.revision = payload.revision;
+  if (payload.revision && !path.startsWith('/api/admin/submissions')) state.revision = payload.revision;
   return payload;
 }
 
@@ -88,3 +89,31 @@ export const saveDistrict = (id, fields) => save(`/api/admin/districts/${encodeU
 export const saveCraft = (id, fields) => save(`/api/admin/crafts/${encodeURIComponent(id)}`, fields);
 export const saveCraftSteps = (id, steps) => save(`/api/admin/crafts/${encodeURIComponent(id)}/steps`, { steps });
 
+export async function loadSubmissions(status = 'all') {
+  const payload = await api(`/api/admin/submissions?status=${encodeURIComponent(status)}`);
+  state.communityRevision = payload.revision || state.communityRevision;
+  return payload;
+}
+
+export async function reviewSubmission(id, action, reviewerNote = '') {
+  try {
+    const payload = await api(`/api/admin/submissions/${encodeURIComponent(id)}/review`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        action,
+        reviewer_note: reviewerNote,
+        revision: state.communityRevision,
+      }),
+    });
+    state.communityRevision = payload.revision || state.communityRevision;
+    if (payload.content_revision) state.revision = payload.content_revision;
+    return payload;
+  } catch (error) {
+    if (error.status === 409) {
+      state.communityRevision = error.payload?.revision || state.communityRevision;
+      throw new Error('投稿已经被审核，或审核列表已由另一位管理员更新。请刷新后重试。');
+    }
+    if (error.status === 401) throw new Error('登录已过期，请重新登录。');
+    throw new Error('审核操作失败，请稍后重试。');
+  }
+}

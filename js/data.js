@@ -259,6 +259,96 @@ export async function loadAll(onProgress) {
     store.crafts.set(pkg.video_id, record);
     onProgress?.(pkg.title);
   }));
+
+  // Approved community submissions have no source package directory. They are
+  // promoted into the same runtime craft/step/gallery schema and receive a
+  // lightweight record here so map, detail and admin views can treat them like
+  // the original projects.
+  for (const managedCraft of editorialCrafts.values()) {
+    if (store.crafts.has(managedCraft.id)) continue;
+    const managedCraftSteps = (editorialSteps.get(managedCraft.id) || [])
+      .slice()
+      .sort((a, b) => (a.sort ?? 99) - (b.sort ?? 99))
+      .map((step, index) => {
+        const normalized = {
+          ...step,
+          step_id: step.id,
+          video_id: managedCraft.id,
+          order_candidate: step.sort,
+          name: step.name || '',
+          action: step.action || '',
+          result: step.result || '',
+          materials: jsonValue(step.materials, []),
+          material_transforms: jsonValue(step.material_transforms, []),
+          tools: jsonValue(step.tools, []),
+          evidence_ids: [],
+          managed_resource_groups: jsonValue(step.resource_groups, null),
+          managed_quick_fill: jsonValue(step.quick_fill, null),
+          managed_has_quick_fill: Object.prototype.hasOwnProperty.call(step, 'quick_fill'),
+          managed_actions: jsonValue(step.actions, []),
+          managed_correct_action_id: step.correct_action_id || '',
+          site_managed: true,
+        };
+        return { ...normalized, displayName: stepDisplayName(normalized, index), interactionRule: interactionRule(normalized, index) };
+      });
+    const resourceKinds = new Map();
+    for (const step of managedCraftSteps) {
+      for (const name of step.materials || []) if (!resourceKinds.has(name)) resourceKinds.set(name, 'material');
+      for (const name of step.tools || []) if (!resourceKinds.has(name)) resourceKinds.set(name, 'implement');
+    }
+    const works = (editorialGallery.get(managedCraft.id) || [])
+      .slice()
+      .sort((a, b) => (a.sort ?? 999) - (b.sort ?? 999))
+      .map((work) => ({ frame: work.image_url || work.source_path || '', name: work.title || '', evidenceId: '' }));
+    const district = DISTRICT_PROFILES[managedCraft.district_id] || {};
+    const sequence = store.crafts.size;
+    const anchor = { x: 0.3 + (sequence % 4) * 0.13, y: 0.34 + (sequence % 3) * 0.13 };
+    const details = managedCraft.community_details || {};
+    const claims = [details.history, details.features].filter(Boolean).map((statement, index) => ({
+      claim_id: `${managedCraft.id}_community_${index + 1}`,
+      statement,
+      evidence_ids: [],
+      review_status: 'approved_community',
+    }));
+    const allResources = uniq(managedCraftSteps.flatMap((step) => step.interactionRule.allowed_resources));
+    store.crafts.set(managedCraft.id, {
+      craftId: managedCraft.id,
+      title: managedCraft.title,
+      directory: '',
+      baseUrl: '',
+      manifest: { video: { source_filename: '社区投稿' } },
+      draft: { summary_candidate: managedCraft.summary || '' },
+      summary: managedCraft.summary || '',
+      steps: managedCraftSteps,
+      evidence: [],
+      evMap: new Map(),
+      claims,
+      config: {
+        craftName: managedCraft.title,
+        districtId: managedCraft.district_id,
+        districtLabel: district.name || '地区待审核',
+        districtVerified: true,
+        category: managedCraft.category || '类别待审核',
+        heroFrame: managedCraft.cover_path || '',
+        works,
+        anchor,
+        backgroundManifest: 'assets/bg2/manifest.json',
+        community: true,
+      },
+      allMaterials: [...new Set(managedCraftSteps.flatMap((step) => step.materials || []))],
+      allTools: [...new Set(managedCraftSteps.flatMap((step) => step.tools || []))],
+      allResources,
+      resourceKinds,
+      actions: [...new Map(managedCraftSteps.flatMap((step) => step.interactionRule.actions).map((action) => [action.id, action])).values()],
+      people: [],
+      artifacts: [],
+      places: [],
+      externalFacts: [],
+      externalSources: [],
+      communityDetails: details,
+    });
+    onProgress?.(managedCraft.title);
+  }
   return store;
 }
 
@@ -267,7 +357,9 @@ export function getCraft(craftId) {
 }
 
 export function allCrafts() {
-  return CRAFT_ORDER.map((id) => store.crafts.get(id)).filter(Boolean);
+  const known = CRAFT_ORDER.map((id) => store.crafts.get(id)).filter(Boolean);
+  const community = [...store.crafts.values()].filter((craft) => !CRAFT_ORDER.includes(craft.craftId));
+  return known.concat(community);
 }
 
 export function knowledgeOverview() {

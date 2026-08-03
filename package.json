@@ -15,7 +15,8 @@
     "kb:test-api": "node scripts/smoke-knowledge-api.mjs",
     "ui:test": "node scripts/smoke-ui.mjs",
     "content:seed": "node scripts/content-seed.mjs",
-    "admin:test-ui": "node scripts/smoke-admin-ui.mjs"
+    "admin:test-ui": "node scripts/smoke-admin-ui.mjs",
+    "community:test": "node scripts/smoke-community-api.mjs"
   },
   "engines": {
     "node": ">=22.0.0"

@@ -138,7 +138,9 @@ export async function craftView(root, { id }) {
     el('span', { class: 'meta' }, [
       el('span', { text: `${craft.config.districtLabel || '地区待核对'} · ` }),
       craftCategory,
-      el('span', { class: 'tag tag-pending', text: '类别待核对' }),
+      craft.config.community
+        ? el('span', { class: 'tag tag-community', text: '社区投稿 · 已审核' })
+        : el('span', { class: 'tag tag-pending', text: '类别待核对' }),
       craft.config.districtVerified ? null : el('span', { class: 'tag tag-pending', text: ' 地区待核对' }),
     ]),
     el('span', { class: 'spacer' }),
@@ -226,17 +228,19 @@ export async function craftView(root, { id }) {
     const frag = el('div', {});
     const summary = el('span', { text: craft.summary });
     const summaryBlock = el('div', { class: 'craft-summary-editable' }, [
-      el('p', {}, [summary, document.createTextNode(' '), reviewTag()]),
+      el('p', {}, [summary, document.createTextNode(' '), craft.config.community ? el('span', { class: 'tag tag-community', text: '社区审核通过' }) : reviewTag()]),
     ]);
     mountEditableModule(summaryBlock, [{ key: 'summary', element: summary }], (values) => saveCraft(craft.craftId, values));
     frag.appendChild(summaryBlock);
-    frag.appendChild(el('p', { class: 'small muted', text: '以上简介为 AI 从纪录片自动生成的草稿（summary_candidate），人工审核尚未完成。' }));
+    frag.appendChild(el('p', { class: 'small muted', text: craft.config.community
+      ? '该条目由社区用户提交，并经管理员审核后公开。'
+      : '以上简介为 AI 从纪录片自动生成的草稿（summary_candidate），人工审核尚未完成。' }));
     frag.appendChild(el('h5', { text: '资料中的事实陈述（自动抽取）' }));
     if (!craft.claims.length) frag.appendChild(el('p', { class: 'empty-state', text: '资料待补充' }));
     for (const c of craft.claims) {
       frag.appendChild(el('div', { class: 'claim-item' }, [
         el('span', { text: c.statement + ' ' }),
-        reviewTag(),
+        craft.config.community ? el('span', { class: 'tag tag-community', text: '社区审核通过' }) : reviewTag(),
         c.evidence_ids?.length
           ? el('button', {
               class: 'ev-link', text: '查看证据',
@@ -280,6 +284,15 @@ export async function craftView(root, { id }) {
 
   function buildLegacy() {
     const frag = el('div', {});
+    if (craft.config.community) {
+      frag.appendChild(el('h5', { text: '社区资料说明' }));
+      frag.appendChild(el('p', { text: craft.communityDetails?.features || '投稿人未补充更多特色说明。' }));
+      if (craft.communityDetails?.source_url) frag.appendChild(el('a', {
+        class: 'ev-link', href: craft.communityDetails.source_url, target: '_blank', rel: 'noopener noreferrer', text: '查看投稿资料来源',
+      }));
+      frag.appendChild(el('p', { class: 'small muted', text: '本条目已经通过站内管理员审核；如需进一步事实核验，可在后台继续补充资料。' }));
+      return frag;
+    }
     frag.appendChild(el('h5', { text: '资料中出现的人物' }));
     frag.appendChild(craft.people.length
       ? el('div', { class: 'chip-row' }, craft.people.map((p) => el('span', { class: 'chip', text: p })))
@@ -411,6 +424,14 @@ export async function craftView(root, { id }) {
 
   function renderIdle() {
     clearWorkbench();
+    if (!craft.steps.length) {
+      workbench.appendChild(el('div', { class: 'wb-idle community-note-idle' }, [
+        craft.config.heroFrame ? el('img', { class: 'community-note-cover', src: craftAssetUrl(craft, craft.config.heroFrame), alt: craft.title }) : null,
+        el('h3', { text: '社区文化遗产条目' }),
+        el('p', { class: 'note', text: '投稿人暂未添加制作工序，因此本条目以资料阅读为主；管理员可以在后台继续补充工序模块。' }),
+      ]));
+      return;
+    }
     const modelSet = CRAFT_MODEL_PATHS[id];
     if (!modelSet) {
       renderIdleFlat('三维模型待接入，暂以纪录片关键帧展示；建议先查看工序。');

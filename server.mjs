@@ -7,7 +7,7 @@
 //   绝不发送给浏览器、绝不打印日志
 import http from 'node:http';
 import { chmod, copyFile, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { dirname, extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildContentSeed } from './scripts/content-seed.mjs';
@@ -48,11 +48,16 @@ const ADMIN_PASSWORD = env('ADMIN_PASSWORD', '12345689');
 const ADMIN_COOKIE_SECURE = env('ADMIN_COOKIE_SECURE', 'false').toLowerCase() === 'true';
 const configuredContentStorePath = env('CONTENT_STORE_PATH').trim();
 const CONTENT_STORE_PATH = normalize(configuredContentStorePath || join(ROOT, '.content', 'content.json'));
+const configuredCommunityStorePath = env('COMMUNITY_STORE_PATH').trim();
+const COMMUNITY_STORE_PATH = normalize(configuredCommunityStorePath || join(ROOT, '.content', 'community.json'));
 const CONTENT_SEED = await buildContentSeed();
 const sessions = new Map();
 const loginAttempts = new Map();
+const submissionAttempts = new Map();
 let editableContent;
 let contentWriteQueue = Promise.resolve();
+let communityState;
+let communityWriteQueue = Promise.resolve();
 
 // ---------- 统一知识库索引 ----------
 // 启动时一次性装入内存。网页问答与 /api/kb/search 共用同一检索函数，
@@ -235,6 +240,71 @@ const makeRevision = () => `${Date.now().toString(36)}-${randomBytes(5).toString
 const cleanText = (value, max = 5000) => String(value ?? '').replace(/\r\n/g, '\n').trim().slice(0, max);
 const cleanList = (value, maxItems = 40) => [...new Set((Array.isArray(value) ? value : [])
   .map((item) => cleanText(item, 100)).filter(Boolean))].slice(0, maxItems);
+const COMMUNITY_DISTRICTS = new Set(CONTENT_SEED.districts.map((district) => district.id));
+
+function cleanPublicUrl(value) {
+  const source = cleanText(value, 1200);
+  if (!source) return '';
+  try {
+    const parsed = new URL(source);
+    return ['http:', 'https:'].includes(parsed.protocol) ? parsed.href : '';
+  } catch {
+    return '';
+  }
+}
+
+function normalizeSubmissionSteps(value) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 12).map((step, index) => {
+    const name = cleanText(step?.name, 160) || `工序 ${index + 1}`;
+    const materials = cleanList(step?.materials, 30);
+    const tools = cleanList(step?.tools, 20);
+    const actionLabels = cleanList(step?.actions, 15);
+    const actions = (actionLabels.length ? actionLabels : [name]).map((label, actionIndex) => ({
+      id: `action_${index + 1}_${actionIndex + 1}`,
+      label,
+    }));
+    return {
+      name,
+      action: cleanText(step?.description, 3000),
+      result: cleanText(step?.result, 1000),
+      materials,
+      tools,
+      actions,
+      correct_action_id: actions[0].id,
+    };
+  });
+}
+
+function normalizeSubmission(body) {
+  const districtId = cleanText(body?.district_id, 80);
+  if (!COMMUNITY_DISTRICTS.has(districtId)) throw new Error('invalid_district');
+  const title = cleanText(body?.title, 160);
+  const summary = cleanText(body?.summary, 6000);
+  if (title.length < 2) throw new Error('title_required');
+  if (summary.length < 10) throw new Error('summary_required');
+  const kind = body?.kind === 'full' ? 'full' : 'note';
+  const includeSteps = Boolean(body?.include_steps) && kind === 'full';
+  const steps = includeSteps ? normalizeSubmissionSteps(body?.steps) : [];
+  if (includeSteps && !steps.length) throw new Error('steps_required');
+  return {
+    kind,
+    district_id: districtId,
+    title,
+    category: cleanText(body?.category, 100) || '类别待审核',
+    summary,
+    history: cleanText(body?.history, 5000),
+    features: cleanText(body?.features, 5000),
+    source_url: cleanPublicUrl(body?.source_url),
+    cover_url: cleanPublicUrl(body?.cover_url),
+    gallery_urls: [...new Set((Array.isArray(body?.gallery_urls) ? body.gallery_urls : [])
+      .slice(0, 8).map((item) => cleanPublicUrl(item)).filter(Boolean))],
+    include_steps: includeSteps,
+    steps,
+    contributor_name: cleanText(body?.contributor_name, 100),
+    contributor_contact: cleanText(body?.contributor_contact, 200),
+  };
+}
 
 function mergeMissingDistrictSeed(stored) {
   if (!Array.isArray(stored.districts)) stored.districts = [];
@@ -265,6 +335,8 @@ async function loadContentStore() {
   try {
     const stored = JSON.parse(await readFile(CONTENT_STORE_PATH, 'utf8'));
     if (!Array.isArray(stored.crafts) || !Array.isArray(stored.craft_steps)) throw new Error('invalid_content_store');
+    stored.craft_gallery = Array.isArray(stored.craft_gallery) ? stored.craft_gallery : [];
+    stored.site_texts = Array.isArray(stored.site_texts) ? stored.site_texts : [];
     stored.revision ||= makeRevision();
     if (mergeMissingDistrictSeed(stored)) {
       stored.updated_at = new Date().toISOString();
@@ -318,6 +390,62 @@ function saveContent(expectedRevision, mutate) {
   return operation;
 }
 
+async function writeCommunityStore(content) {
+  await mkdir(dirname(COMMUNITY_STORE_PATH), { recursive: true });
+  const temporary = `${COMMUNITY_STORE_PATH}.tmp-${process.pid}`;
+  await writeFile(temporary, `${JSON.stringify(content, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+  await rename(temporary, COMMUNITY_STORE_PATH);
+}
+
+async function loadCommunityStore() {
+  try {
+    const stored = JSON.parse(await readFile(COMMUNITY_STORE_PATH, 'utf8'));
+    if (!stored || typeof stored !== 'object' || Array.isArray(stored)) throw new Error('invalid_community_store');
+    stored.version ||= 1;
+    stored.revision ||= makeRevision();
+    stored.updated_at ||= new Date().toISOString();
+    stored.engagement ||= {};
+    stored.submissions = Array.isArray(stored.submissions) ? stored.submissions : [];
+    return stored;
+  } catch (error) {
+    if (error?.code !== 'ENOENT') {
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const backupPath = `${COMMUNITY_STORE_PATH}.invalid-${stamp}.bak`;
+      await copyFile(COMMUNITY_STORE_PATH, backupPath).catch(() => {});
+      await chmod(backupPath, 0o600).catch(() => {});
+      throw new Error(`社区数据存储无效，已拒绝覆盖：${error.message}`);
+    }
+    const initial = {
+      version: 1,
+      revision: makeRevision(),
+      updated_at: new Date().toISOString(),
+      engagement: {},
+      submissions: [],
+    };
+    await writeCommunityStore(initial);
+    return initial;
+  }
+}
+
+function saveCommunity(expectedRevision, mutate) {
+  const operation = communityWriteQueue.then(async () => {
+    if (expectedRevision && expectedRevision !== communityState.revision) {
+      const error = new Error('community_conflict');
+      error.code = 'community_conflict';
+      throw error;
+    }
+    const next = structuredClone(communityState);
+    mutate(next);
+    next.updated_at = new Date().toISOString();
+    next.revision = makeRevision();
+    await writeCommunityStore(next);
+    communityState = next;
+    return next;
+  });
+  communityWriteQueue = operation.catch(() => {});
+  return operation;
+}
+
 function publicContent() {
   return { ...editableContent, source: 'site-admin' };
 }
@@ -366,6 +494,31 @@ function validWriteOrigin(req) {
 
 function clientAddress(req) {
   return String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+}
+
+function visitorIdentity(req) {
+  const existing = cookies(req).sh_visitor;
+  const token = /^[A-Za-z0-9_-]{24,120}$/.test(existing || '') ? existing : randomBytes(24).toString('base64url');
+  return {
+    token,
+    hash: createHash('sha256').update(token).digest('hex'),
+    isNew: token !== existing,
+  };
+}
+
+function visitorCookie(req, token) {
+  const forwardedHttps = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https';
+  const secure = ADMIN_COOKIE_SECURE || forwardedHttps;
+  return `sh_visitor=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${365 * 24 * 60 * 60}${secure ? '; Secure' : ''}`;
+}
+
+function ensureEngagement(state, craftId) {
+  state.engagement[craftId] ||= { view_count: 0, inheritor_count: 0, inheritors: {} };
+  const entry = state.engagement[craftId];
+  entry.view_count = Math.max(0, Number(entry.view_count) || 0);
+  entry.inheritor_count = Math.max(0, Number(entry.inheritor_count) || 0);
+  entry.inheritors ||= {};
+  return entry;
 }
 
 function normalizeActions(actions, stepId) {
@@ -499,6 +652,7 @@ function normalizeSteps(craftId, incoming, previous) {
 }
 
 editableContent = await loadContentStore();
+communityState = await loadCommunityStore();
 
 async function handleContentApi(req, res) {
   if (req.method !== 'GET') {
@@ -510,6 +664,150 @@ async function handleContentApi(req, res) {
     'Cache-Control': 'no-cache',
   });
   res.end(JSON.stringify(publicContent()));
+}
+
+async function handleCommunityApi(req, res, urlPath) {
+  const visitor = visitorIdentity(req);
+  const responseHeaders = visitor.isNew ? { 'Set-Cookie': visitorCookie(req, visitor.token) } : {};
+
+  if (urlPath === '/api/community/stats' && req.method === 'GET') {
+    const crafts = {};
+    for (const [craftId, value] of Object.entries(communityState.engagement || {})) {
+      crafts[craftId] = {
+        view_count: Math.max(0, Number(value?.view_count) || 0),
+        inheritor_count: Math.max(0, Number(value?.inheritor_count) || 0),
+        visitor_ordinal: Math.max(0, Number(value?.inheritors?.[visitor.hash]) || 0),
+      };
+    }
+    jsonResponse(res, 200, { crafts, updated_at: communityState.updated_at }, responseHeaders);
+    return;
+  }
+
+  if (!validWriteOrigin(req)) { jsonResponse(res, 403, { error: 'invalid_origin' }, responseHeaders); return; }
+
+  const engagementMatch = urlPath.match(/^\/api\/community\/crafts\/([A-Za-z0-9_-]+)\/(view|inherit)$/);
+  if (engagementMatch && req.method === 'POST') {
+    const [, craftId, action] = engagementMatch;
+    if (!editableContent.crafts.some((craft) => craft.id === craftId)) {
+      jsonResponse(res, 404, { error: 'craft_not_found' }, responseHeaders);
+      return;
+    }
+    try {
+      let result;
+      const updated = await saveCommunity('', (next) => {
+        const entry = ensureEngagement(next, craftId);
+        if (action === 'view') entry.view_count += 1;
+        if (action === 'inherit') {
+          const existing = Number(entry.inheritors[visitor.hash]) || 0;
+          if (!existing) {
+            entry.inheritor_count += 1;
+            entry.inheritors[visitor.hash] = entry.inheritor_count;
+          }
+        }
+        result = {
+          view_count: entry.view_count,
+          inheritor_count: entry.inheritor_count,
+          visitor_ordinal: Number(entry.inheritors[visitor.hash]) || 0,
+        };
+      });
+      jsonResponse(res, 200, { ok: true, craft_id: craftId, ...result, updated_at: updated.updated_at }, responseHeaders);
+    } catch {
+      jsonResponse(res, 500, { error: 'community_store_unavailable' }, responseHeaders);
+    }
+    return;
+  }
+
+  if (urlPath === '/api/community/submissions' && req.method === 'POST') {
+    const ip = clientAddress(req);
+    const now = Date.now();
+    const attempt = submissionAttempts.get(ip) || { count: 0, resetAt: now + 60 * 60 * 1000 };
+    if (attempt.resetAt <= now) { attempt.count = 0; attempt.resetAt = now + 60 * 60 * 1000; }
+    if (attempt.count >= 5) { jsonResponse(res, 429, { error: 'submission_rate_limited' }, responseHeaders); return; }
+    try {
+      const body = await readJsonBody(req, 160 * 1024);
+      if (cleanText(body.website, 200)) { jsonResponse(res, 400, { error: 'invalid_submission' }, responseHeaders); return; }
+      const normalized = normalizeSubmission(body);
+      attempt.count += 1;
+      submissionAttempts.set(ip, attempt);
+      const id = `SUB_${Date.now().toString(36)}_${randomBytes(5).toString('hex')}`;
+      await saveCommunity('', (next) => {
+        next.submissions.push({
+          id,
+          status: 'pending',
+          submitted_at: new Date().toISOString(),
+          reviewed_at: null,
+          reviewer_note: '',
+          published_craft_id: null,
+          ...normalized,
+        });
+      });
+      jsonResponse(res, 201, { ok: true, submission_id: id, status: 'pending' }, responseHeaders);
+    } catch (error) {
+      const code = error?.message === 'body_too_large' ? 413 : 400;
+      jsonResponse(res, code, { error: error?.message || 'invalid_submission' }, responseHeaders);
+    }
+    return;
+  }
+
+  jsonResponse(res, 404, { error: 'not_found' }, responseHeaders);
+}
+
+function craftIdForSubmission(submission) {
+  return `COMM_${submission.id.replace(/^SUB_/, '')}`;
+}
+
+async function publishSubmission(submission) {
+  const craftId = craftIdForSubmission(submission);
+  await saveContent('', (next) => {
+    if (next.crafts.some((craft) => craft.id === craftId || craft.submission_id === submission.id)) return;
+    const sort = Math.max(0, ...next.crafts.map((craft) => Number(craft.sort) || 0)) + 1;
+    next.crafts.push({
+      id: craftId,
+      sort,
+      title: submission.title,
+      district_id: submission.district_id,
+      category: submission.category,
+      summary: submission.summary,
+      cover_path: submission.cover_url || '',
+      source_directory: '',
+      source: 'community',
+      submission_id: submission.id,
+      community_details: {
+        history: submission.history || '',
+        features: submission.features || '',
+        source_url: submission.source_url || '',
+        contributor_name: submission.contributor_name || '',
+      },
+    });
+
+    const incomingSteps = submission.steps.map((step, index) => {
+      const stepId = `${craftId}_step_${String(index + 1).padStart(2, '0')}`;
+      const actions = step.actions.map((action, actionIndex) => ({
+        id: `${stepId}_action_${actionIndex + 1}`,
+        label: action.label,
+      }));
+      return {
+        ...step,
+        id: stepId,
+        source_step_id: stepId,
+        actions,
+        correct_action_id: actions[0]?.id || '',
+      };
+    });
+    next.craft_steps.push(...normalizeSteps(craftId, incomingSteps, []));
+    submission.gallery_urls.forEach((url, index) => {
+      next.craft_gallery.push({
+        id: `${craftId}_work_${String(index + 1).padStart(2, '0')}`,
+        sort: index + 1,
+        craft_id: craftId,
+        title: `${submission.title}社区资料图 ${index + 1}`,
+        image_url: url,
+        source_path: '',
+        evidence_id: '',
+      });
+    });
+  });
+  return craftId;
 }
 
 async function handleAdminApi(req, res, urlPath) {
@@ -546,6 +844,54 @@ async function handleAdminApi(req, res, urlPath) {
     jsonResponse(res, 200, { authenticated: false }, { 'Set-Cookie': sessionCookie(req, '', 0) });
     return;
   }
+
+  if (urlPath === '/api/admin/submissions' && req.method === 'GET') {
+    const requestedStatus = cleanText(new URL(req.url, 'http://x').searchParams.get('status'), 30);
+    const submissions = communityState.submissions
+      .filter((submission) => !requestedStatus || requestedStatus === 'all' || submission.status === requestedStatus)
+      .slice()
+      .sort((a, b) => String(b.submitted_at).localeCompare(String(a.submitted_at)));
+    jsonResponse(res, 200, { revision: communityState.revision, submissions });
+    return;
+  }
+
+  const submissionReviewMatch = urlPath.match(/^\/api\/admin\/submissions\/(SUB_[A-Za-z0-9_]+)\/review$/);
+  if (submissionReviewMatch && req.method === 'PUT') {
+    try {
+      const body = await readJsonBody(req, 32 * 1024);
+      const action = body.action === 'approve' ? 'approved' : body.action === 'reject' ? 'rejected' : '';
+      if (!action) { jsonResponse(res, 400, { error: 'invalid_review_action' }); return; }
+      const submission = communityState.submissions.find((item) => item.id === submissionReviewMatch[1]);
+      if (!submission) { jsonResponse(res, 404, { error: 'submission_not_found' }); return; }
+      if (submission.status !== 'pending') { jsonResponse(res, 409, { error: 'submission_already_reviewed', revision: communityState.revision }); return; }
+      const publishedCraftId = action === 'approved' ? await publishSubmission(submission) : null;
+      // 点击量会持续推进社区数据的全局 revision；审核只锁定这一条投稿的
+      // pending 状态，避免访客恰好点击项目时让管理员的审核表单无故冲突。
+      const updated = await saveCommunity('', (next) => {
+        const target = next.submissions.find((item) => item.id === submission.id);
+        if (!target || target.status !== 'pending') {
+          const error = new Error('submission_already_reviewed');
+          error.code = 'submission_already_reviewed';
+          throw error;
+        }
+        target.status = action;
+        target.reviewed_at = new Date().toISOString();
+        target.reviewer_note = cleanText(body.reviewer_note, 2000);
+        target.published_craft_id = publishedCraftId;
+      });
+      jsonResponse(res, 200, {
+        ok: true,
+        status: action,
+        published_craft_id: publishedCraftId,
+        revision: updated.revision,
+        content_revision: editableContent.revision,
+      });
+    } catch (error) {
+      const code = ['community_conflict', 'submission_already_reviewed'].includes(error?.code) ? 409 : 400;
+      jsonResponse(res, code, { error: error?.code || error?.message || 'review_failed', revision: communityState.revision });
+    }
+    return;
+  }
   if (req.method !== 'PUT') { jsonResponse(res, 405, { error: 'method_not_allowed' }); return; }
 
   try {
@@ -559,8 +905,8 @@ async function handleAdminApi(req, res, urlPath) {
       });
     } else {
       const districtMatch = urlPath.match(/^\/api\/admin\/districts\/([a-z0-9_-]+)$/i);
-      const craftMatch = urlPath.match(/^\/api\/admin\/crafts\/(SHIH_\d{4})$/);
-      const stepsMatch = urlPath.match(/^\/api\/admin\/crafts\/(SHIH_\d{4})\/steps$/);
+      const craftMatch = urlPath.match(/^\/api\/admin\/crafts\/([A-Za-z0-9_-]+)$/);
+      const stepsMatch = urlPath.match(/^\/api\/admin\/crafts\/([A-Za-z0-9_-]+)\/steps$/);
       if (districtMatch) {
         updated = await saveContent(expected, (next) => {
           const item = next.districts.find((entry) => entry.id === districtMatch[1]);
@@ -660,6 +1006,7 @@ const server = http.createServer(async (req, res) => {
   try {
     const urlPath = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     if (urlPath === '/api/content') { await handleContentApi(req, res); return; }
+    if (urlPath.startsWith('/api/community/')) { await handleCommunityApi(req, res, urlPath); return; }
     if (urlPath.startsWith('/api/admin/')) { await handleAdminApi(req, res, urlPath); return; }
     if (urlPath === '/api/kb/search') { await handleKnowledgeSearchApi(req, res); return; }
     if (urlPath === '/api/agent') { await handleAgentApi(req, res); return; }

@@ -2,7 +2,7 @@
 // - 三维：悬停上浮 + 竹简浮层、点击下潜进入地区空间（空间地台 + 墨粒簇锚点）
 // - 平面兜底：WebGL 或模型加载失败时自动切换，并给出提示
 // - 搜索/类别筛选、地图/列表切换、Esc 返回在两种模式下均可用
-import { el, reviewTag } from '../ui.js';
+import { el, reviewTag, jiaoToast } from '../ui.js';
 import { InkField, blotTargets, reducedMotion } from '../particles.js';
 import { allCrafts, craftAssetUrl, siteText } from '../data.js';
 import { DISTRICTS, DISTRICT_PROFILES } from '../config.js';
@@ -11,8 +11,9 @@ import { agent } from '../agent.js';
 import { createMap3D } from '../map3d.js';
 import { createLayerBG } from '../layerbg.js';
 import { registerPage, unregisterPage, consumeEnter, transitionTo } from '../transitions.js';
-import { saveCraft, saveDistrict, saveSiteTexts } from '../admin.js';
+import { saveCraft, saveDistrict } from '../admin.js';
 import { mountEditableModule } from '../editable.js';
+import { claimInheritor, engagementFor, inheritorButtonText, recordCraftView } from '../community.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -122,8 +123,19 @@ export async function exploreView(root) {
   ]);
   const segMap = el('button', { class: 'on', text: '地图', onclick: () => setMode('map') });
   const segList = el('button', { text: '列表', onclick: () => setMode('list') });
+  let contributionDistrictId = '';
+  const contributeButton = el('button', {
+    class: 'toolbar-contribute', type: 'button', text: '添加文化遗产', hidden: true,
+    onclick: () => {
+      if (contributionDistrictId) location.hash = `#/contribute/${encodeURIComponent(contributionDistrictId)}`;
+    },
+  });
+  function setContributionDistrict(districtId = '') {
+    contributionDistrictId = districtId || '';
+    contributeButton.hidden = !contributionDistrictId;
+  }
   const toolbar = el('div', { class: 'toolbar' }, [
-    search, catSel,
+    search, contributeButton, catSel,
     el('span', { class: 'seg', role: 'group', 'aria-label': '视图切换' }, [segMap, segList]),
     el('span', { class: 'small muted', text: '类别归属为策展配置，未经官方名录核对' }),
   ]);
@@ -273,21 +285,41 @@ export async function exploreView(root) {
     const summary = el('span', { text: craft.summary });
     const intro = el('section', { class: 'project-story-section' }, [
       el('h3', { text: '项目简介' }),
-      el('p', {}, [summary, reviewTag()]),
+      el('p', {}, [summary, craft.config.community ? el('span', { class: 'tag tag-community', text: '社区审核通过' }) : reviewTag()]),
     ]);
-    const inheritButton = el('button', {
-      class: 'btn btn-primary', text: siteText('craft.inherit_button', '成为传承人'),
-      onclick: () => transitionTo(`#/craft/${craft.craftId}`),
+    const inheritButton = el('button', { class: 'btn btn-primary', text: siteText('craft.inherit_button', '成为传承人') });
+    const refreshInheritorLabel = (engagement) => {
+      if (inheritButton.isConnected) inheritButton.textContent = inheritorButtonText(engagement);
+    };
+    recordCraftView(craft.craftId).then(refreshInheritorLabel).catch(() => {
+      engagementFor(craft.craftId).then(refreshInheritorLabel).catch(() => {});
+    });
+    inheritButton.addEventListener('click', async () => {
+      inheritButton.disabled = true;
+      const previous = inheritButton.textContent;
+      inheritButton.textContent = '正在登记…';
+      try {
+        const engagement = await claimInheritor(craft.craftId);
+        refreshInheritorLabel(engagement);
+        transitionTo(`#/craft/${craft.craftId}`);
+      } catch {
+        inheritButton.disabled = false;
+        inheritButton.textContent = previous;
+        jiaoToast('登记暂时失败，请检查网络后重试。');
+      }
     });
     projectPanel = el('aside', { class: 'project-story', 'aria-label': `${craft.title}项目介绍` }, [
       el('button', { class: 'project-story-close', text: '关闭', onclick: () => clearProjectPanel() }),
       el('p', { class: 'project-story-kicker', text: '非遗项目' }),
       projectHeading,
-      el('p', { class: 'project-story-meta', text: `${craft.config.districtLabel || '地区待核对'} · ${craft.config.category || '类别待核对'}` }),
+      el('p', { class: 'project-story-meta' }, [
+        document.createTextNode(`${craft.config.districtLabel || '地区待核对'} · ${craft.config.category || '类别待核对'} `),
+        craft.config.community ? el('span', { class: 'tag tag-community', text: '社区共建' }) : null,
+      ]),
       el('div', { class: 'project-story-scroll' }, [
         intro,
         gallery.length ? el('section', { class: 'project-story-section' }, [
-          el('h3', { text: '纪录片影像' }),
+          el('h3', { text: craft.config.community ? '社区资料图片' : '纪录片影像' }),
           el('div', { class: 'project-story-gallery' }, gallery.map((work) => el('figure', {}, [
             el('img', { src: craftAssetUrl(craft, work.frame), alt: work.name, loading: 'lazy' }),
             el('figcaption', { text: work.name }),
@@ -301,9 +333,6 @@ export async function exploreView(root) {
     host.appendChild(projectPanel);
     mountEditableModule(projectHeading, [{ key: 'title', element: title }], (values) => saveCraft(craft.craftId, values));
     mountEditableModule(intro, [{ key: 'summary', element: summary }], (values) => saveCraft(craft.craftId, values));
-    mountEditableModule(projectPanel.querySelector('.project-story-action'), [{ key: 'craft.inherit_button', element: inheritButton }], (values) => (
-      saveSiteTexts([{ key: 'craft.inherit_button', content: values['craft.inherit_button'] }])
-    ));
   }
 
   // ---------- 共享：墨粒簇锚点 ----------
@@ -318,7 +347,9 @@ export async function exploreView(root) {
     }, [
       el('span', { class: 'craft-anchor-visual' }, [
         cv,
-        el('img', { src: craftAssetUrl(craft, craft.config.heroFrame), alt: `${craft.title}纪录片关键帧`, loading: 'lazy' }),
+        craft.config.heroFrame
+          ? el('img', { src: craftAssetUrl(craft, craft.config.heroFrame), alt: `${craft.title}代表图片`, loading: 'lazy' })
+          : el('span', { class: 'craft-anchor-placeholder', text: '社区条目' }),
       ]),
       el('span', { class: 'anchor-name', text: craft.title }),
     ]);
@@ -348,6 +379,7 @@ export async function exploreView(root) {
   let focusPanel = null;
 
   function exitFocus3D(silent, immediate = false) {
+    setContributionDistrict();
     clearProjectPanel({ immediate });
     if (focusOverlay) {
       focusOverlay.remove(); focusOverlay = null;
@@ -367,6 +399,7 @@ export async function exploreView(root) {
     hideSlip(); slip?.remove(); slip = null; slipFor = null;
     map3d.focusDistrict(nodeName);
     const districtId = NODE_TO_DISTRICT[nodeName];
+    setContributionDistrict(districtId);
     mapViewEl.classList.add('is-district-focus');
     focusPanel = makeDistrictPanel(districtId, nodeName, crafts, () => exitFocus3D());
     mapViewEl.appendChild(focusPanel);
@@ -550,6 +583,7 @@ export async function exploreView(root) {
     stage.classList.add('focusing');
     stage.querySelectorAll('.district').forEach((g) => g.classList.toggle('focused', g.dataset.district === d.id));
     slip?.remove(); slip = null; slipFor = null;
+    setContributionDistrict(d.id);
 
     const crafts = districtCrafts(d.id);
     const platform = el('div', { class: 'focus-platform' }, [
@@ -577,6 +611,7 @@ export async function exploreView(root) {
 
   function exitFlatFocus(immediate = false) {
     if (!flatFocusEl) return;
+    setContributionDistrict();
     clearProjectPanel({ immediate });
     const closingFlatFocus = flatFocusEl;
     flatFocusEl = null;
@@ -605,18 +640,22 @@ export async function exploreView(root) {
         el('h3', { text: dname }),
         ...crafts.map((c) => el('article', {
           class: 'craft-card', tabindex: '0', role: 'link',
-          onclick: () => transitionTo(`#/craft/${c.craftId}`),
-          onkeydown: (e) => { if (e.key === 'Enter') transitionTo(`#/craft/${c.craftId}`); },
+          onclick: () => { void recordCraftView(c.craftId).catch(() => {}); transitionTo(`#/craft/${c.craftId}`); },
+          onkeydown: (e) => { if (e.key === 'Enter') { void recordCraftView(c.craftId).catch(() => {}); transitionTo(`#/craft/${c.craftId}`); } },
         }, [
-          el('img', { src: craftAssetUrl(c, c.config.heroFrame), alt: `${c.title}纪录片关键帧`, loading: 'lazy' }),
+          c.config.heroFrame
+            ? el('img', { src: craftAssetUrl(c, c.config.heroFrame), alt: `${c.title}代表图片`, loading: 'lazy' })
+            : el('div', { class: 'craft-card-placeholder', text: '社区条目' }),
           el('div', { class: 'cc-body' }, [
             el('h4', { text: c.title }),
             el('p', { class: 'meta' }, [
               el('span', { text: `${c.config.districtLabel} · ${c.config.category} ` }),
-              el('span', { class: 'tag tag-pending', text: '类别待核对' }),
+              c.config.community
+                ? el('span', { class: 'tag tag-community', text: '社区审核通过' })
+                : el('span', { class: 'tag tag-pending', text: '类别待核对' }),
               c.config.districtVerified ? null : el('span', { class: 'tag tag-pending', text: ' 地区待核对' }),
             ]),
-            el('p', {}, [el('span', { text: c.summary.slice(0, 80) + '… ' }), reviewTag()]),
+            el('p', {}, [el('span', { text: c.summary.slice(0, 80) + '… ' }), c.config.community ? null : reviewTag()]),
           ]),
         ])),
       ]));

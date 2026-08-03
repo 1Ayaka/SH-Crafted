@@ -39,10 +39,12 @@ try {
 // longer waits for the map/Three.js and workbench modules before it can render.
 route('/', async (root) => (await import('./views/home.js')).homeView(root));
 route('/explore', async (root) => (await import('./views/explore.js')).exploreView(root));
+route('/contribute/:districtId', async (root, p) => (await import('./views/contribute.js')).contributeView(root, p));
 route('/craft/:id', async (root, p) => (await import('./views/craft.js')).craftView(root, p));
 route('/passport', async (root) => (await import('./views/passport.js')).passportView(root));
 route('/admin/login', async (root) => (await import('./views/admin.js')).adminLoginView(root));
 route('/admin', async (root) => (await import('./views/admin.js')).adminHomeView(root));
+route('/admin/submissions', async (root) => (await import('./views/admin.js')).adminSubmissionsView(root));
 route('/admin/craft/:id', async (root, p) => (await import('./views/admin.js')).adminCraftView(root, p));
 
 app.innerHTML = '';

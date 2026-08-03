@@ -1,7 +1,9 @@
 import { el } from '../ui.js';
 import { adminNotice } from '../editable.js';
-import { adminState, isAdmin, login, logout, saveCraftSteps } from '../admin.js';
-import { allCrafts, getCraft } from '../data.js';
+import { adminState, isAdmin, loadSubmissions, login, logout, reviewSubmission, saveCraftSteps } from '../admin.js';
+import { allCrafts, craftAssetUrl, getCraft } from '../data.js';
+import { loadCommunityStats } from '../community.js';
+import { DISTRICT_PROFILES } from '../config.js';
 import { topNav } from './home.js';
 import { createLayerBG } from '../layerbg.js';
 
@@ -69,6 +71,11 @@ export async function adminLoginView(root) {
 export async function adminHomeView(root) {
   if (!requireAdmin()) return { cleanup() {} };
   const crafts = allCrafts();
+  const [submissionData, engagement] = await Promise.all([
+    loadSubmissions('pending').catch(() => ({ submissions: [] })),
+    loadCommunityStats({ refresh: true }).catch(() => ({})),
+  ]);
+  const pendingCount = submissionData.submissions?.length || 0;
   const content = el('main', { class: 'admin-dashboard' }, [
     el('div', { class: 'admin-page-heading' }, [
       el('div', {}, [
@@ -76,12 +83,17 @@ export async function adminHomeView(root) {
         el('h1', { text: '内容与工序管理' }),
         el('p', { text: '返回首页、地图或详情页可以直接编辑文字；这里用于调整每个项目的制作工序。' }),
       ]),
-      el('button', { class: 'btn-ghost', text: '退出登录', onclick: () => logout() }),
+      el('div', { class: 'admin-heading-actions' }, [
+        el('a', { class: 'btn btn-primary', href: '#/admin/submissions', text: `审核社区投稿（${pendingCount}）` }),
+        el('button', { class: 'btn-ghost', text: '退出登录', onclick: () => logout() }),
+      ]),
     ]),
     el('div', { class: 'admin-craft-grid' }, crafts.map((craft) => el('article', { class: 'admin-craft-card' }, [
-      el('img', { src: craft.baseUrl + craft.config.heroFrame, alt: craft.title, loading: 'lazy' }),
+      craft.config.heroFrame
+        ? el('img', { src: craftAssetUrl(craft, craft.config.heroFrame), alt: craft.title, loading: 'lazy' })
+        : el('div', { class: 'admin-card-placeholder', text: '社区条目' }),
       el('div', {}, [
-        el('p', { class: 'admin-card-meta', text: `${craft.config.districtLabel || '地区待核对'} · ${craft.steps.length} 道工序` }),
+        el('p', { class: 'admin-card-meta', text: `${craft.config.districtLabel || '地区待核对'} · ${craft.steps.length} 道工序 · ${engagement[craft.craftId]?.view_count || 0} 次查看 · ${engagement[craft.craftId]?.inheritor_count || 0} 位传承人` }),
         el('h2', { text: craft.title }),
         el('div', { class: 'admin-card-actions' }, [
           el('a', { class: 'btn btn-primary', href: `#/admin/craft/${craft.craftId}`, text: '编辑工序' }),
@@ -90,6 +102,114 @@ export async function adminHomeView(root) {
       ]),
     ]))),
   ]);
+  return adminShell(root, 'admin', content);
+}
+
+export async function adminSubmissionsView(root) {
+  if (!requireAdmin()) return { cleanup() {} };
+  let selectedStatus = 'pending';
+  const list = el('div', { class: 'admin-submission-list' });
+  const summary = el('p', { class: 'admin-submission-summary', text: '正在读取投稿…' });
+  const statusSelect = el('select', { 'aria-label': '筛选投稿状态' }, [
+    el('option', { value: 'pending', text: '待审核' }),
+    el('option', { value: 'approved', text: '已通过' }),
+    el('option', { value: 'rejected', text: '已驳回' }),
+    el('option', { value: 'all', text: '全部投稿' }),
+  ]);
+
+  async function renderList() {
+    list.replaceChildren(el('p', { class: 'empty-state', text: '正在读取投稿…' }));
+    try {
+      const payload = await loadSubmissions(selectedStatus);
+      const submissions = payload.submissions || [];
+      summary.textContent = `${submissions.length} 份${statusSelect.options[statusSelect.selectedIndex].text}投稿`;
+      list.replaceChildren();
+      if (!submissions.length) {
+        list.appendChild(el('p', { class: 'empty-state', text: '当前没有符合条件的投稿。' }));
+        return;
+      }
+      submissions.forEach((submission) => {
+        const note = el('textarea', { rows: '3', maxlength: '2000', placeholder: '审核说明（选填）' }, [submission.reviewer_note || '']);
+        const actions = submission.status === 'pending'
+          ? el('div', { class: 'admin-review-actions' }, [
+              el('button', {
+                class: 'btn-ghost', type: 'button', text: '驳回', onclick: async (event) => {
+                  if (!confirm(`确定驳回“${submission.title}”吗？`)) return;
+                  event.currentTarget.disabled = true;
+                  try { await reviewSubmission(submission.id, 'reject', note.value); location.reload(); }
+                  catch (error) { event.currentTarget.disabled = false; adminNotice(error.message, true); }
+                },
+              }),
+              el('button', {
+                class: 'btn btn-primary', type: 'button', text: '审核通过并上线', onclick: async (event) => {
+                  if (!confirm(`确认“${submission.title}”内容可以公开展示并正式上线吗？`)) return;
+                  event.currentTarget.disabled = true;
+                  try { await reviewSubmission(submission.id, 'approve', note.value); location.reload(); }
+                  catch (error) { event.currentTarget.disabled = false; adminNotice(error.message, true); }
+                },
+              }),
+            ])
+          : el('p', { class: `admin-review-result is-${submission.status}`, text: submission.status === 'approved' ? `已上线：${submission.published_craft_id}` : '已驳回' });
+        list.appendChild(el('article', { class: 'admin-submission-card' }, [
+          el('header', { class: 'admin-submission-heading' }, [
+            el('div', {}, [
+              el('p', { class: 'admin-kicker', text: `${submission.kind === 'full' ? '完整条目' : '简单便签'} · ${submission.id}` }),
+              el('h2', { text: submission.title }),
+            ]),
+            el('span', { class: `admin-submission-status is-${submission.status}`, text: submission.status === 'pending' ? '待审核' : submission.status === 'approved' ? '已通过' : '已驳回' }),
+          ]),
+          el('dl', { class: 'admin-submission-meta' }, [
+            el('div', {}, [el('dt', { text: '地区' }), el('dd', { text: DISTRICT_PROFILES[submission.district_id]?.name || submission.district_id })]),
+            el('div', {}, [el('dt', { text: '类别' }), el('dd', { text: submission.category })]),
+            el('div', {}, [el('dt', { text: '提交时间' }), el('dd', { text: new Date(submission.submitted_at).toLocaleString('zh-CN') })]),
+            el('div', {}, [el('dt', { text: '投稿人' }), el('dd', { text: submission.contributor_name || '未填写' })]),
+            el('div', {}, [el('dt', { text: '联系方式' }), el('dd', { text: submission.contributor_contact || '未填写' })]),
+          ]),
+          el('section', { class: 'admin-submission-copy' }, [el('h3', { text: '内容说明' }), el('p', { text: submission.summary })]),
+          submission.history ? el('section', { class: 'admin-submission-copy' }, [el('h3', { text: '历史与来历' }), el('p', { text: submission.history })]) : null,
+          submission.features ? el('section', { class: 'admin-submission-copy' }, [el('h3', { text: '特色与价值' }), el('p', { text: submission.features })]) : null,
+          submission.source_url ? el('a', { class: 'admin-submission-source', href: submission.source_url, target: '_blank', rel: 'noopener noreferrer', text: '打开投稿资料来源' }) : null,
+          submission.cover_url ? el('img', { class: 'admin-submission-cover', src: submission.cover_url, alt: `${submission.title}投稿封面`, loading: 'lazy' }) : null,
+          submission.gallery_urls?.length ? el('section', { class: 'admin-submission-gallery' }, [
+            el('h3', { text: `资料图片（${submission.gallery_urls.length}）` }),
+            el('div', {}, submission.gallery_urls.map((url, index) => el('a', {
+              href: url, target: '_blank', rel: 'noopener noreferrer', title: '打开原图',
+            }, [el('img', { src: url, alt: `${submission.title}资料图 ${index + 1}`, loading: 'lazy' })]))),
+          ]) : null,
+          submission.steps?.length ? el('section', { class: 'admin-submission-steps' }, [
+            el('h3', { text: `制作工序（${submission.steps.length}）` }),
+            ...submission.steps.map((step, index) => el('article', {}, [
+              el('h4', { text: `${index + 1}. ${step.name}` }),
+              el('p', { text: step.action || '未填写工序说明' }),
+              el('p', { class: 'small muted', text: `材料：${step.materials.join('、') || '无'} · 工具：${step.tools.join('、') || '无'} · 操作：${step.actions.map((action) => action.label).join('、')}` }),
+            ])),
+          ]) : null,
+          fieldForReview(note),
+          actions,
+        ]));
+      });
+    } catch (error) {
+      summary.textContent = '投稿读取失败';
+      list.replaceChildren(el('p', { class: 'empty-state', text: error.message || '请稍后重试。' }));
+    }
+  }
+
+  function fieldForReview(control) {
+    return el('label', { class: 'admin-review-note' }, [el('span', { text: '审核说明' }), control]);
+  }
+  statusSelect.addEventListener('change', () => { selectedStatus = statusSelect.value; renderList(); });
+  const content = el('main', { class: 'admin-dashboard admin-submissions-page' }, [
+    el('div', { class: 'admin-page-heading' }, [
+      el('div', {}, [
+        el('a', { class: 'admin-return-link', href: '#/admin', text: '返回内容管理' }),
+        el('h1', { text: '社区投稿审核' }),
+        el('p', { text: '投稿只有在这里审核通过后，才会进入正式内容库并显示在地图中。' }),
+      ]),
+      el('div', { class: 'admin-submission-filter' }, [summary, statusSelect]),
+    ]),
+    list,
+  ]);
+  await renderList();
   return adminShell(root, 'admin', content);
 }
 
