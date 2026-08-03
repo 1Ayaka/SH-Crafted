@@ -46,6 +46,11 @@ const HOST = arg('host') || env('HOST', '0.0.0.0');
 const ADMIN_USERNAME = env('ADMIN_USERNAME', 'djt');
 const ADMIN_PASSWORD = env('ADMIN_PASSWORD', '12345689');
 const ADMIN_COOKIE_SECURE = env('ADMIN_COOKIE_SECURE', 'false').toLowerCase() === 'true';
+const configuredLoginMaxAttempts = Number(env('ADMIN_LOGIN_MAX_ATTEMPTS', '50'));
+const ADMIN_LOGIN_MAX_ATTEMPTS = Number.isFinite(configuredLoginMaxAttempts)
+  ? Math.min(200, Math.max(10, Math.trunc(configuredLoginMaxAttempts)))
+  : 50;
+const ADMIN_LOGIN_WINDOW_MS = 10 * 60 * 1000;
 const configuredContentStorePath = env('CONTENT_STORE_PATH').trim();
 const CONTENT_STORE_PATH = normalize(configuredContentStorePath || join(ROOT, '.content', 'content.json'));
 const configuredCommunityStorePath = env('COMMUNITY_STORE_PATH').trim();
@@ -814,13 +819,34 @@ async function handleAdminApi(req, res, urlPath) {
   if (!validWriteOrigin(req)) { jsonResponse(res, 403, { error: 'invalid_origin' }); return; }
   if (urlPath === '/api/admin/login' && req.method === 'POST') {
     const ip = clientAddress(req);
-    const attempt = loginAttempts.get(ip) || { count: 0, resetAt: 0 };
-    if (attempt.resetAt > Date.now() && attempt.count >= 8) { jsonResponse(res, 429, { error: 'too_many_attempts' }); return; }
+    const now = Date.now();
+    const previous = loginAttempts.get(ip);
+    const attempt = previous?.resetAt > now
+      ? previous
+      : { count: 0, resetAt: now + ADMIN_LOGIN_WINDOW_MS };
+    if (attempt.count >= ADMIN_LOGIN_MAX_ATTEMPTS) {
+      const retryAfter = Math.max(1, Math.ceil((attempt.resetAt - now) / 1000));
+      jsonResponse(res, 429, {
+        error: 'too_many_attempts',
+        retry_after_seconds: retryAfter,
+      }, { 'Retry-After': String(retryAfter) });
+      return;
+    }
     try {
       const body = await readJsonBody(req, 4096);
       if (!safeEqual(body.username, ADMIN_USERNAME) || !safeEqual(body.password, ADMIN_PASSWORD)) {
-        loginAttempts.set(ip, { count: attempt.resetAt > Date.now() ? attempt.count + 1 : 1, resetAt: Date.now() + 10 * 60 * 1000 });
-        jsonResponse(res, 401, { error: 'invalid_credentials' });
+        const count = attempt.count + 1;
+        loginAttempts.set(ip, { count, resetAt: attempt.resetAt });
+        const remaining = Math.max(0, ADMIN_LOGIN_MAX_ATTEMPTS - count);
+        if (!remaining) {
+          const retryAfter = Math.max(1, Math.ceil((attempt.resetAt - now) / 1000));
+          jsonResponse(res, 429, {
+            error: 'too_many_attempts',
+            retry_after_seconds: retryAfter,
+          }, { 'Retry-After': String(retryAfter) });
+        } else {
+          jsonResponse(res, 401, { error: 'invalid_credentials', attempts_remaining: remaining });
+        }
         return;
       }
       loginAttempts.delete(ip);

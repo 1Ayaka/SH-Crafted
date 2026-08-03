@@ -59,7 +59,15 @@ export async function adminLoginView(root) {
       location.hash = '#/admin';
       location.reload();
     } catch (loginError) {
-      error.textContent = loginError.status === 429 ? '尝试次数过多，请稍后再试。' : '用户名或密码不正确。';
+      if (loginError.status === 429) {
+        const seconds = Number(loginError.payload?.retry_after_seconds) || 600;
+        error.textContent = `尝试次数过多，请约 ${Math.max(1, Math.ceil(seconds / 60))} 分钟后再试。`;
+      } else {
+        const remaining = Number(loginError.payload?.attempts_remaining);
+        error.textContent = Number.isFinite(remaining)
+          ? `用户名或密码不正确，还可尝试 ${remaining} 次。`
+          : '用户名或密码不正确。';
+      }
     } finally {
       submit.disabled = false;
       submit.textContent = '登录';

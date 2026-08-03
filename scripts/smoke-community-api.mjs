@@ -93,8 +93,30 @@ try {
   const submissionId = submission.payload.submission_id;
   if (!submissionId) throw new Error('submission id missing');
 
+  for (let attempt = 1; attempt <= 50; attempt++) {
+    const response = await fetch(`${base}/api/admin/login`, {
+      method: 'POST',
+      headers: {
+        Origin: base,
+        'X-Forwarded-For': '198.51.100.50',
+        'Content-Type': 'application/json; charset=utf-8',
+      },
+      body: JSON.stringify({ username: 'djt', password: 'wrong-password' }),
+    });
+    const payload = await response.json();
+    if (attempt < 50 && (response.status !== 401 || payload.attempts_remaining !== 50 - attempt)) {
+      throw new Error(`login attempt ${attempt} did not report the expected remaining count`);
+    }
+    if (attempt === 50 && (response.status !== 429 || payload.error !== 'too_many_attempts')) {
+      throw new Error('the 50th failed login did not trigger rate limiting');
+    }
+  }
+
   const login = await json('/api/admin/login', { method: 'POST', body: { username: 'djt', password: '12345689' } });
   const adminCookie = cookieFrom(login.response, 'sh_admin');
+  if (!adminCookie || /;\s*Secure/i.test(login.response.headers.get('set-cookie') || '')) throw new Error('HTTP admin cookie flags are incorrect');
+  const authenticatedSession = await json('/api/admin/session', { cookie: adminCookie });
+  if (!authenticatedSession.payload.authenticated) throw new Error('admin session cookie did not survive the login round trip');
   const pending = await json('/api/admin/submissions?status=pending', { cookie: adminCookie });
   if (!pending.payload.submissions.some((item) => item.id === submissionId)) throw new Error('pending submission is absent');
   const approved = await json(`/api/admin/submissions/${submissionId}/review`, {
