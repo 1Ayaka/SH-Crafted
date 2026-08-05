@@ -268,6 +268,7 @@ function makeSampler(mesh) {
  *   pointSize / alpha / flowSpeed / diffuseSpeed —— 微调
  *   tint: 0xRRGGBB —— 单色原料（未染布、白纸等），覆盖默认墨绿/鼠尾草/金调色板
  *   patternUrl —— 平面 UV → 纹样图取色（成品药斑布）；patternRepeat: [横, 纵] 平铺次数
+ *   solidMode —— 保留实体网格并替换为地图同系玉石材质；粒子仅作点缀
  * handle = { el, setActive(v), scatter(), zoomBy(factor), resetZoom(), playEnter(), playDyeSweep(dur?), dispose() }
  */
 export async function createParticleModel(container, url, opts = {}) {
@@ -282,6 +283,8 @@ export async function createParticleModel(container, url, opts = {}) {
     detailMode = false,     // 成品态：提高采样密度并压低漂移，保留小构件和轮廓
     dropRate = detailMode ? 0.075 : 0, // 成品粒子轻微下坠，渐隐后从原位补回
     looseAmount = 0,        // 完成前预览：在成品轮廓周围增加细碎离散量；完成态保持 0
+    solidMode = false,
+    particleFraction = solidMode ? 0.2 : 1,
   } = opts;
 
   const loadingEl = document.createElement('div');
@@ -405,7 +408,7 @@ export async function createParticleModel(container, url, opts = {}) {
     }
     colors[i * 3] = colorsRaw[i * 3]; colors[i * 3 + 1] = colorsRaw[i * 3 + 1]; colors[i * 3 + 2] = colorsRaw[i * 3 + 2];
     sizes[i] = pointSize * (0.7 + h * 0.9) * sizeMul;
-    alphas[i] = alpha * (0.75 + h * 0.25) * alphaMul;
+    alphas[i] = h <= particleFraction ? alpha * (0.75 + h * 0.25) * alphaMul : 0;
     phase[i] = h * Math.PI * 2;
     fade[i] = 1;
   }
@@ -415,6 +418,9 @@ export async function createParticleModel(container, url, opts = {}) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setClearColor(0x000000, 0);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 0.94;
   renderer.setSize(container.clientWidth, container.clientHeight);
   renderer.domElement.className = 'pm-canvas';
   renderer.domElement.dataset.modelMode = detailMode ? 'finished-detail' : (looseAmount > 0 ? 'finished-loose-preview' : 'standard');
@@ -462,6 +468,80 @@ export async function createParticleModel(container, url, opts = {}) {
   group.add(points);
   scene.add(group);
 
+  // 完成态保留真实网格细节，材质沿用地图的半透玉石参数；点云只覆盖少量表面并向下飘落。
+  const solidMaterials = [];
+  const solidGeometries = [];
+  if (solidMode) {
+    const jadeBase = new THREE.Color(0x81977d);
+    const makeJadeMaterial = (sourceMaterial, materialIndex) => {
+      const source = sourceMaterial || {};
+      const hasTexture = Boolean(source.map);
+      const originalColor = source.color?.clone?.() || new THREE.Color(0xd7ddcf);
+      // 有贴图时只覆一层很轻的玉色，避免把模型原有彩绘重新染成单色。
+      originalColor.lerp(jadeBase, hasTexture ? 0.1 : 0.32);
+      originalColor.offsetHSL((materialIndex % 3 - 1) * 0.008, -0.025, 0.015);
+      const sourceOpacity = Number.isFinite(source.opacity) ? source.opacity : 1;
+      const baseOpacity = Math.min(hasTexture ? 0.64 : 0.69, Math.max(0.5, sourceOpacity * (hasTexture ? 0.62 : 0.67)));
+      const material = new THREE.MeshPhysicalMaterial({
+        name: `${source.name || '原模型材质'} · 半透明玉石`,
+        color: originalColor,
+        map: source.map || null,
+        alphaMap: source.alphaMap || null,
+        normalMap: source.normalMap || null,
+        normalScale: source.normalScale?.clone?.() || new THREE.Vector2(1, 1),
+        bumpMap: source.bumpMap || null,
+        bumpScale: Number.isFinite(source.bumpScale) ? source.bumpScale * 0.7 : 0.035,
+        roughnessMap: source.roughnessMap || null,
+        metalnessMap: source.metalnessMap || null,
+        aoMap: source.aoMap || null,
+        aoMapIntensity: Number.isFinite(source.aoMapIntensity) ? source.aoMapIntensity : 0.75,
+        emissive: source.emissive?.clone?.().multiplyScalar(0.45) || new THREE.Color(0x000000),
+        emissiveMap: source.emissiveMap || null,
+        emissiveIntensity: Number.isFinite(source.emissiveIntensity) ? source.emissiveIntensity * 0.45 : 0,
+        transparent: true,
+        opacity: baseOpacity,
+        transmission: hasTexture ? 0.18 : 0.24,
+        thickness: 0.28,
+        attenuationColor: 0x8fa58a,
+        attenuationDistance: 1.8,
+        ior: 1.43,
+        roughness: Math.max(0.78, Number.isFinite(source.roughness) ? source.roughness : 0.82),
+        metalness: Math.min(0.08, Number(source.metalness) || 0),
+        clearcoat: 0.012,
+        clearcoatRoughness: 0.96,
+        specularIntensity: 0.18,
+        specularColor: 0xdde6d9,
+        alphaTest: Number(source.alphaTest) || 0,
+        depthWrite: true,
+        side: source.side ?? THREE.DoubleSide,
+      });
+      material.userData.baseOpacity = baseOpacity;
+      solidMaterials.push(material);
+      return material;
+    };
+    meshes.forEach((sourceMesh, index) => {
+      const solidGeometry = sourceMesh.geometry.clone();
+      solidGeometry.applyMatrix4(sourceMesh.matrixWorld);
+      solidGeometry.translate(-center.x, -center.y, -center.z);
+      solidGeometries.push(solidGeometry);
+      const sourceHasMaterialArray = Array.isArray(sourceMesh.material);
+      const sourceMaterials = sourceHasMaterialArray ? sourceMesh.material : [sourceMesh.material];
+      const convertedMaterials = sourceMaterials.map((material, materialIndex) => makeJadeMaterial(material, index + materialIndex));
+      // Three.js 只有带 geometry groups 的网格才能使用材质数组；单材质网格必须继续传单个材质。
+      const solidMaterial = sourceHasMaterialArray ? convertedMaterials : convertedMaterials[0];
+      const mesh = new THREE.Mesh(solidGeometry, solidMaterial);
+      mesh.renderOrder = -1;
+      group.add(mesh);
+    });
+    group.scale.setScalar(norm);
+    points.scale.setScalar(1 / norm);
+    scene.add(new THREE.HemisphereLight(0xf4ebd8, 0x566a59, 1.25));
+    const jadeLight = new THREE.DirectionalLight(0xfff1da, 1.5);
+    jadeLight.position.set(-2.4, 4.5, 3.2);
+    scene.add(jadeLight);
+    scene.add(new THREE.AmbientLight(0xe8dcc7, 0.35));
+  }
+
   function setUScale() {
     const hpx = renderer.domElement.height; // 绘制缓冲像素高
     mat.uniforms.uScale.value = (hpx * camera.zoom) / (2 * Math.tan((camera.fov * Math.PI) / 360));
@@ -483,6 +563,8 @@ export async function createParticleModel(container, url, opts = {}) {
   let enterFrom = null;
   let dyeAge = -1;                   // <0 无染色扫过
   let dyeDur = 2.6;
+  let revealFade = 1;
+  let currentScatterAmp = 0;
   const clampZoom = (value) => Math.max(zoom.min, Math.min(zoom.max, value));
   const setZoomTarget = (value) => { zoom.target = clampZoom(value); };
   const pointerDistance = () => {
@@ -588,6 +670,7 @@ export async function createParticleModel(container, url, opts = {}) {
       );
       camera.lookAt(0, 0, 0);
       mat.uniforms.uFade.value = easeOutCubic(p);
+      revealFade = easeOutCubic(p);
       if (p >= 1) { enterAge = -1; camera.position.copy(camHome); camera.lookAt(0, 0, 0); mat.uniforms.uFade.value = 1; }
     }
 
@@ -635,6 +718,7 @@ export async function createParticleModel(container, url, opts = {}) {
         else if (a < SCATTER_DUR) scAmp = 1 - easeInOutCubic((a - SCATTER_BURST - SCATTER_HOLD) / SCATTER_BACK);
         else { scatterAge = -1; scAmp = 0; }
       }
+      currentScatterAmp = scAmp;
       const driftDamp = 1 - scAmp * 0.85; // 散墨期间漂移被压制，保证干净合并
       for (let i = 0; i < count; i++) {
         const i3 = i * 3;
@@ -683,6 +767,12 @@ export async function createParticleModel(container, url, opts = {}) {
       }
       posAttr.needsUpdate = true;
       alphaAttr.needsUpdate = true;
+    }
+    if (solidMode) {
+      const scatterVisibility = 1 - currentScatterAmp * 0.94;
+      solidMaterials.forEach((material) => {
+        material.opacity = material.userData.baseOpacity * revealFade * scatterVisibility;
+      });
     }
     renderer.render(scene, camera);
     schedule();
@@ -748,6 +838,8 @@ export async function createParticleModel(container, url, opts = {}) {
       el.removeEventListener('wheel', onWheel);
       geo.dispose();
       mat.dispose();
+      solidGeometries.forEach((geometry) => geometry.dispose());
+      solidMaterials.forEach((material) => material.dispose());
       softTex.dispose();
       renderer.dispose();
       el.remove();

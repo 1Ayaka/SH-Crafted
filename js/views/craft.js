@@ -6,7 +6,7 @@
 // 模型（config.CRAFT_MODEL_PATHS）：未开始态显示松散细碎的成品预览；完成态用高精度成品揭晓。
 import { el, reviewTag, openEvidenceModal, jiaoToast } from '../ui.js';
 import { InkField, blotTargets, imageTargets, loadImage } from '../particles.js';
-import { craftAssetUrl, getCraft, evidenceTimecode } from '../data.js';
+import { craftAssetUrl, ensureCraftLoaded, evidenceTimecode } from '../data.js';
 import { MATERIAL_STATES, CRAFT_MODEL_PATHS } from '../config.js';
 import { topNav } from './home.js';
 import { agent } from '../agent.js';
@@ -47,6 +47,24 @@ function conciseStepText(step) {
 }
 
 function highlightedStepText(step) {
+  if (step.guide_text) {
+    const text = String(step.guide_text);
+    const ranges = (Array.isArray(step.guide_bold_ranges) ? step.guide_bold_ranges : [])
+      .map((range) => ({ start: Math.max(0, Number(range.start) || 0), end: Math.min(text.length, Number(range.end) || 0) }))
+      .filter((range) => range.end > range.start)
+      .sort((a, b) => a.start - b.start);
+    if (!ranges.length) return [document.createTextNode(text)];
+    const nodes = [];
+    let cursor = 0;
+    for (const range of ranges) {
+      if (range.start > cursor) nodes.push(document.createTextNode(text.slice(cursor, range.start)));
+      const start = Math.max(cursor, range.start);
+      if (range.end > start) nodes.push(el('strong', { text: text.slice(start, range.end) }));
+      cursor = Math.max(cursor, range.end);
+    }
+    if (cursor < text.length) nodes.push(document.createTextNode(text.slice(cursor)));
+    return nodes;
+  }
   const text = conciseStepText(step);
   const rule = step.interactionRule;
   const terms = [
@@ -88,7 +106,17 @@ function resourceColor(name) {
 }
 
 export async function craftView(root, { id }) {
-  const craft = getCraft(id);
+  const loadingShell = el('section', { class: 'view craft-loading-shell' }, [
+    topNav('craft'),
+    el('div', { class: 'craft-loading-card', role: 'status' }, [
+      el('i', { class: 'craft-loading-mark', 'aria-hidden': 'true' }),
+      el('strong', { text: '正在展开非遗资料' }),
+      el('span', { text: '页面结构已就绪，当前只读取这一项的工序与证据。' }),
+    ]),
+  ]);
+  root.appendChild(loadingShell);
+  const craft = await ensureCraftLoaded(id);
+  loadingShell.remove();
   if (!craft) {
     root.appendChild(el('section', { class: 'view passport' }, [
       topNav(''),
@@ -159,20 +187,11 @@ export async function craftView(root, { id }) {
   const page = el('section', { class: 'view craft-page' }, [bg.el, topNav('craft'), head, body]);
   root.appendChild(page);
 
-  // ---------- 工作台专属分层背景（进入工作台时与工艺背景交叉淡融）----------
-  const wbBg = await createLayerBG('assets/bg-workbench/manifest.json', {
-    scrim: 'left', enter: false, parallax: false, drift: true, fixed: true, active: false,
-  });
-  wbBg.el.classList.add('wb-bg');
-  page.appendChild(wbBg.el);        // 与工艺背景同 z-index，DOM 居后 → 叠于其上
-  bg.fadeEls.push(wbBg.el);         // 离场转场时一并淡出
-
-  // 工作台背景开关：工艺背景压暗、工作台背景淡入
+  // 大背景始终沿用当前非遗详情页；桌面图片只由中央工作区按需使用。
+  // 旧实现会在详情页打开时额外下载一整套从未显示的工作台背景（约 4MB）。
   function setWorkbenchBg(on) {
-    wbBg.el.classList.toggle('show', on);
     bg.el.classList.toggle('dimmed', on);
     bg.setActive(!on);
-    wbBg.setActive(on);
   }
 
   // 底层环境墨晕（克制，与首页同参数族；面板区域不透明无需避让）
@@ -348,6 +367,11 @@ export async function craftView(root, { id }) {
   // ---------- 右：工作台 ----------
   function currentStep() { return craft.steps[S.stepIndex] || null; }
 
+  function resourceVisual(name, step = currentStep()) {
+    const visual = (step?.resource_visuals || []).find((item) => item.name === name);
+    return { shape: visual?.shape || '', scale: Number(visual?.scale) || 1 };
+  }
+
   function carriedMaterialFor(name) {
     return [...S.materialItems.values()].find((item) => item.currentName === name) || null;
   }
@@ -437,27 +461,45 @@ export async function craftView(root, { id }) {
       renderIdleFlat('三维模型待接入，暂以纪录片关键帧展示；建议先查看工序。');
       return;
     }
-    // 未开始态：展示原材料三维墨点模型
-    const stage = el('div', { class: 'pm-stage' });
-    workbench.appendChild(el('div', { class: 'wb-idle' }, [
-      stage,
-      el('h3', { text: '粒子工作台' }),
-      el('p', { class: 'note', text: '成品轮廓预览 · 完成前粒子更松散细碎 · 拖拽旋转 · 点击散墨；完成全部工序后将显示高精度成品。' }),
-      el('button', { class: 'btn btn-primary', text: '进入工作台', onclick: startPlay }),
-    ]));
+    // 进入工艺页后直接加载预览；完成态继续复用浏览器中的同一份 GLB 缓存。
     const previewModel = modelSet.finished || modelSet.raw;
-    mountParticleModel(stage, previewModel,
-      () => { clearWorkbench(); renderIdleFlat('模型加载失败，已回退为平面关键帧；建议先查看工序。'); },
-      {
+    const stage = el('div', { class: 'pm-stage pm-deferred' });
+    const previewPoster = craft.config.heroFrame
+      ? el('img', { class: 'pm-preview-poster', src: craftAssetUrl(craft, craft.config.heroFrame), alt: `${craft.title}代表图片`, loading: 'lazy' })
+      : null;
+    if (previewPoster) stage.appendChild(previewPoster);
+    let previewLoading = false;
+    const startPreviewLoad = async () => {
+      if (previewLoading) return;
+      previewLoading = true;
+      // createParticleModel owns the single loading indicator. Leaving a
+      // second placeholder here would cover the finished canvas indefinitely.
+      stage.replaceChildren();
+      const handle = await mountParticleModel(stage, previewModel, () => {
+        previewLoading = false;
+        const retry = el('button', { class: 'btn-ghost pm-load-button', type: 'button', text: '重新加载', onclick: startPreviewLoad });
+        stage.replaceChildren(el('div', { class: 'pm-deferred-copy' }, [
+          previewPoster,
+          el('p', { text: '模型加载失败，请检查网络后重试。' }),
+          retry,
+        ]));
+      }, {
         looseAmount: 0.14,
         pointSize: 0.0085,
         alpha: 0.68,
         flowSpeed: 0.042,
         diffuseSpeed: 0.018,
         ...(modelSet.pattern ? { tint: modelSet.rawTint, patternUrl: modelSet.pattern } : {}),
-      }).then((handle) => {
-        if (handle && modelSet.pattern) handle.playDyeSweep(0.12);
       });
+      if (handle && modelSet.pattern) handle.playDyeSweep(0.12);
+    };
+    workbench.appendChild(el('div', { class: 'wb-idle' }, [
+      stage,
+      el('h3', { text: '粒子工作台' }),
+      el('p', { class: 'note', text: '三维轮廓会自动载入；完成前粒子更松散细碎，完成全部工序后显示高精度成品。' }),
+      el('button', { class: 'btn btn-primary', text: '进入工作台', onclick: startPlay }),
+    ]));
+    requestAnimationFrame(() => { void startPreviewLoad(); });
   }
 
   function startPlay() {
@@ -465,7 +507,6 @@ export async function craftView(root, { id }) {
     body.classList.add('playing');
     body.classList.remove('reading-open');
     setWorkbenchBg(false);      // 大背景继续使用当前非遗详情页；桌子图仅用于中央工作区
-    preloadFinished();          // 成品模型提前预载，完成时瞬时揭晓
     logAction('开始工艺体验');
     renderPlay();
   }
@@ -837,6 +878,7 @@ export async function craftView(root, { id }) {
         name: item.currentName,
         color: item.color,
         shapeName: item.currentName,
+        ...resourceVisual(item.currentName),
       })),
       ...[...S.selectedResources]
         .filter((name) => craft.resourceKinds.get(name) !== 'implement' && !carriedMaterialFor(name))
@@ -845,10 +887,11 @@ export async function craftView(root, { id }) {
         name,
         color: RAW_RESOURCE_COLOR,
         shapeName: name,
+        ...resourceVisual(name),
       })),
       ...[...S.selectedResources]
         .filter((name) => craft.resourceKinds.get(name) === 'implement')
-        .map((name) => ({ id: `tool:${name}`, name, color: TOOL_RESOURCE_COLOR, shapeName: name })),
+        .map((name) => ({ id: `tool:${name}`, name, color: TOOL_RESOURCE_COLOR, shapeName: name, ...resourceVisual(name) })),
     ];
 
     let physicsHandle = null;
@@ -1113,6 +1156,7 @@ export async function craftView(root, { id }) {
         currentName: name,
         level: 0,
         color: RAW_RESOURCE_COLOR,
+        ...resourceVisual(name, step),
       });
     }
     const transforms = Array.isArray(step.material_transforms) ? step.material_transforms : [];
@@ -1131,6 +1175,7 @@ export async function craftView(root, { id }) {
       item.level += 1;
       item.currentName = outputName;
       item.color = materialLevelColor(item.id, item.level);
+      Object.assign(item, resourceVisual(outputName, step));
       const physics = S.workbenchPhysics.get(itemId);
       if (physics) physics.velocity = [0, 0.18, 0];
       upgrades.push(`${inputName} → ${outputName}（${item.level}级）`);
@@ -1139,6 +1184,9 @@ export async function craftView(root, { id }) {
       .filter((name) => craft.resourceKinds.get(name) === 'implement')
       .forEach((name) => S.workbenchPhysics.delete(`tool:${name}`));
     S.stepIndex++;
+    // Only warm the large finished asset when the visitor is approaching the
+    // reveal. It stays out of the critical path for home, map and early steps.
+    if (S.stepIndex >= Math.max(1, craft.steps.length - 1)) preloadFinished();
     S.selectedResources.clear();
     S.actionSlot = null;
 
@@ -1177,7 +1225,7 @@ export async function craftView(root, { id }) {
       el('div', { class: 'finish-ready' }, [
         el('h3', { text: '材料已处理完毕' }),
         el('div', { class: 'chip-row' }, readyNames.map((n) => el('span', { class: 'chip chip-ready', text: `${n} · 可装配` }))),
-        el('p', { class: 'note', text: '接下来把加工好的材料做成成品：墨粒外爆后，成品将以三维墨点模型在中央揭晓。' }),
+        el('p', { class: 'note', text: '接下来把加工好的材料做成成品：一段收束特效后，玉石质感的实体模型将在中央揭晓。' }),
         el('button', { class: 'btn btn-primary btn-finish', text: '完成作品', onclick: finishWork }),
       ]),
     ]));
@@ -1241,6 +1289,13 @@ export async function craftView(root, { id }) {
 
     // 中央主舞台：爆炸画布 + 成品模型舞台叠放
     const burstCv = el('canvas', { class: 'finish-burst', 'aria-hidden': 'true' });
+    const ceremony = el('div', { class: 'finish-ceremony', role: 'status', 'aria-live': 'polite' }, [
+      el('i', { class: 'finish-ceremony-ring ring-one', 'aria-hidden': 'true' }),
+      el('i', { class: 'finish-ceremony-ring ring-two', 'aria-hidden': 'true' }),
+      el('span', { class: 'finish-ceremony-seal', text: '成' }),
+      el('strong', { text: '工艺收束 · 作品完成' }),
+      el('span', { class: 'finish-ceremony-motes', 'aria-hidden': 'true' }, Array.from({ length: 12 }, (_, index) => el('i', { style: { '--i': index } }))),
+    ]);
     const pmStage = hasModel ? el('div', { class: 'pm-stage finish-model', style: { opacity: '0' } }) : null;
     let finishedModelHandle = null;
     const zoomControls = hasModel ? el('div', { class: 'pm-zoom-controls', 'aria-label': '模型缩放' }, [
@@ -1248,13 +1303,13 @@ export async function craftView(root, { id }) {
       el('button', { type: 'button', text: '还原', disabled: true, onclick: () => finishedModelHandle?.resetZoom() }),
       el('button', { type: 'button', text: '放大', disabled: true, onclick: () => finishedModelHandle?.zoomBy(1.22) }),
     ]) : null;
-    const stageWrap = el('div', { class: 'finish-stage' }, [burstCv, ...(pmStage ? [pmStage, zoomControls] : [])]);
+    const stageWrap = el('div', { class: 'finish-stage' }, [burstCv, ceremony, ...(pmStage ? [pmStage, zoomControls] : [])]);
     const stageCap = el('p', {
       class: 'pm-cap',
       text: hasModel
         ? (modelSet.pattern
-          ? '成品三维墨点模型 · 花纹来自纪录片真实影像取样 · 拖拽旋转 · 滚轮或双指缩放 · 点击散墨'
-          : '成品三维墨点模型 · 拖拽旋转 · 滚轮或双指缩放 · 点击散墨')
+          ? '玉石实体成品 · 花纹来自纪录片真实影像取样 · 表面墨粒缓慢下落 · 点击爆散'
+          : '玉石实体成品 · 表面墨粒缓慢下落 · 拖拽旋转 · 滚轮缩放 · 点击爆散')
         : '墨粒聚成成品影像 · 拖拽平移 · 滚轮缩放',
     });
 
@@ -1321,6 +1376,8 @@ export async function craftView(root, { id }) {
       burst.setTargets(blotTargets(burstCv.clientWidth / 2, burstCv.clientHeight / 2, 60, 500));
       setTimeout(() => { if (burstCv.isConnected) burst.scatter(); }, 900);
     });
+    setTimeout(() => ceremony.classList.add('is-leaving'), 1750);
+    setTimeout(() => ceremony.remove(), 2550);
 
     // 2) 揭晓：外爆后成品模型居中 + 弧线俯冲进场（GLB 已预载，基本瞬时）
     //    药斑布：同一布面，进场后染色扫过（原料色 → 纪录片纹样取色）
@@ -1333,10 +1390,13 @@ export async function craftView(root, { id }) {
         stageCap.textContent = '成品模型加载失败，已回退为平面呈现 · 拖拽平移 · 滚轮缩放';
       }, {
         detailMode: true,
-        pointSize: 0.012,
-        alpha: 0.96,
-        flowSpeed: 0.032,
-        diffuseSpeed: 0.007,
+        solidMode: true,
+        particleFraction: 0.24,
+        pointSize: 0.011,
+        alpha: 0.72,
+        flowSpeed: 0.016,
+        diffuseSpeed: 0.006,
+        dropRate: 0.34,
         ...(modelSet.pattern ? { tint: modelSet.rawTint, patternUrl: modelSet.pattern } : {}),
       });
       if (!h) return;
@@ -1387,7 +1447,6 @@ export async function craftView(root, { id }) {
       wbPreviewHandles.splice(0).forEach((h) => { try { h.dispose(); } catch (_) {} });
       agent.unmount();
       ambientBloom.destroy();
-      wbBg.destroy();
       bg.destroy();
       unregisterPage('craft', page);
     },

@@ -11,6 +11,8 @@ const store = {
   siteTexts: new Map(),
   editorialSource: 'git-fallback',
   revision: '',
+  craftLoads: new Map(),
+  craftLoaders: new Map(),
 };
 
 async function fetchJson(url) {
@@ -152,9 +154,43 @@ export async function loadAll(onProgress) {
     editorialGallery.get(work.craft_id).push(work);
   }
 
+  // Put a lightweight catalogue record on screen immediately. The five
+  // package files (claims/evidence/steps/etc.) are hydrated only when that
+  // particular detail page is opened (or the evidence passport requests all).
+  for (const pkg of store.catalog.packages) {
+    const cfg = CRAFT_CONFIG[pkg.video_id] || {};
+    const managedCraft = editorialCrafts.get(pkg.video_id);
+    if (managedCraft) {
+      cfg.craftName = managedCraft.title || cfg.craftName;
+      cfg.districtId = managedCraft.district_id || cfg.districtId;
+      cfg.category = managedCraft.category || cfg.category;
+      if (managedCraft.cover_path) cfg.heroFrame = managedCraft.cover_path.replace(`data/${pkg.directory}/`, '');
+    }
+    const managedWorks = editorialGallery.get(pkg.video_id);
+    if (managedWorks?.length) cfg.works = managedWorks.slice().sort((a, b) => (a.sort ?? 999) - (b.sort ?? 999)).map((work) => ({
+      frame: work.image_url || work.source_path,
+      name: work.title || '',
+      evidenceId: work.evidence_id || '',
+    }));
+    const summary = managedCraft?.summary || '';
+    const metrics = knowledgeStats?.per_craft?.[pkg.video_id] || {};
+    store.crafts.set(pkg.video_id, {
+      craftId: pkg.video_id, title: managedCraft?.title || pkg.title,
+      directory: pkg.directory, baseUrl: base + pkg.directory + '/',
+      manifest: { video: { source_filename: pkg.title } }, draft: { summary_candidate: summary }, summary,
+      steps: [], evidence: [], evMap: new Map(), claims: [], config: cfg,
+      allMaterials: [], allTools: [], allResources: [], resourceKinds: new Map(), actions: [],
+      people: [], artifacts: [], places: [], externalFacts: [], externalSources: [],
+      stepCount: editorialSteps.get(pkg.video_id)?.length || metrics.steps || 0,
+      evidenceCount: metrics.video_evidence || 0,
+      hydrated: false,
+    });
+  }
+
   // Each package is independent. Loading them concurrently avoids multiplying
   // network round-trip latency by the number of heritage packages.
-  await Promise.all(store.catalog.packages.map(async (pkg) => {
+  store.catalog.packages.forEach((pkg) => {
+    const loader = () => (async () => {
     const dir = base + pkg.directory + '/';
     const [manifest, draft, steps, evidence, claims] = await Promise.all([
       fetchJson(dir + 'manifest.json'),
@@ -194,10 +230,13 @@ export async function loadAll(onProgress) {
         order_candidate: step.sort,
         name: step.name || '',
         action: step.action || '',
+        guide_text: step.guide_text || '',
+        guide_bold_ranges: jsonValue(step.guide_bold_ranges, []),
         result: step.result || '',
         materials: jsonValue(step.materials, []),
         material_transforms: jsonValue(step.material_transforms, []),
         tools: jsonValue(step.tools, []),
+        resource_visuals: jsonValue(step.resource_visuals, []),
         evidence_ids: jsonValue(step.evidence_ids, []),
         review_status: step.review_status || 'needs_review',
         managed_resource_groups: jsonValue(step.resource_groups, null),
@@ -256,9 +295,21 @@ export async function loadAll(onProgress) {
       externalFacts: craftExternalFacts,
       externalSources: craftExternalSources,
     };
-    store.crafts.set(pkg.video_id, record);
+    Object.assign(store.crafts.get(pkg.video_id), record, {
+      stepCount: normalizedSteps.length,
+      evidenceCount: evidence.length,
+      hydrated: true,
+    });
     onProgress?.(pkg.title);
-  }));
+    return record;
+    })().catch((error) => {
+      const record = store.crafts.get(pkg.video_id);
+      if (record) record.loadError = error;
+      console.warn(`Craft package deferred load failed: ${pkg.video_id}`, error);
+      return null;
+    });
+    store.craftLoaders.set(pkg.video_id, loader);
+  });
 
   // Approved community submissions have no source package directory. They are
   // promoted into the same runtime craft/step/gallery schema and receive a
@@ -277,10 +328,13 @@ export async function loadAll(onProgress) {
           order_candidate: step.sort,
           name: step.name || '',
           action: step.action || '',
+          guide_text: step.guide_text || '',
+          guide_bold_ranges: jsonValue(step.guide_bold_ranges, []),
           result: step.result || '',
           materials: jsonValue(step.materials, []),
           material_transforms: jsonValue(step.material_transforms, []),
           tools: jsonValue(step.tools, []),
+          resource_visuals: jsonValue(step.resource_visuals, []),
           evidence_ids: [],
           managed_resource_groups: jsonValue(step.resource_groups, null),
           managed_quick_fill: jsonValue(step.quick_fill, null),
@@ -356,6 +410,29 @@ export function getCraft(craftId) {
   return store.crafts.get(craftId) || null;
 }
 
+export async function ensureCraftLoaded(craftId) {
+  let pending = store.craftLoads.get(craftId);
+  if (!pending && store.craftLoaders.has(craftId)) {
+    pending = store.craftLoaders.get(craftId)();
+    store.craftLoads.set(craftId, pending);
+  }
+  if (pending) await pending;
+  return getCraft(craftId);
+}
+
+export async function hydrateAllCrafts() {
+  const ids = [...store.craftLoaders.keys()];
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(4, ids.length) }, async () => {
+    while (cursor < ids.length) {
+      const id = ids[cursor++];
+      await ensureCraftLoaded(id);
+    }
+  });
+  await Promise.all(workers);
+  return allCrafts();
+}
+
 export function allCrafts() {
   const known = CRAFT_ORDER.map((id) => store.crafts.get(id)).filter(Boolean);
   const community = [...store.crafts.values()].filter((craft) => !CRAFT_ORDER.includes(craft.craftId));
@@ -375,8 +452,8 @@ export function knowledgeOverview() {
 export function trueStats() {
   const crafts = allCrafts();
   const districtIds = new Set(crafts.map((c) => c.config.districtId).filter(Boolean));
-  const steps = crafts.reduce((n, c) => n + c.steps.length, 0);
-  const evidenceCount = crafts.reduce((n, c) => n + c.evidence.length, 0);
+  const steps = crafts.reduce((n, c) => n + (c.stepCount ?? c.steps.length), 0);
+  const evidenceCount = crafts.reduce((n, c) => n + (c.evidenceCount ?? c.evidence.length), 0);
   return {
     craftCount: crafts.length,
     districtCount: districtIds.size,

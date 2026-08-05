@@ -1,11 +1,12 @@
 import { el } from '../ui.js';
 import { adminNotice } from '../editable.js';
 import { adminState, isAdmin, loadSubmissions, login, logout, reviewSubmission, saveCraftSteps } from '../admin.js';
-import { allCrafts, craftAssetUrl, getCraft } from '../data.js';
+import { allCrafts, craftAssetUrl, ensureCraftLoaded } from '../data.js';
 import { loadCommunityStats } from '../community.js';
 import { DISTRICT_PROFILES } from '../config.js';
 import { topNav } from './home.js';
 import { createLayerBG } from '../layerbg.js';
+import { RESOURCE_SHAPES, resourceShape } from '../workbench-preview.js';
 
 const plusSvg = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>';
 const minusSvg = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12"/></svg>';
@@ -101,7 +102,7 @@ export async function adminHomeView(root) {
         ? el('img', { src: craftAssetUrl(craft, craft.config.heroFrame), alt: craft.title, loading: 'lazy' })
         : el('div', { class: 'admin-card-placeholder', text: '社区条目' }),
       el('div', {}, [
-        el('p', { class: 'admin-card-meta', text: `${craft.config.districtLabel || '地区待核对'} · ${craft.steps.length} 道工序 · ${engagement[craft.craftId]?.view_count || 0} 次查看 · ${engagement[craft.craftId]?.inheritor_count || 0} 位传承人` }),
+        el('p', { class: 'admin-card-meta', text: `${craft.config.districtLabel || '地区待核对'} · ${craft.stepCount ?? craft.steps.length} 道工序 · ${engagement[craft.craftId]?.view_count || 0} 次查看 · ${engagement[craft.craftId]?.inheritor_count || 0} 位传承人` }),
         el('h2', { text: craft.title }),
         el('div', { class: 'admin-card-actions' }, [
           el('a', { class: 'btn btn-primary', href: `#/admin/craft/${craft.craftId}`, text: '编辑工序' }),
@@ -228,12 +229,15 @@ function stepDraft(step) {
     id: step.step_id,
     name: step.name || step.displayName || '',
     action: step.action || '',
+    guide_text: step.guide_text || step.action || '',
+    guide_bold_ranges: (step.guide_bold_ranges || []).map((range) => ({ start: range.start, end: range.end })),
     result: step.result || '',
     materials,
     material_transforms: storedTransforms.length
       ? storedTransforms.map((item) => ({ input_name: item.input_name || '', output_name: item.output_name ?? '' }))
       : materials.map((name) => ({ input_name: name, output_name: name })),
     tools: [...(step.tools || [])],
+    resource_visuals: (step.resource_visuals || []).map((visual) => ({ ...visual })),
     resource_groups: step.interactionRule.resource_groups.map((group) => ({
       ...group,
       options: [...group.options],
@@ -245,6 +249,39 @@ function stepDraft(step) {
     actions: step.interactionRule.actions.map((action) => ({ ...action })),
     correct_action_id: step.interactionRule.action.id,
   };
+}
+
+function guideFragment(text, ranges = []) {
+  const fragment = document.createDocumentFragment();
+  const boundaries = new Set([0, text.length]);
+  ranges.forEach(({ start, end }) => { boundaries.add(start); boundaries.add(end); });
+  const points = [...boundaries].filter((point) => point >= 0 && point <= text.length).sort((a, b) => a - b);
+  for (let i = 0; i < points.length - 1; i++) {
+    const start = points[i], end = points[i + 1];
+    const copy = text.slice(start, end);
+    if (!copy) continue;
+    const bold = ranges.some((range) => start >= range.start && end <= range.end);
+    fragment.appendChild(bold ? el('strong', { text: copy }) : document.createTextNode(copy));
+  }
+  return fragment;
+}
+
+function readGuideEditor(editor) {
+  let text = '';
+  const ranges = [];
+  const walk = (node, bold = false) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const start = text.length;
+      text += node.nodeValue || '';
+      if (bold && text.length > start) ranges.push({ start, end: text.length });
+      return;
+    }
+    if (node.nodeName === 'BR') { text += '\n'; return; }
+    const nextBold = bold || node.nodeName === 'STRONG' || node.nodeName === 'B';
+    [...node.childNodes].forEach((child) => walk(child, nextBold));
+  };
+  walk(editor);
+  return { text: text.slice(0, 5000), ranges };
 }
 
 function editableList(title, values, onChange) {
@@ -270,7 +307,7 @@ function editableList(title, values, onChange) {
 
 export async function adminCraftView(root, { id }) {
   if (!requireAdmin()) return { cleanup() {} };
-  const craft = getCraft(id);
+  const craft = await ensureCraftLoaded(id);
   if (!craft) {
     location.hash = '#/admin';
     return { cleanup() {} };
@@ -358,10 +395,13 @@ export async function adminCraftView(root, { id }) {
       id: stepId,
       name: `工序 ${steps.length + 1}`,
       action: '',
+      guide_text: '',
+      guide_bold_ranges: [],
       result: '',
       materials: [],
       material_transforms: [],
       tools: [],
+      resource_visuals: [],
       resource_groups: null,
       quick_fill: null,
       actions: [{ id: actionId, label: '执行当前工序' }],
@@ -395,6 +435,32 @@ export async function adminCraftView(root, { id }) {
     const nameInput = el('input', { value: step.name, 'aria-label': '工序名称' });
     const description = el('textarea', { rows: '5', 'aria-label': '工序说明' }, [step.action]);
     const result = el('textarea', { rows: '3', 'aria-label': '完成结果' }, [step.result]);
+    const guideEditor = el('div', {
+      class: 'admin-guide-editor', contenteditable: 'true', role: 'textbox', 'aria-multiline': 'true',
+      'aria-label': '用户工作台上显示的工序提示', 'data-placeholder': '填写用户进行本步工序时看到的提示',
+    });
+    guideEditor.appendChild(guideFragment(step.guide_text || '', step.guide_bold_ranges || []));
+    const syncGuide = () => {
+      const value = readGuideEditor(guideEditor);
+      step.guide_text = value.text;
+      step.guide_bold_ranges = value.ranges;
+      markDirty();
+    };
+    guideEditor.addEventListener('input', syncGuide);
+    guideEditor.addEventListener('paste', (event) => {
+      event.preventDefault();
+      document.execCommand('insertText', false, event.clipboardData?.getData('text/plain') || '');
+    });
+    const boldGuide = () => {
+      guideEditor.focus();
+      document.execCommand('bold', false);
+      syncGuide();
+    };
+    const clearGuideFormatting = () => {
+      const plain = guideEditor.textContent || '';
+      guideEditor.replaceChildren(document.createTextNode(plain));
+      syncGuide();
+    };
     nameInput.addEventListener('input', () => { step.name = nameInput.value; markDirty(); renderTabs(); });
     description.addEventListener('input', () => { step.action = description.value; markDirty(); });
     result.addEventListener('input', () => { step.result = result.value; markDirty(); });
@@ -514,6 +580,39 @@ export async function adminCraftView(root, { id }) {
     };
     renderOperations();
 
+    const visualResources = [...new Set([
+      ...step.materials,
+      ...step.tools,
+      ...step.material_transforms.map((item) => item.output_name),
+    ].map((name) => String(name || '').trim()).filter(Boolean))];
+    const visualList = el('div', { class: 'admin-visual-list' });
+    visualResources.forEach((name) => {
+      let visual = step.resource_visuals.find((item) => item.name === name);
+      if (!visual) {
+        visual = { name, shape: resourceShape(name), scale: 1 };
+        step.resource_visuals.push(visual);
+      }
+      const shapeSelect = el('select', { 'aria-label': `${name}的三维形状` }, RESOURCE_SHAPES.map((shape) => {
+        const option = el('option', { value: shape.id, text: shape.label });
+        option.selected = visual.shape === shape.id;
+        return option;
+      }));
+      const scale = el('input', {
+        type: 'range', min: '0.6', max: '1.6', step: '0.05', value: String(visual.scale || 1),
+        'aria-label': `${name}的三维尺寸`,
+      });
+      const scaleValue = el('output', { text: `${Number(visual.scale || 1).toFixed(2)}×` });
+      shapeSelect.addEventListener('change', () => { visual.shape = shapeSelect.value; markDirty(); });
+      scale.addEventListener('input', () => {
+        visual.scale = Number(scale.value);
+        scaleValue.textContent = `${visual.scale.toFixed(2)}×`;
+        markDirty();
+      });
+      visualList.appendChild(el('div', { class: 'admin-visual-row' }, [
+        el('strong', { text: name }), shapeSelect, scale, scaleValue,
+      ]));
+    });
+
     editor.append(
       el('div', { class: 'admin-editor-heading' }, [
         el('div', {}, [el('p', { class: 'admin-kicker', text: `工序 ${activeIndex + 1} / ${steps.length}` }), el('h2', { text: step.name || '未命名工序' })]),
@@ -528,6 +627,16 @@ export async function adminCraftView(root, { id }) {
       ]),
       el('div', { class: 'admin-field' }, [el('label', { text: '工序名称' }), nameInput]),
       el('div', { class: 'admin-field' }, [el('label', { text: '工序说明' }), description]),
+      el('section', { class: 'admin-guide-section' }, [
+        el('div', { class: 'admin-section-heading' }, [
+          el('div', {}, [el('h3', { text: '工作台步骤提示' }), el('p', { text: '这段文字会悬浮在用户的工作台上；选中文字后可切换加粗。' })]),
+          el('div', { class: 'admin-guide-tools' }, [
+            el('button', { class: 'btn-ghost', type: 'button', text: '加粗 / 取消加粗', onmousedown: (event) => event.preventDefault(), onclick: boldGuide }),
+            el('button', { class: 'btn-ghost', type: 'button', text: '清除加粗', onclick: clearGuideFormatting }),
+          ]),
+        ]),
+        guideEditor,
+      ]),
       el('div', { class: 'admin-field' }, [el('label', { text: '完成结果' }), result]),
       el('div', { class: 'admin-resource-columns' }, [
         el('section', { class: 'admin-material-transform-section' }, [
@@ -536,6 +645,13 @@ export async function adminCraftView(root, { id }) {
           materialsEditor,
         ]),
         el('section', {}, [el('h3', { text: '所需工具' }), editableList('工具', step.tools, markResourcesDirty)]),
+      ]),
+      el('section', { class: 'admin-visual-section' }, [
+        el('div', { class: 'admin-section-heading' }, [
+          el('h3', { text: '材料与工具的 3D 呈现' }),
+          el('p', { text: '共 10 种形状；杯、盏等未手动设置时会自动使用圆柱体。尺寸只影响工作台中的视觉比例。' }),
+        ]),
+        visualResources.length ? visualList : el('p', { class: 'empty-state', text: '添加材料或工具后即可配置三维呈现。' }),
       ]),
       el('section', { class: 'admin-operations' }, [
         el('div', { class: 'admin-section-heading' }, [el('h3', { text: '可选操作' }), el('p', { text: '用户体验时会看到这些操作；请指定其中一个为当前工序的正确操作。' })]),

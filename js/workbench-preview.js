@@ -17,8 +17,30 @@ function seededRandom(value) {
   };
 }
 
-export function resourceShape(name) {
+export const RESOURCE_SHAPES = [
+  { id: 'sphere', label: '圆润球体' },
+  { id: 'cube', label: '方块' },
+  { id: 'slab', label: '薄片 / 布面' },
+  { id: 'rod', label: '横向长杆' },
+  { id: 'cylinder', label: '圆柱 / 杯筒' },
+  { id: 'cone', label: '锥体' },
+  { id: 'disk', label: '圆盘' },
+  { id: 'ring', label: '圆环' },
+  { id: 'bowl', label: '碗形' },
+  { id: 'bundle', label: '成束材料' },
+];
+
+const SHAPE_IDS = new Set(RESOURCE_SHAPES.map((shape) => shape.id));
+
+export function resourceShape(name, configuredShape = '') {
+  if (SHAPE_IDS.has(configuredShape)) return configuredShape;
   const value = String(name || '');
+  if (/(?:杯|盏|筒|罐|瓶|cup|mug|cylinder)/i.test(value)) return 'cylinder';
+  if (/(?:碗|钵|盆|bowl)/i.test(value)) return 'bowl';
+  if (/(?:环|圈|镯|ring)/i.test(value)) return 'ring';
+  if (/(?:盘|碟|砚|disk|plate)/i.test(value)) return 'disk';
+  if (/(?:锥|漏斗|cone)/i.test(value)) return 'cone';
+  if (/(?:束|穗|刷|毫|bundle)/i.test(value)) return 'bundle';
   if (/(?:纸|布|帛|绢|棉|纱|线|画|页|纸板|皮革|皮影|cloth|paper)/i.test(value)) return 'slab';
   if (/(?:磨|石|砚|砖|块|缸|碗|灰|土|粉|stone|block)/i.test(value)) return 'cube';
   if (/(?:竹|木|棍|棒|杆|笔|刀|针|剪|锯|锤|工具|梭|筒|弓|架|尺|bamboo|tool)/i.test(value)) return 'rod';
@@ -40,9 +62,9 @@ function addBoxPoints(points, random, [sx, sy, sz], count) {
   }
 }
 
-function shapeGeometry(name, count = 1250) {
+function shapeGeometry(name, configuredShape = '', count = 1250) {
   const random = seededRandom(name);
-  const kind = resourceShape(name);
+  const kind = resourceShape(name, configuredShape);
   const points = [];
   let proxyGeometry;
   let halfHeight;
@@ -65,6 +87,58 @@ function shapeGeometry(name, count = 1250) {
     proxyGeometry = new THREE.CylinderGeometry(radius, radius, 1.28, 12);
     proxyGeometry.rotateZ(Math.PI / 2);
     halfHeight = radius;
+  } else if (kind === 'cylinder') {
+    const radius = 0.34, height = 0.78;
+    for (let i = 0; i < count; i += 1) {
+      const theta = random() * TAU;
+      const r = random() < 0.82 ? radius : radius * Math.sqrt(random());
+      points.push(Math.cos(theta) * r, (random() - 0.5) * height, Math.sin(theta) * r);
+    }
+    proxyGeometry = new THREE.CylinderGeometry(radius, radius, height, 18);
+    halfHeight = height / 2;
+  } else if (kind === 'cone') {
+    const radius = 0.42, height = 0.86;
+    for (let i = 0; i < count; i += 1) {
+      const y = random(), theta = random() * TAU, r = radius * (1 - y);
+      points.push(Math.cos(theta) * r, y * height - height / 2, Math.sin(theta) * r);
+    }
+    proxyGeometry = new THREE.ConeGeometry(radius, height, 18);
+    halfHeight = height / 2;
+  } else if (kind === 'disk') {
+    const radius = 0.48, height = 0.1;
+    for (let i = 0; i < count; i += 1) {
+      const theta = random() * TAU, r = radius * Math.sqrt(random());
+      points.push(Math.cos(theta) * r, (random() - 0.5) * height, Math.sin(theta) * r);
+    }
+    proxyGeometry = new THREE.CylinderGeometry(radius, radius, height, 22);
+    halfHeight = height / 2;
+  } else if (kind === 'ring') {
+    const major = 0.38, tube = 0.11;
+    for (let i = 0; i < count; i += 1) {
+      const u = random() * TAU, v = random() * TAU;
+      points.push((major + tube * Math.cos(v)) * Math.cos(u), tube * Math.sin(v), (major + tube * Math.cos(v)) * Math.sin(u));
+    }
+    proxyGeometry = new THREE.TorusGeometry(major, tube, 10, 22);
+    proxyGeometry.rotateX(Math.PI / 2);
+    halfHeight = tube;
+  } else if (kind === 'bowl') {
+    const radius = 0.48;
+    for (let i = 0; i < count; i += 1) {
+      const theta = random() * TAU, phi = Math.PI / 2 + random() * Math.PI / 2;
+      const r = radius * (0.93 + random() * 0.07);
+      points.push(Math.sin(phi) * Math.cos(theta) * r, Math.cos(phi) * r + radius * 0.45, Math.sin(phi) * Math.sin(theta) * r);
+    }
+    proxyGeometry = new THREE.SphereGeometry(radius, 18, 10, 0, TAU, Math.PI / 2, Math.PI / 2);
+    proxyGeometry.translate(0, radius * 0.45, 0);
+    halfHeight = radius * 0.55;
+  } else if (kind === 'bundle') {
+    const radius = 0.1, length = 1.05, offsets = [-0.16, 0, 0.16];
+    for (let i = 0; i < count; i += 1) {
+      const theta = random() * TAU, r = radius * Math.sqrt(random());
+      points.push(offsets[i % offsets.length] + Math.cos(theta) * r, (random() - 0.5) * length, Math.sin(theta) * r);
+    }
+    proxyGeometry = new THREE.BoxGeometry(0.52, length, 0.24);
+    halfHeight = length / 2;
   } else {
     const radius = 0.4;
     for (let i = 0; i < count; i += 1) {
@@ -137,13 +211,15 @@ export function createWorkbenchSurface(container, descriptors = [], options = {}
   const proxyMaterial = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false });
   const shadowGeometry = new THREE.CircleGeometry(0.48, 28);
   const objects = descriptors.map((descriptor, index) => {
-    const shape = shapeGeometry(descriptor.shapeName || descriptor.name);
+    const shape = shapeGeometry(descriptor.shapeName || descriptor.name, descriptor.shape || '');
+    const visualScale = THREE.MathUtils.clamp(Number(descriptor.scale) || 1, 0.6, 1.6);
     const group = new THREE.Group();
     const saved = stateStore.get(descriptor.id);
     if (saved?.position) group.position.fromArray(saved.position);
     else group.position.copy(randomDropPosition(index));
     if (saved?.rotation) group.rotation.set(...saved.rotation);
     else group.rotation.set((Math.random() - 0.5) * 0.32, Math.random() * TAU, (Math.random() - 0.5) * 0.22);
+    group.scale.setScalar(visualScale);
     const material = new THREE.PointsMaterial({
       color: new THREE.Color(descriptor.color),
       size: shape.kind === 'slab' ? 0.048 : 0.056,
@@ -183,7 +259,7 @@ export function createWorkbenchSurface(container, descriptors = [], options = {}
       proxy,
       shadow,
       label,
-      halfHeight: shape.halfHeight,
+      halfHeight: shape.halfHeight * visualScale,
       velocity: saved?.velocity
         ? new THREE.Vector3().fromArray(saved.velocity)
         : new THREE.Vector3((Math.random() - 0.5) * 0.24, 0, (Math.random() - 0.5) * 0.18),

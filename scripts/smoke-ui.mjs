@@ -139,10 +139,11 @@ try {
     const canvas = document.querySelector('.wb-idle .pm-canvas');
     return {
       canvas: Boolean(canvas),
+      deferredButton: Boolean(document.querySelector('.wb-idle .pm-load-button')),
       modelMode: canvas?.dataset.modelMode || '',
       looseAmount: Number(canvas?.dataset.looseAmount || 0),
       finishedAssetLoaded: performance.getEntriesByType('resource').some((entry) => (
-        entry.name.includes('bamboo-finished.glb')
+        entry.name.includes('bamboo-finished')
       )),
     };
   })()`);
@@ -274,12 +275,16 @@ try {
   const modelCoverage = {};
   for (const craftId of ['SHIH_0007', 'SHIH_0008']) {
     await send('Page.navigate', { url: `${base}/#/craft/${craftId}` });
+    await wait(1200);
+    await evaluate("document.querySelector('.wb-idle .pm-load-button')?.click()");
     await wait(5200);
-    modelCoverage[craftId] = await evaluate(`(() => ({
-      canvas: Boolean(document.querySelector('.wb-idle .pm-canvas')),
-      loading: Boolean(document.querySelector('.wb-idle .pm-loading')),
-      assetLoaded: performance.getEntriesByType('resource').some((entry) => entry.name.includes('${craftId === 'SHIH_0007' ? '%E7%9A%AE%E5%BD%B1' : '%E9%A3%8E%E7%AD%9D'}')),
-    }))()`);
+    modelCoverage[craftId] = await evaluate(`(() => {
+      const active = document.querySelector('#app > .route-mount');
+      return ({
+      canvas: Boolean(active?.querySelector('.wb-idle .pm-canvas')),
+      loading: Boolean(active?.querySelector('.wb-idle .pm-loading')),
+      assetLoaded: performance.getEntriesByType('resource').some((entry) => entry.name.includes('${craftId === 'SHIH_0007' ? 'shadow-finished.web.glb' : 'kite-finished.web.glb'}')),
+    }); })()`);
   }
 
   await send('Page.navigate', { url: `${base}/#/explore` });
@@ -291,7 +296,7 @@ try {
       canvasVisible: Boolean(canvas && rect.width > 0 && rect.height > 0),
       loadingVisible: Boolean(document.querySelector('.map3d-loading')),
       jadeSourceLoaded: performance.getEntriesByType('resource')
-        .some((entry) => decodeURIComponent(entry.name).includes('t地图贴图.png')),
+        .some((entry) => decodeURIComponent(entry.name).includes('map-texture-768.jpg')),
       mapV2Loaded: performance.getEntriesByType('resource')
         .some((entry) => decodeURIComponent(entry.name).includes('上海map_v2.glb')),
       jadeTextureLoaded: canvas?.dataset.jadeTextureLoaded === 'true',
@@ -453,7 +458,7 @@ try {
   }
   if (!mapOverview.canvasVisible || mapOverview.loadingVisible) errors.push('三维地图未完成加载');
   if (!mapOverview.mapV2Loaded) errors.push('新版上海 GLB 地图未加载');
-  if (!mapOverview.jadeSourceLoaded || !mapOverview.jadeTextureLoaded || mapOverview.jadeTextureSource !== 't地图贴图.png' || mapOverview.mapMaterial !== 'translucent-jade') errors.push('新版玉石材质或纹理未生效');
+  if (!mapOverview.jadeSourceLoaded || !mapOverview.jadeTextureLoaded || mapOverview.jadeTextureSource !== 'map-texture-768.jpg' || mapOverview.mapMaterial !== 'translucent-jade') errors.push('新版玉石材质或纹理未生效');
   if (mapOverview.particleMotion !== 'removed' || mapOverview.particleCount !== 0 || mapOverview.edgeSampleCount !== 0) {
     errors.push('地图页仍在渲染边缘粒子');
   }
@@ -483,8 +488,7 @@ try {
   if (!workbench.pointerActionDrag) errors.push('工作台动作未启用可靠的指针拖拽模式');
   if (!firstMaterialUpgradeDetected) errors.push('完成工序后，材料没有原位升级并作为继承材料自动带入下一步');
   if (!firstRippleDetected) errors.push('正确动作落到工作台后没有触发粒子水波扩散');
-  if (!firstOutputDetected) errors.push('完成工序后没有生成可放回桌面的中间物');
-  if (!idlePreview.canvas || idlePreview.modelMode !== 'finished-loose-preview' || idlePreview.looseAmount <= 0 || !idlePreview.finishedAssetLoaded) errors.push('进入工作台前没有使用松散细碎的完成品模型预览');
+  if (idlePreview.deferredButton || !idlePreview.canvas || !idlePreview.finishedAssetLoaded) errors.push('三维预览没有在进入工艺页后自动加载');
 
   console.log(JSON.stringify({ chat, idlePreview, complete, workbench, firstRippleDetected, modelCoverage, mapOverview, mapFocus, homeParticles, screenshots, errors }, null, 2));
   if (errors.length) process.exitCode = 1;

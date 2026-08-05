@@ -4,7 +4,7 @@
 // - 搜索/类别筛选、地图/列表切换、Esc 返回在两种模式下均可用
 import { el, reviewTag, jiaoToast } from '../ui.js';
 import { InkField, blotTargets, reducedMotion } from '../particles.js';
-import { allCrafts, craftAssetUrl, siteText } from '../data.js';
+import { allCrafts, craftAssetUrl, ensureCraftLoaded, siteText } from '../data.js';
 import { DISTRICTS, DISTRICT_PROFILES } from '../config.js';
 import { topNav, TRANSITION_STATES } from './home.js';
 import { agent } from '../agent.js';
@@ -26,20 +26,23 @@ const NODE_TO_DISTRICT = {
   '闵行区': 'minhang', '青浦区': 'qingpu',
 };
 
-function nodeCrafts(nodeName) {
-  const did = NODE_TO_DISTRICT[nodeName];
-  return did ? allCrafts().filter((c) => c.config.districtId === did) : [];
-}
-function districtCrafts(districtId) {
-  return allCrafts().filter((c) => c.config.districtId === districtId);
-}
-
 export async function exploreView(root) {
+  const craftRecords = allCrafts();
+  const craftsByDistrict = new Map();
+  for (const craft of craftRecords) {
+    const districtId = craft.config.districtId;
+    if (!craftsByDistrict.has(districtId)) craftsByDistrict.set(districtId, []);
+    craftsByDistrict.get(districtId).push(craft);
+  }
+  const districtCrafts = (districtId) => craftsByDistrict.get(districtId) || [];
+  const nodeCrafts = (nodeName) => districtCrafts(NODE_TO_DISTRICT[nodeName]);
   let mode = 'map';
   let map3d = null;
   let mapViewEl = null;      // 地图视图容器（三维或平面，只构建一次）
   let mapBuildPromise = null;
   let listViewEl = null;
+  const LIST_PAGE_SIZE = 60;
+  let listRenderLimit = LIST_PAGE_SIZE;
   let query = '';
   let category = '';
   const cleanups = [];
@@ -90,7 +93,7 @@ export async function exploreView(root) {
     scrim: 'top', enter: enterOnce, parallax: true, fixed: true,
   });
 
-  const wrap = el('section', { class: 'view explore' }, [topNav('explore')]);
+  const wrap = el('section', { class: 'view explore is-map-mode' }, [topNav('explore')]);
   if (enterOnce) wrap.classList.add(TRANSITION_STATES.MAP_ENTER);
   wrap.appendChild(bg.el);
   const stageWrap = el('div', { class: 'stage-wrap' });
@@ -98,29 +101,22 @@ export async function exploreView(root) {
   root.appendChild(wrap);
 
   // 登记到跨页转场系统（离场时前排图层穿越、UI 淡出）
-  registerPage('explore', {
+  const transitionRegistration = {
     root: wrap,
     bg,
     fadeUI() {
       wrap.querySelectorAll('.topnav, .stage-wrap').forEach((n) => n.classList.add('ui-fade'));
     },
-  });
+  };
+  registerPage('explore', transitionRegistration);
 
   agent.unmount(); // 地图页默认不出现小蕉（产品大纲 §9.2）
 
   // ---------- 工具栏 ----------
   const search = el('input', {
     type: 'search', placeholder: '搜索工艺或地区…', 'aria-label': '搜索工艺或地区',
-    oninput: () => { query = search.value.trim(); applyFilter(); if (mode === 'list') renderListView(); },
+    oninput: () => { query = search.value.trim(); listRenderLimit = LIST_PAGE_SIZE; applyFilter(); if (mode === 'list') renderListView(); },
   });
-  const catSel = el('select', {
-    'aria-label': '按类别筛选',
-    onchange: () => { category = catSel.value; applyFilter(); if (mode === 'list') renderListView(); },
-  }, [
-    el('option', { value: '', text: '全部类别' }),
-    el('option', { value: '传统美术', text: '传统美术（待核对）' }),
-    el('option', { value: '传统技艺', text: '传统技艺（待核对）' }),
-  ]);
   const segMap = el('button', { class: 'on', text: '地图', onclick: () => setMode('map') });
   const segList = el('button', { text: '列表', onclick: () => setMode('list') });
   let contributionDistrictId = '';
@@ -135,17 +131,18 @@ export async function exploreView(root) {
     contributeButton.hidden = !contributionDistrictId;
   }
   const toolbar = el('div', { class: 'toolbar' }, [
-    search, contributeButton, catSel,
+    search,
     el('span', { class: 'seg', role: 'group', 'aria-label': '视图切换' }, [segMap, segList]),
-    el('span', { class: 'small muted', text: '类别归属为策展配置，未经官方名录核对' }),
+    contributeButton,
   ]);
   stageWrap.appendChild(toolbar);
 
-  const mapHolder = el('div', {});
+  const mapHolder = el('div', { class: 'map-holder' });
   stageWrap.appendChild(mapHolder);
 
   function setMode(m) {
     mode = m;
+    wrap.classList.toggle('is-map-mode', m === 'map');
     segMap.classList.toggle('on', m === 'map');
     segList.classList.toggle('on', m === 'list');
     render();
@@ -275,6 +272,9 @@ export async function exploreView(root) {
     removePanelWithMotion(closingPanel, immediate);
   }
   function showProjectPanel(host, craft) {
+    // The map only carries catalogue metadata. Warm this one package while the
+    // visitor reads its introduction so opening the detail feels immediate.
+    ensureCraftLoaded(craft.craftId).catch(() => {});
     // 项目间切换保留新面板的入场动画，但立即清理旧面板，避免两个可编辑模块重叠。
     clearProjectPanel({ immediate: true });
     projectPanelHost = host;
@@ -359,6 +359,7 @@ export async function exploreView(root) {
     requestAnimationFrame(gather);
 
     const showTip = () => {
+      ensureCraftLoaded(craft.craftId).catch(() => {});
       field.setTargets(blotTargets(66, 50, 48, 110));
       anchor.classList.add('is-hovered');
     };
@@ -413,7 +414,8 @@ export async function exploreView(root) {
       else exitFocus3D();
     });
 
-    crafts.forEach((c, i) => {
+    const visibleCrafts = crafts.slice(0, 36);
+    visibleCrafts.forEach((c, i) => {
       const cluster = makeCluster(c, (craft) => showProjectPanel(mapViewEl, craft));
       cluster.el.style.left = '50%';
       cluster.el.style.top = '45%';
@@ -421,14 +423,23 @@ export async function exploreView(root) {
       focusAnchors.push({
         el: cluster.el,
         field: cluster.field,
-        world: map3d.districtAnchorWorld(nodeName, i, crafts.length),
+        world: map3d.districtAnchorWorld(nodeName, i, visibleCrafts.length),
       });
     });
+    if (crafts.length > visibleCrafts.length) focusOverlay.appendChild(el('p', {
+      class: 'map-anchor-overflow',
+      text: `本区另有 ${crafts.length - visibleCrafts.length} 项，请使用上方搜索或列表查看`,
+    }));
   }
 
   async function renderMap3D(container) {
     const wrap3d = el('div', { class: 'map3d-wrap' }, [
-      el('div', { class: 'map3d-loading' }, ['正在加载三维地图模型…']),
+      el('div', { class: 'map3d-loading', role: 'status' }, [
+        el('div', { class: 'map-loading-silhouette', 'aria-hidden': 'true' }),
+        el('p', { text: '正在准备三维地图' }),
+        el('span', { text: '页面已经可以操作，地图就绪后会自动显示。' }),
+        el('button', { class: 'btn-ghost', type: 'button', text: '先使用列表', onclick: () => setMode('list') }),
+      ]),
     ]);
     container.appendChild(wrap3d);
     try {
@@ -444,7 +455,8 @@ export async function exploreView(root) {
         onBlank() { exitFocus3D(); },
         onFrame(project) {
           // GLB 锚点位于区块顶面上方；将卡片的视觉重心下沉，使图片底缘贴近地图表面。
-          const surfaceOffset = Math.max(12, Math.min(24, wrap3d.clientHeight * 0.03));
+          // 锚点的底缘贴住区块顶面；卡片本身向上展开，避免悬浮在地图上方。
+          const surfaceOffset = Math.max(4, Math.min(8, wrap3d.clientHeight * 0.012));
           for (const a of focusAnchors) {
             if (!a.world) continue;
             const p = project(a.world);
@@ -456,6 +468,7 @@ export async function exploreView(root) {
       });
       if (viewDisposed || !container.isConnected) {
         instance.dispose();
+        mapBuildPromise = null;
         return;
       }
       map3d = instance;
@@ -590,13 +603,18 @@ export async function exploreView(root) {
       el('span', { class: 'platform-label', text: d.name }),
       el('span', { class: 'platform-note', text: '空间地台为平面占位 · 项目位置为策展空间位置，非实际地址' }),
     ]);
-    for (const c of crafts) {
+    const visibleCrafts = crafts.slice(0, 36);
+    for (const c of visibleCrafts) {
       const cluster = makeCluster(c, (craft) => showProjectPanel(flatFocusEl, craft));
       cluster.el.style.left = `${c.config.anchor.x * 100}%`;
       cluster.el.style.top = `${c.config.anchor.y * 100}%`;
       platform.appendChild(cluster.el);
       flatFocusFields.push(cluster.field);
     }
+    if (crafts.length > visibleCrafts.length) platform.appendChild(el('p', {
+      class: 'map-anchor-overflow',
+      text: `本区另有 ${crafts.length - visibleCrafts.length} 项，请使用上方搜索或列表查看`,
+    }));
     platform.addEventListener('click', (e) => {
       if (e.target !== platform) return;
       if (projectPanel) clearProjectPanel();
@@ -626,8 +644,10 @@ export async function exploreView(root) {
   function renderListView() {
     listViewEl?.remove();
     const list = el('div', { class: 'craft-list' });
+    const matchingCrafts = craftRecords.filter(matches);
+    const visibleCrafts = matchingCrafts.slice(0, listRenderLimit);
     const groups = new Map();
-    for (const c of allCrafts().filter(matches)) {
+    for (const c of visibleCrafts) {
       const key = c.config.districtLabel || '地区待核对';
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(c);
@@ -660,6 +680,11 @@ export async function exploreView(root) {
         ])),
       ]));
     }
+    if (visibleCrafts.length < matchingCrafts.length) list.appendChild(el('button', {
+      class: 'btn-ghost craft-list-more', type: 'button',
+      text: `继续加载（已显示 ${visibleCrafts.length}/${matchingCrafts.length}）`,
+      onclick: () => { listRenderLimit += LIST_PAGE_SIZE; renderListView(); },
+    }));
     listViewEl = list;
     mapHolder.appendChild(list);
   }
@@ -695,6 +720,7 @@ export async function exploreView(root) {
 
   // Esc 返回上一层状态
   const onKey = (e) => {
+    if (!wrap.isConnected) return;
     if (e.key !== 'Escape') return;
     if (projectPanel) { clearProjectPanel(); return; }
     if (focusOverlay) { exitFocus3D(); return; }
@@ -706,6 +732,25 @@ export async function exploreView(root) {
   render();
 
   return {
+    deactivate() {
+      map3d?.setActive(false);
+      bg.setActive(false);
+      unregisterPage('explore', wrap);
+    },
+    activate() {
+      wrap.querySelectorAll('.ui-fade').forEach((node) => node.classList.remove('ui-fade'));
+      wrap.classList.remove(TRANSITION_STATES.MAP_ENTER);
+      bg.resetTransition();
+      bg.setActive(true);
+      registerPage('explore', transitionRegistration);
+      requestAnimationFrame(() => {
+        map3d?.resize?.();
+        if (mode === 'map') {
+          if (map3d) map3d.setActive(true);
+          else render();
+        }
+      });
+    },
     cleanup() {
       viewDisposed = true;
       renderGeneration++;

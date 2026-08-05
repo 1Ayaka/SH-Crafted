@@ -1,13 +1,15 @@
 // 数据护照：来源、授权、审核状态、计数 —— 全部来自 manifest 真实字段
 import { el } from '../ui.js';
-import { allCrafts, knowledgeOverview } from '../data.js';
+import { hydrateAllCrafts, knowledgeOverview } from '../data.js';
 import { topNav } from './home.js';
 import { agent } from '../agent.js';
 
 const RIGHTS = { pending: '授权待确认' };
 
-export function passportView(root) {
-  const crafts = allCrafts();
+export async function passportView(root) {
+  // The evidence passport is intentionally the one route that needs every
+  // source package. Home, map and ordinary detail navigation stay lightweight.
+  const crafts = await hydrateAllCrafts();
   const knowledge = knowledgeOverview();
   const kbStats = knowledge.stats || {};
   const coveredDistricts = new Set(crafts.map((c) => c.config.districtId).filter(Boolean)).size;

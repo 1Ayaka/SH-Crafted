@@ -38,7 +38,7 @@ try {
 // Views are intentionally imported per route. In particular, the home page no
 // longer waits for the map/Three.js and workbench modules before it can render.
 route('/', async (root) => (await import('./views/home.js')).homeView(root));
-route('/explore', async (root) => (await import('./views/explore.js')).exploreView(root));
+route('/explore', async (root) => (await import('./views/explore.js')).exploreView(root), { keepAlive: true });
 route('/contribute/:districtId', async (root, p) => (await import('./views/contribute.js')).contributeView(root, p));
 route('/craft/:id', async (root, p) => (await import('./views/craft.js')).craftView(root, p));
 route('/passport', async (root) => (await import('./views/passport.js')).passportView(root));

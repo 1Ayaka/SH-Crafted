@@ -43,15 +43,20 @@ export async function createLayerBG(manifestUrl, opts = {}) {
   const stack = document.createElement('div');
   stack.className = 'bg-stack' + (fixed ? ' bg-fixed' : '');
   stack.setAttribute('aria-hidden', 'true');
+  const deferredSources = [];
+  const loadTimers = [];
+  let deferredIdleHandle = 0;
   const layerEls = layerSpecs.map((l, i) => {
     const img = document.createElement('img');
     img.className = 'bg-layer';
     img.dataset.role = l.role || `layer-${i}`;
-    img.src = bgDir + l.file;
+    const source = bgDir + l.file;
+    if (i === 0) img.src = source;
+    else deferredSources.push({ img, source });
     img.alt = '';
     img.draggable = false;
     img.decoding = 'async';
-    img.loading = 'eager';
+    img.loading = i === 0 ? 'eager' : 'lazy';
     img.fetchPriority = i === 0 ? 'high' : 'auto';
     img.style.zIndex = String(i + 1);
     stack.appendChild(img);
@@ -64,12 +69,12 @@ export async function createLayerBG(manifestUrl, opts = {}) {
     detailEl = document.createElement('img');
     detailEl.className = 'bg-layer bg-layer-detail';
     detailEl.dataset.role = 'detail';
-    detailEl.src = manifest.direct_source;
+    deferredSources.push({ img: detailEl, source: manifest.direct_source });
     detailEl.alt = '';
     detailEl.draggable = false;
     detailEl.decoding = 'async';
-    detailEl.loading = 'eager';
-    detailEl.fetchPriority = 'high';
+    detailEl.loading = 'lazy';
+    detailEl.fetchPriority = 'low';
     detailEl.style.zIndex = String(layerSpecs.length + 1);
     detailEl.style.opacity = String(manifest.direct_source_opacity ?? 1);
     stack.appendChild(detailEl);
@@ -80,6 +85,16 @@ export async function createLayerBG(manifestUrl, opts = {}) {
     s.style.zIndex = String(layerSpecs.length + (detailEl ? 2 : 1));
     stack.appendChild(s);
   }
+
+  // 首帧只请求最底层，确保页面骨架和点击事件先可用；其余层分批启动，
+  // 避免多张背景与 Three.js / GLB 在慢网下互相争抢连接。
+  const beginDeferredLoads = () => deferredSources.forEach(({ img, source }, index) => {
+    loadTimers.push(setTimeout(() => {
+      if (!img.src) img.src = source;
+    }, index * 110));
+  });
+  if ('requestIdleCallback' in window) deferredIdleHandle = requestIdleCallback(beginDeferredLoads, { timeout: 450 });
+  else loadTimers.push(setTimeout(beginDeferredLoads, 80));
 
   // ---------- 漂移 + 视差 ----------
   let mx = 0, my = 0, cx = 0, cy = 0, raf = 0, running = false, locked = false;
@@ -182,6 +197,23 @@ export async function createLayerBG(manifestUrl, opts = {}) {
     await wait(190 + last * 75 + 380); // 前排全部掠过后交棒（base 仍在）
   }
 
+  function resetTransition() {
+    locked = false;
+    cancelAnimationFrame(enterRaf);
+    clearTimeout(enterTimer);
+    layerEls.forEach((node) => {
+      node.classList.remove('is-bg-transitioning');
+      node.style.transition = '';
+      node.style.opacity = '1';
+      node.style.transform = '';
+    });
+    for (const node of bg.fadeEls) {
+      node.style.transition = '';
+      node.style.opacity = '';
+    }
+    start();
+  }
+
   const bg = {
     el: stack,
     manifest,
@@ -191,6 +223,7 @@ export async function createLayerBG(manifestUrl, opts = {}) {
     detailEl,
     fadeEls: [],        // 离场时一并淡出的覆盖层（如墨晕画布）
     zoomThrough,
+    resetTransition,
     setActive,
     get locked() { return locked; },
     destroy() {
@@ -198,6 +231,8 @@ export async function createLayerBG(manifestUrl, opts = {}) {
       stop();
       cancelAnimationFrame(enterRaf);
       clearTimeout(enterTimer);
+      if (deferredIdleHandle && 'cancelIdleCallback' in window) cancelIdleCallback(deferredIdleHandle);
+      loadTimers.forEach(clearTimeout);
       window.removeEventListener('mousemove', onMove);
       document.removeEventListener('visibilitychange', onVis);
       // el 的移除交给路由 innerHTML 清空或 transitions.js 的 ghost 回收

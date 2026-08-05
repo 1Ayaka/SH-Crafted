@@ -16,7 +16,7 @@ import { mountEditableModule } from '../editable.js';
 export function topNav(active) {
   const editing = isAdmin();
   return el('header', { class: 'topnav' }, [
-    el('a', { class: 'brand', href: '#/', style: { display: 'flex', alignItems: 'center', gap: '14px' } }, [
+    el('a', { class: 'brand', href: '#/explore', style: { display: 'flex', alignItems: 'center', gap: '14px' } }, [
       el('span', { class: 'seal', text: '上海非遗' }),
       el('span', { class: 'name', text: '上海非物质文化遗产交互系统' }),
     ]),
@@ -97,14 +97,31 @@ export async function homeView(root) {
   ]);
   root.appendChild(wrap);
 
-  // 从第一层背景的实际可见裁切取样；颜色与分布属于原画，而非另加一套装饰色。
-  const particleField = await createHomeParticleField(particleCanvas, bg.layerEls[0], {
-    sourceLayer: bg.layers[0]?.role || 'layer-0',
-    spriteSources: [
-      { src: 'assets/t荷叶.png', kind: 'leaf' },
-      { src: 'assets/t荷花.png', kind: 'flower' },
-    ],
-  });
+  // 首屏先完成挂载和事件绑定，荷叶、荷花在浏览器空闲时渐进加载。
+  // 这一步不能阻塞 homeView 返回，否则慢网下连“进入地图”都无法点击。
+  let particleField = { burst: () => Promise.resolve(), destroy() {} };
+  let particleInitHandle = 0;
+  let disposed = false;
+  const startParticleField = () => {
+    particleInitHandle = 0;
+    createHomeParticleField(particleCanvas, bg.layerEls[0], {
+      sourceLayer: bg.layers[0]?.role || 'layer-0',
+      spriteSources: [
+        { src: 'assets/home/lotus-leaf-512.jpg', kind: 'leaf' },
+        { src: 'assets/home/lotus-flower-512.jpg', kind: 'flower' },
+      ],
+    }).then((field) => {
+      if (disposed) field.destroy();
+      else particleField = field;
+    }).catch(() => {});
+  };
+  if ('requestIdleCallback' in window) particleInitHandle = requestIdleCallback(startParticleField, { timeout: 900 });
+  else particleInitHandle = setTimeout(startParticleField, 180);
+
+  // 首页空闲时预热地图模块和小体积地图资源；仅下载/解码，不创建 WebGL。
+  const warmMap = () => import('../map3d.js').then((module) => module.preloadMap3DAssets?.()).catch(() => {});
+  if ('requestIdleCallback' in window) requestIdleCallback(warmMap, { timeout: 1800 });
+  else setTimeout(warmMap, 700);
 
   const editableCleanups = [
     mountEditableModule(heroCopy, [
@@ -179,6 +196,11 @@ export async function homeView(root) {
 
   return {
     cleanup() {
+      disposed = true;
+      if (particleInitHandle) {
+        if ('cancelIdleCallback' in window) cancelIdleCallback(particleInitHandle);
+        else clearTimeout(particleInitHandle);
+      }
       bloom.destroy();
       particleField.destroy();
       editableCleanups.forEach((cleanup) => cleanup());

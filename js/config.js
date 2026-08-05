@@ -283,31 +283,31 @@ export const MATERIAL_STATES = {
 export const CRAFT_MODEL_PATHS = {
   SHIH_0001: {
     raw: 'assets/models/crafts/bamboo-raw.glb',        // 竹子模型（原料）
-    finished: 'assets/models/crafts/bamboo-finished.glb', // 竹雕完成品
+    finished: 'assets/models/crafts/bamboo-finished.web.glb?v=20260803', // 网页粒子渲染专用轻量副本
   },
   SHIH_0002: {
     raw: 'assets/models/crafts/paper-raw.glb',         // 剪纸原料（纸平面）
     rawTint: 0xD8CCAF,                                 // 未撕白纸（略深于砂底，保证可读）
-    finished: 'assets/models/crafts/paper-finished.glb?v=20260728', // 剪纸完成品（新模型，版本号用于刷新浏览器缓存）
+    finished: 'assets/models/crafts/paper-finished.web.glb?v=20260803',
   },
   SHIH_0003: {
     raw: 'assets/models/crafts/cloth-raw.glb',         // 药斑布原料（布平面）
     rawTint: 0xC4AE8C,                                 // 未染本色棉布（略深于砂底，保证可读）
-    finished: 'assets/models/crafts/cloth-finished.glb?v=20260728', // 药斑布完成品（新模型，版本号用于刷新浏览器缓存）
+    finished: 'assets/models/crafts/cloth-finished.web.glb?v=20260803',
     pattern: 'assets/patterns/yaobanbu-pattern.jpg',   // 纹样取自纪录片关键帧 000937800（蓝白菊花纹）
   },
   SHIH_0004: {
     raw: 'assets/models/crafts/ivory-raw.glb',         // 象牙模型（原料）
-    finished: 'assets/models/crafts/ivory-finished.glb',  // 象牙扇子完成品
+    finished: 'assets/models/crafts/ivory-finished.web.glb?v=20260803',
   },
   SHIH_0007: {
     // 目前仅提供完成品模型，原料态先复用同一模型，避免体验入口回退到平面。
-    raw: 'assets/models/crafts/皮影戏完成品.glb?v=20260801',
-    finished: 'assets/models/crafts/皮影戏完成品.glb?v=20260801',
+    raw: 'assets/models/crafts/shadow-finished.web.glb?v=20260803',
+    finished: 'assets/models/crafts/shadow-finished.web.glb?v=20260803',
   },
   SHIH_0008: {
     // 目前仅提供完成品模型，原料态先复用同一模型，后续可替换为骨架/蒙面原料模型。
-    raw: 'assets/models/crafts/风筝完成品.glb?v=20260801',
-    finished: 'assets/models/crafts/风筝完成品.glb?v=20260801',
+    raw: 'assets/models/crafts/kite-finished.web.glb?v=20260803',
+    finished: 'assets/models/crafts/kite-finished.web.glb?v=20260803',
   },
 };

@@ -65,7 +65,9 @@ export async function transitionTo(hash) {
     cur.fadeUI?.();                    // 1) UI 淡出
     await cur.bg.zoomThrough();        // 2) 前排图层穿越（约 0.9–1.2s，base 保留）
     // 3) ghost 交棒：旧背景在路由切换后继续存活，与新页 base 交叉淡融
-    const ghost = cur.bg.el;
+    // 使用视觉克隆完成交叉淡融，原背景留在路由挂载点中。
+    // 地图页采用 keep-alive 时可直接恢复原 DOM/WebGL，不会因 ghost 回收而丢背景。
+    const ghost = cur.bg.el.cloneNode(true);
     ghost.classList.add('bg-ghost');
     document.body.appendChild(ghost);
     pendingEnter = true;

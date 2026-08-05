@@ -6,6 +6,7 @@
 // - DeepSeek 密钥只存在于服务器进程内（启动时从 .env 或 DEEPSEEK_API_KEY 读取），
 //   绝不发送给浏览器、绝不打印日志
 import http from 'node:http';
+import { createReadStream } from 'node:fs';
 import { chmod, copyFile, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { dirname, extname, join, normalize } from 'node:path';
@@ -621,6 +622,32 @@ function normalizeMaterialTransforms(value, materials) {
   return result;
 }
 
+const RESOURCE_SHAPE_IDS = new Set(['sphere', 'cube', 'slab', 'rod', 'cylinder', 'cone', 'disk', 'ring', 'bowl', 'bundle']);
+
+function normalizeGuideBoldRanges(value, text) {
+  const length = text.length;
+  const ranges = [];
+  for (const item of (Array.isArray(value) ? value : []).slice(0, 40)) {
+    const start = Math.max(0, Math.min(length, Math.trunc(Number(item?.start)) || 0));
+    const end = Math.max(start, Math.min(length, Math.trunc(Number(item?.end)) || 0));
+    if (end > start) ranges.push({ start, end });
+  }
+  return ranges.sort((a, b) => a.start - b.start || a.end - b.end);
+}
+
+function normalizeResourceVisuals(value) {
+  const result = [];
+  for (const item of (Array.isArray(value) ? value : []).slice(0, 80)) {
+    const name = cleanText(item?.name, 100);
+    if (!name || result.some((entry) => entry.name === name)) continue;
+    const shape = RESOURCE_SHAPE_IDS.has(item?.shape) ? item.shape : '';
+    const requestedScale = Number(item?.scale);
+    const scale = Number.isFinite(requestedScale) ? Math.max(0.6, Math.min(1.6, requestedScale)) : 1;
+    result.push({ name, shape, scale: Math.round(scale * 100) / 100 });
+  }
+  return result;
+}
+
 function normalizeSteps(craftId, incoming, previous) {
   if (!Array.isArray(incoming) || incoming.length > 30) throw new Error('invalid_steps');
   const previousById = new Map(previous.map((step) => [step.id, step]));
@@ -635,6 +662,9 @@ function normalizeSteps(craftId, incoming, previous) {
     const groupInput = hasOwn(value, 'resource_groups') ? value.resource_groups : old.resource_groups;
     const resourceGroups = normalizeResourceGroups(groupInput, id, materials, tools);
     const quickFillInput = hasOwn(value, 'quick_fill') ? value.quick_fill : old.quick_fill;
+    const guideText = String(hasOwn(value, 'guide_text') ? value.guide_text : (old.guide_text || ''))
+      .replace(/\r\n/g, '\n')
+      .slice(0, 5000);
     return {
       id,
       sort: index + 1,
@@ -642,10 +672,18 @@ function normalizeSteps(craftId, incoming, previous) {
       source_step_id: old.source_step_id || id,
       name: cleanText(value?.name, 200),
       action: cleanText(value?.action, 5000),
+      guide_text: guideText,
+      guide_bold_ranges: normalizeGuideBoldRanges(
+        hasOwn(value, 'guide_bold_ranges') ? value.guide_bold_ranges : old.guide_bold_ranges,
+        guideText,
+      ),
       result: cleanText(value?.result, 1000),
       materials,
       material_transforms: normalizeMaterialTransforms(value?.material_transforms, materials),
       tools,
+      resource_visuals: normalizeResourceVisuals(
+        hasOwn(value, 'resource_visuals') ? value.resource_visuals : old.resource_visuals,
+      ),
       resource_groups: resourceGroups,
       actions,
       correct_action_id: correct,
@@ -1064,15 +1102,17 @@ const server = http.createServer(async (req, res) => {
     const modifiedSince = req.headers['if-modified-since'];
     const notModified = req.headers['if-none-match'] === etag
       || (modifiedSince && Math.trunc(new Date(modifiedSince).getTime() / 1000) >= Math.trunc(targetStat.mtimeMs / 1000));
-    const cacheControl = ['.glb', '.gltf', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.woff', '.woff2']
-      .includes(extension)
-      ? 'public, max-age=86400, stale-while-revalidate=604800'
-      : 'public, max-age=0, must-revalidate';
+    const cacheControl = ['.glb', '.gltf'].includes(extension)
+      ? 'public, max-age=2592000, stale-while-revalidate=5184000'
+      : ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.woff', '.woff2'].includes(extension)
+        ? 'public, max-age=604800, stale-while-revalidate=2592000'
+        : 'public, max-age=0, must-revalidate';
     const headers = {
       'Content-Type': MIME[extension] || 'application/octet-stream',
       'Cache-Control': cacheControl,
       ETag: etag,
       'Last-Modified': targetStat.mtime.toUTCString(),
+      'Accept-Ranges': 'bytes',
     };
     if (notModified) {
       res.writeHead(304, headers).end();
@@ -1082,12 +1122,29 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { ...headers, 'Content-Length': targetStat.size }).end();
       return;
     }
-    const body = await readFile(target);
-    res.writeHead(200, {
-      ...headers,
-      'Content-Length': body.length,
-    });
-    res.end(body);
+    const range = req.headers.range;
+    if (range) {
+      const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+      if (!match) {
+        res.writeHead(416, { ...headers, 'Content-Range': `bytes */${targetStat.size}` }).end();
+        return;
+      }
+      const start = match[1] ? Number(match[1]) : 0;
+      const end = match[2] ? Number(match[2]) : targetStat.size - 1;
+      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start || end >= targetStat.size) {
+        res.writeHead(416, { ...headers, 'Content-Range': `bytes */${targetStat.size}` }).end();
+        return;
+      }
+      res.writeHead(206, {
+        ...headers,
+        'Content-Range': `bytes ${start}-${end}/${targetStat.size}`,
+        'Content-Length': end - start + 1,
+      });
+      createReadStream(target, { start, end }).on('error', () => res.destroy()).pipe(res);
+      return;
+    }
+    res.writeHead(200, { ...headers, 'Content-Length': targetStat.size });
+    createReadStream(target).on('error', () => res.destroy()).pipe(res);
   } catch {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('404 Not Found');
   }

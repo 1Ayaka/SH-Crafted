@@ -27,7 +27,7 @@ const freePort = () => new Promise((resolve, reject) => {
 
 const port = await freePort();
 const browser = spawn(edge, [
-  '--headless', '--disable-gpu', '--window-size=1440,1000',
+  '--headless=new', '--disable-gpu', '--no-sandbox', '--window-size=1440,1000',
   `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, 'about:blank',
 ], { stdio: 'ignore', windowsHide: true });
 let socket;
@@ -112,6 +112,9 @@ try {
     materialInputs: document.querySelectorAll('.admin-resource-columns input').length,
     materialOutputInputs: document.querySelectorAll('input[aria-label$="完成后变为"]').length,
     operationInputs: document.querySelectorAll('.admin-operation-row > input').length,
+    guideEditor: Boolean(document.querySelector('.admin-guide-editor[contenteditable="true"]')),
+    visualRows: document.querySelectorAll('.admin-visual-row').length,
+    shapeOptions: document.querySelector('.admin-visual-row select')?.options.length || 0,
     saveButton: Boolean([...document.querySelectorAll('button')].find((button) => button.textContent.includes('保存全部工序')))
   })`);
   await screenshot(screenshots.process);

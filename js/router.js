@@ -2,12 +2,13 @@
 const routes = [];
 let current = null;
 let dispatchId = 0;
+const keptViews = new Map();
 
-export function route(pattern, handler) {
+export function route(pattern, handler, options = {}) {
   // pattern 形如 '/craft/:id'
   const keys = [];
   const rx = new RegExp('^' + pattern.replace(/:[^/]+/g, (m) => { keys.push(m.slice(1)); return '([^/]+)'; }) + '$');
-  routes.push({ rx, keys, handler, pattern });
+  routes.push({ rx, keys, handler, pattern, keepAlive: Boolean(options.keepAlive) });
 }
 
 export function navigate(hash) {
@@ -29,8 +30,22 @@ export function startRouter(appEl, { onLeave } = {}) {
       r.keys.forEach((k, i) => { params[k] = decodeURIComponent(m[i + 1]); });
       const leaving = current;
       current = null;
-      if (leaving?.cleanup) { try { leaving.cleanup(); } catch { /* 忽略清理异常 */ } }
+      if (leaving?.keepAlive) {
+        try { leaving.deactivate?.(); } catch { /* 忽略停用异常 */ }
+        keptViews.set(leaving.cacheKey, leaving);
+      } else if (leaving?.cleanup) {
+        try { leaving.cleanup(); } catch { /* 忽略清理异常 */ }
+      }
       onLeave?.();
+      const cacheKey = r.keepAlive && !r.keys.length ? r.pattern : '';
+      const cached = cacheKey ? keptViews.get(cacheKey) : null;
+      if (cached) {
+        appEl.replaceChildren(cached.mount);
+        try { cached.activate?.(); } catch { /* 忽略恢复异常 */ }
+        current = cached;
+        window.scrollTo(0, 0);
+        return;
+      }
       const mount = document.createElement('div');
       mount.className = 'route-mount';
       mount.dataset.route = path;
@@ -41,7 +56,15 @@ export function startRouter(appEl, { onLeave } = {}) {
         mount.remove();
         return;
       }
-      current = { path, cleanup: view?.cleanup, mount };
+      current = {
+        path,
+        cleanup: view?.cleanup,
+        activate: view?.activate,
+        deactivate: view?.deactivate,
+        mount,
+        keepAlive: r.keepAlive,
+        cacheKey,
+      };
       window.scrollTo(0, 0);
       return;
     }
