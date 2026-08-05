@@ -16,6 +16,8 @@ import { registerPage, unregisterPage, transitionTo, consumeEnter } from '../tra
 import { isAdmin, saveCraft } from '../admin.js';
 import { mountEditableModule } from '../editable.js';
 import { createWorkbenchSurface } from '../workbench-preview.js';
+import { graphId, parseGraphId } from '../agent/graph-adapter.js';
+import { materialTransformMap } from '../material-flow.js';
 
 const OUTPUT_PALETTE = [
   '#6F8C73', '#A56A4E', '#B48A42', '#5D7F84', '#9C6B76',
@@ -380,6 +382,10 @@ export async function craftView(root, { id }) {
     const selected = new Set(S.selectedResources);
     for (const name of step?.interactionRule?.allowed_resources || []) {
       if (craft.resourceKinds.get(name) !== 'implement' && carriedMaterialFor(name)) selected.add(name);
+    }
+    const transforms = materialTransformMap(step);
+    for (const item of S.materialItems.values()) {
+      if (transforms.has(item.currentName)) selected.add(item.currentName);
     }
     return selected;
   }
@@ -841,21 +847,35 @@ export async function craftView(root, { id }) {
       ]);
     };
 
-    const unmatchedCarried = [...S.materialItems.values()].filter((item) => !materialNames.includes(item.currentName));
-    const inheritedButtons = unmatchedCarried.map((item) => el('button', {
+    const activeTransforms = materialTransformMap(step);
+    const activeCarried = [...S.materialItems.values()].filter((item) => activeTransforms.has(item.currentName));
+    const heldCarried = [...S.materialItems.values()].filter((item) => !activeTransforms.has(item.currentName));
+    const inheritedButtons = activeCarried.map((item) => el('button', {
       class: 'bp-item selected is-unavailable is-carried', type: 'button', disabled: true,
-      title: `${item.currentName}由上一步自动带入`,
+      title: `${item.currentName}在本步继续加工`,
     }, [
       el('i', { class: 'resource-swatch', style: { background: item.color } }),
       el('span', { text: item.currentName }),
-      el('span', { class: 'bp-state', text: `${item.level}级 · 已在桌面` }),
+        el('span', { class: 'bp-state', text: `${item.level}级 · 本步使用` }),
+      ]));
+    const heldButtons = heldCarried.map((item) => el('div', {
+      class: 'bp-item is-unavailable is-carried is-held',
+      title: `${item.currentName}已暂存，本步不参与加工`,
+    }, [
+      el('i', { class: 'resource-swatch', style: { background: item.color } }),
+      el('span', { text: item.currentName }),
+      el('span', { class: 'bp-state', text: `${item.level}级 · 暂存` }),
     ]));
 
     const backpack = el('aside', { class: 'backpack', 'aria-label': '本步材料、继承材料与工具' }, [
       el('h4', { text: '背包' }),
       inheritedButtons.length ? el('div', { class: 'bp-sec bp-inherited' }, [
-        el('p', { class: 'sec-label', text: '上一步产物 · 自动使用' }),
+        el('p', { class: 'sec-label', text: '既有材料 · 本步使用' }),
         ...inheritedButtons,
+      ]) : null,
+      heldButtons.length ? el('div', { class: 'bp-sec bp-held' }, [
+        el('p', { class: 'sec-label', text: '暂存材料 · 本步不使用' }),
+        ...heldButtons,
       ]) : null,
       el('div', { class: 'bp-sec' }, [
         el('p', { class: 'sec-label', text: '本步所需材料' }),
@@ -869,11 +889,11 @@ export async function craftView(root, { id }) {
           el('p', { class: 'bp-empty', text: '该项目没有登记工具' }),
         ]),
       ]),
-      el('p', { class: 'bp-help', text: '绿色材料已由上一步带入，无需重复点击；本步新增材料需要手动放上桌面。' }),
+      el('p', { class: 'bp-help', text: '本步使用的既有材料会自动上桌；暂存材料会保留到后续工序，不会被本步改变。' }),
     ]);
 
     const tableObjects = [
-      ...[...S.materialItems.values()].map((item) => ({
+      ...activeCarried.map((item) => ({
         id: item.id,
         name: item.currentName,
         color: item.color,
@@ -1105,7 +1125,12 @@ export async function craftView(root, { id }) {
       return;
     }
 
-    const extras = selected.filter((name) => !rule.allowed_resources.includes(name));
+    const activeInherited = new Set(
+      [...S.materialItems.values()]
+        .filter((item) => materialTransformMap(step).has(item.currentName))
+        .map((item) => item.currentName),
+    );
+    const extras = selected.filter((name) => !rule.allowed_resources.includes(name) && !activeInherited.has(name));
     if (extras.length) {
       const name = extras[0];
       const laterIdx = craft.steps.findIndex((s, i) => i > S.stepIndex && s.interactionRule.allowed_resources.includes(name));
@@ -1153,19 +1178,24 @@ export async function craftView(root, { id }) {
       const itemId = `material:${S.stepIndex}:${name}`;
       S.materialItems.set(itemId, {
         id: itemId,
+        originName: name,
+        originStepId: step.step_id,
+        lastUsedStepId: null,
         currentName: name,
         level: 0,
         color: RAW_RESOURCE_COLOR,
         ...resourceVisual(name, step),
       });
     }
-    const transforms = Array.isArray(step.material_transforms) ? step.material_transforms : [];
+    const transforms = materialTransformMap(step);
     const upgrades = [];
     for (const [itemId, item] of [...S.materialItems.entries()]) {
       const inputName = item.currentName;
-      const mapping = transforms.find((entry) => entry.input_name === inputName);
-      // 缺少旧数据映射时同名延续；明确保存为空则表示本步消耗、无产物。
-      const outputName = mapping ? String(mapping.output_name || '').trim() : inputName;
+      const mapping = transforms.get(inputName);
+      // 没有映射表示材料仅暂存，不参与本步升级或消耗。
+      if (!mapping) continue;
+      // 明确保存为空表示本步消耗、无产物。
+      const outputName = mapping.output_name;
       if (!outputName) {
         S.materialItems.delete(itemId);
         S.workbenchPhysics.delete(itemId);
@@ -1174,6 +1204,7 @@ export async function craftView(root, { id }) {
       }
       item.level += 1;
       item.currentName = outputName;
+      item.lastUsedStepId = step.step_id;
       item.color = materialLevelColor(item.id, item.level);
       Object.assign(item, resourceVisual(outputName, step));
       const physics = S.workbenchPhysics.get(itemId);
@@ -1415,6 +1446,43 @@ export async function craftView(root, { id }) {
   // ---------- 小蕉挂载与互斥 ----------
   agent.mount();
   agent.setCraft(craft);
+  agent.setHost({
+    context() {
+      return {
+        route: `/craft/${encodeURIComponent(craft.craftId)}`,
+        page_type: 'heritage_detail',
+        current_root: { id: graphId('heritage', craft.craftId), type: 'heritage', title: craft.title, summary: craft.summary },
+        selected_node: { id: graphId('heritage', craft.craftId), type: 'heritage', title: craft.title, summary: craft.summary },
+        visible_nodes: [], breadcrumbs: [graphId('heritage', craft.craftId)], history: S.log.slice(-8),
+        available_actions: ['get_current_context', 'search_graph', 'expand_branch', 'open_node', 'open_heritage_detail', 'open_region', 'go_back', 'return_to_root', 'focus_model', 'read_summary', 'stop_speaking', 'show_help'],
+        context_revision: `craft:${craft.craftId}`,
+      };
+    },
+    async openNode({ node_id }) {
+      const parsed = parseGraphId(node_id);
+      if (parsed?.type === 'heritage') { transitionTo(`#/craft/${encodeURIComponent(parsed.rawId)}`); return { ok: true, node_id }; }
+      if (parsed?.type === 'region') { transitionTo('#/explore'); return { ok: true, node_id }; }
+      throw Object.assign(new Error('当前页面暂不支持打开这种节点。'), { code: 'unsupported_node_type' });
+    },
+    async openHeritageDetail({ heritage_id }) { return this.openNode({ node_id: heritage_id }); },
+    async setRootNode({ node_id }) { return this.openNode({ node_id }); },
+    async openRegion() { transitionTo('#/explore'); return { ok: true }; },
+    async expandBranch({ result }) {
+      const region = result?.nodes?.find((node) => node.type === 'region');
+      if (region) transitionTo('#/explore');
+      return { ok: true };
+    },
+    async goBack() { transitionTo('#/explore'); return { ok: true }; },
+    async returnToRoot() { return { ok: true }; },
+    async focusModel() { finishedModelHandle?.focus?.(); return { ok: true }; },
+    async readSummary() {
+      const started = agent.speak(`${craft.title}。${String(craft.summary || '目前资料中没有找到项目摘要。').slice(0, 220)}`);
+      return { ok: true, message: started ? '正在为你朗读项目摘要。' : '语音未开启；摘要已经显示在页面上。' };
+    },
+    async stopSpeaking() { agent.stopSpeaking(); return { ok: true }; },
+    async setVoicePreferences(args) { return agent.setVoicePreferences(args); },
+    async showHelp() { agent.say('当前可以说：展开位于、属于传统、使用材料，打开另一个项目，返回，回到完成品，或把项目摘要读给我听。'); return { ok: true }; },
+  });
   agent.onToggle((open) => { if (open) collapsePanelsForAgent(); });
   syncAgentContext();
 

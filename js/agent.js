@@ -3,6 +3,11 @@
 // 代理不可用（无密钥/超时/5xx）时静默降级为基于资料库的检索式占位应答，并提示降级状态
 import { el, catSVG, openEvidenceModal } from './ui.js';
 import { evidenceTimecode } from './data.js';
+import { buildAgentContext as buildUIAgentContext } from './agent/context-builder.js';
+import { createToolRegistry } from './agent/tool-registry.js';
+import { resolveIntent } from './agent/intent-resolver.js';
+import { createVoiceController } from './voice/voice-controller.js';
+import { VOICE_STATES } from './voice/voice-state-machine.js';
 
 // 用户提供小蕉头像后，只需把这里改成站内图片路径；空值时保留微信式头像位且不显示破图。
 const JIAO_AVATAR_URL = '';
@@ -17,7 +22,80 @@ const panel = {
   degradedNoted: false,     // 降级提示只显示一次
   generation: 0,
   requests: new Set(),
+  host: {},
+  registry: null,
+  voice: null,
+  voiceStatus: 'DISABLED',
 };
+
+function ensureVoice() {
+  if (panel.voice) return panel.voice;
+  panel.voice = createVoiceController({
+    onTranscript(text) { answer(text); },
+    onNotice(text) { if (panel.open) addMsg('agent', [el('p', { text })], '小蕉'); },
+    onStateChange(next) {
+      panel.voiceStatus = next;
+      panel.nodes.voiceStatus && updateVoiceStatus();
+    },
+  });
+  return panel.voice;
+}
+
+function ensureRegistry() {
+  if (panel.registry) return panel.registry;
+  const voice = ensureVoice();
+  panel.registry = createToolRegistry({
+    getContext: () => panel.host.context?.() || panel.context,
+    host: panel.host,
+    voice: { state: () => voice.state() },
+  });
+  return panel.registry;
+}
+
+function currentAgentContext() {
+  return buildUIAgentContext(panel.host.context?.() || panel.context, panel.voice?.state?.() || VOICE_STATES.DISABLED);
+}
+
+function updateVoiceStatus() {
+  const node = panel.nodes.voiceStatus;
+  if (!node) return;
+  const labels = {
+    DISABLED: '语音未开启', REQUESTING_PERMISSION: '正在申请麦克风权限', WAKE_LISTENING: '等待唤醒词',
+    AWAKENED: '已唤醒，请说话', LISTENING: '正在聆听', TRANSCRIBING: '正在识别', THINKING: '正在思考',
+    CONFIRMING: '等待确认', EXECUTING: '正在执行', SPEAKING: '正在朗读', SUSPENDED: '已暂停，请点击恢复', ERROR: '语音暂不可用',
+  };
+  node.textContent = labels[panel.voiceStatus] || panel.voiceStatus;
+  node.dataset.voiceState = panel.voiceStatus;
+  if (panel.nodes.wakeButton && panel.voice) panel.nodes.wakeButton.textContent = panel.voice.preferences().wakeEnabled ? '关闭语音唤醒' : '开启语音唤醒';
+}
+
+async function runToolCommand(query) {
+  const intent = resolveIntent(query, currentAgentContext());
+  if (!intent) return false;
+  if (intent.clarification) {
+    addMsg('agent', [el('p', { text: intent.clarification })], '小蕉');
+    return true;
+  }
+  const registry = ensureRegistry();
+  if (intent.name !== 'stop_speaking') addMsg('agent', [el('p', { class: 'ap-tool-progress', text: '正在处理这一步…' })], '小蕉');
+  const result = await registry.execute(intent.name, intent.args || {});
+  updateVoiceStatus();
+  if (!result.ok) {
+    addMsg('agent', [el('p', { text: result.error?.message || '这一步暂时无法完成。' })], '小蕉');
+    return true;
+  }
+  if (intent.name === 'stop_speaking') return true;
+  const message = result.message || ({
+    open_node: '已为你打开这个节点。', open_heritage_detail: '已打开非遗项目详情。', open_region: '已打开地区探索。',
+    expand_branch: result.count ? `已展开${result.relation_label}，找到 ${result.count} 个节点。` : `当前资料中没有找到${result.relation_label || '这条'}关系。`,
+    set_root_node: '已切换探索根节点。', go_back: '已回到上一步。', return_to_root: '已回到本次探索的根节点。',
+    focus_model: '镜头已回到完成品。', set_voice_preferences: result.preferences?.wakeEnabled === false ? '已关闭语音唤醒。' : '语音设置已更新。',
+    show_help: '我已经把当前页面可执行的操作列出来了。',
+  }[intent.name] || '已完成。');
+  if (intent.name === 'search_graph') return true;
+  addMsg('agent', [el('p', { text: message })], '小蕉');
+  return true;
+}
 
 function invalidateRequests() {
   panel.generation++;
@@ -140,7 +218,7 @@ async function askModel(query, retrieved, parentSignal) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         messages: [{ role: 'user', content: query }],
-        context: buildAgentContext(retrieved),
+        context: { ...buildAgentContext(retrieved), ui_context: currentAgentContext() },
       }),
       signal: ctrl.signal,
     });
@@ -265,6 +343,10 @@ async function answer(query) {
   const craft = panel.craft;
   addMsg('user', [el('span', { text: query })], '我');
 
+  // 导航与语音控制优先通过白名单工具执行；无法识别为站内操作时，
+  // 才继续使用原有知识检索/模型问答链路。
+  if (await runToolCommand(query)) return;
+
   // 快路径：资源 / 动作 / 工序等直接读取结构化数据
   if (craft) {
     if (/材料|原料|物件/.test(query)) {
@@ -384,6 +466,8 @@ function contextBanner() {
 
 function render() {
   invalidateRequests();
+  ensureVoice();
+  ensureRegistry();
   const root = document.createElement('div');
   root.innerHTML = '';
   document.querySelector('.agent-fab')?.remove();
@@ -408,13 +492,39 @@ function render() {
     },
   });
   const noticeEl = el('div', { class: 'ap-notice' });
-  const panelEl = el('aside', { class: 'agent-panel', 'aria-label': '小蕉智能体面板' }, [
+  const voiceNote = el('p', { class: 'ap-voice-note', text: '开启后，本页面会使用麦克风等待唤醒词；检测到唤醒词后才进入指令识别，你可以随时关闭。当前浏览器兼容路径可能使用浏览器语音服务，正式上线前可替换为本地模型。' });
+  const voiceStatus = el('div', { class: 'ap-voice-status', role: 'status', 'aria-live': 'polite' });
+  const wakeButton = el('button', {
+    class: 'ap-voice-button', type: 'button', text: '开启语音唤醒',
+    onclick: async () => {
+      const voice = ensureVoice();
+      try {
+        if (voice.preferences().wakeEnabled) {
+          voice.setPreferences({ wake_enabled: false });
+        } else {
+          await voice.start({ wake: true });
+        }
+      } catch (error) {
+        addMsg('agent', [el('p', { text: error.name === 'NotAllowedError' || error.message === 'NotAllowedError' ? '麦克风权限被拒绝。请在浏览器地址栏的权限设置中允许麦克风，再点击恢复；语音未开启期间仍可使用文字输入。' : '麦克风暂时不可用。请检查设备、浏览器权限或改用文字输入。' })], '小蕉');
+      }
+      updateVoiceStatus();
+    },
+  });
+  const micButton = el('button', {
+    class: 'ap-voice-button ap-mic-button', type: 'button', text: '点击说话',
+    onclick: async () => {
+      try { await ensureVoice().start({ wake: false }); } catch { addMsg('agent', [el('p', { text: '麦克风不可用。请检查浏览器权限，或直接使用文字输入。' })], '小蕉'); }
+    },
+  });
+  const stopButton = el('button', { class: 'ap-voice-button ap-stop-button', type: 'button', text: '停止朗读', onclick: () => ensureVoice().stopSpeaking() });
+  const panelEl = el('aside', { class: 'agent-panel', role: 'dialog', 'aria-modal': 'false', 'aria-label': '小蕉智能体面板' }, [
     el('div', { class: 'ap-head' }, [
       catSVG(),
       el('h3', { text: '小蕉' }),
       el('button', { class: 'ap-close', text: '×', 'aria-label': '收起小蕉', onclick: () => api.close() }),
     ]),
     noticeEl,
+    el('div', { class: 'ap-voice-controls' }, [voiceNote, voiceStatus, wakeButton, micButton, stopButton]),
     ctxLine,
     el('div', { class: 'ap-quick' }, ['它用什么材料？', '有哪些动作？', '有哪几道工序？'].map((q) =>
       el('button', { text: q, onclick: () => answer(q) }))),
@@ -428,8 +538,9 @@ function render() {
     ]),
   ]);
   document.body.append(fab, panelEl);
-  panel.nodes = { fab, panel: panelEl, log, ctxLine, notice: noticeEl };
+  panel.nodes = { fab, panel: panelEl, log, ctxLine, notice: noticeEl, voiceStatus, wakeButton };
   refreshNotice();
+  updateVoiceStatus();
 }
 
 const api = {
@@ -439,12 +550,16 @@ const api = {
   },
   unmount() {
     invalidateRequests();
+    panel.voice?.destroy?.();
+    panel.voice = null;
     panel.nodes.fab?.remove();
     panel.nodes.panel?.remove();
     panel.nodes = {};
     panel.open = false;
     panel.craft = null;
     panel.onToggle = null;
+    panel.host = {};
+    panel.registry = null;
     document.body.classList.remove('agent-open');
   },
   open() {
@@ -482,6 +597,20 @@ const api = {
       panel.nodes.ctxLine.append(contextBanner());
     }
   },
+  setHost(host = {}) {
+    panel.host = host;
+    panel.registry = null;
+    if (panel.open) {
+      panel.nodes.ctxLine.innerHTML = '';
+      panel.nodes.ctxLine.appendChild(el('b', { text: '会话上下文 ' }));
+      panel.nodes.ctxLine.append(currentAgentContext().current_root?.title || '当前页面');
+    }
+  },
+  getContext() { return currentAgentContext(); },
+  speak(text) { ensureVoice(); return panel.voice.speak(text); },
+  stopSpeaking() { ensureVoice().stopSpeaking(); },
+  setVoicePreferences(next) { return ensureVoice().setPreferences(next); },
+  voiceState() { return panel.voice?.state?.() || VOICE_STATES.DISABLED; },
   say(text) { if (panel.open) addMsg('agent', [el('p', { text })], '小蕉'); },
   onToggle(fn) { panel.onToggle = fn; },
 };

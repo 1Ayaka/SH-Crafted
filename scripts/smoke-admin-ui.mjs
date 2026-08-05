@@ -117,6 +117,15 @@ try {
     shapeOptions: document.querySelector('.admin-visual-row select')?.options.length || 0,
     saveButton: Boolean([...document.querySelectorAll('button')].find((button) => button.textContent.includes('保存全部工序')))
   })`);
+  await evaluate(`document.querySelectorAll('.admin-step-tab')[1]?.click()`);
+  await wait(120);
+  const materialFlow = await evaluate(`({
+    inheritedRows: document.querySelectorAll('.admin-material-transform-row.is-inherited').length,
+    flowHelp: document.querySelector('.admin-material-flow-help')?.textContent || '',
+    removeButton: [...document.querySelectorAll('.admin-material-toggle')].some((button) => button.textContent.includes('移出本步')),
+    heldOrUsable: [...document.querySelectorAll('.admin-material-toggle')].some((button) => button.textContent.includes('本步使用'))
+      || document.querySelectorAll('.admin-material-transform-row.is-inherited').length > 0
+  })`);
   await screenshot(screenshots.process);
   let savePersisted = null;
   let autoSavePersisted = null;
@@ -185,11 +194,12 @@ try {
   const errors = [];
   if (!dashboard.loggedIn || dashboard.cards !== 8) errors.push('管理员首页未显示 8 个项目');
   if (!process.tabs || !process.addStep || !process.materialInputs || !process.materialOutputInputs || !process.operationInputs || !process.saveButton) errors.push('工序编辑器控件不完整或缺少逐材料升级映射');
+  if (!materialFlow.inheritedRows || !materialFlow.flowHelp || !materialFlow.removeButton || !materialFlow.heldOrUsable) errors.push('继承材料缺少本步使用/移出暂存控制');
   if (verifyWrite && !savePersisted) errors.push('逐材料升级映射点击保存后没有从服务器持久化读回');
   if (verifyWrite && !autoSavePersisted) errors.push('逐材料升级映射停止输入后没有自动保存并重新显示');
   if (verifyWrite && !returnSavePersisted) errors.push('点击返回项目列表时没有先保存逐材料升级映射');
   if (inline.editButtons < 2 || !inline.managementLink || !inline.editActivated) errors.push('用户页面未进入原位编辑模式');
-  console.log(JSON.stringify({ dashboard, process, savePersisted, autoSavePersisted, returnSavePersisted, inline, screenshots, errors }, null, 2));
+  console.log(JSON.stringify({ dashboard, process, materialFlow, savePersisted, autoSavePersisted, returnSavePersisted, inline, screenshots, errors }, null, 2));
   if (errors.length) process.exitCode = 1;
 } finally {
   try { socket?.close(); } catch (_) { /* ignore */ }

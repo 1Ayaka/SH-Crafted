@@ -16,7 +16,9 @@
     "ui:test": "node scripts/smoke-ui.mjs",
     "content:seed": "node scripts/content-seed.mjs",
     "admin:test-ui": "node scripts/smoke-admin-ui.mjs",
-    "community:test": "node scripts/smoke-community-api.mjs"
+    "community:test": "node scripts/smoke-community-api.mjs",
+    "agent:test-tools": "node scripts/test-agent-tools.mjs",
+    "material:test": "node scripts/test-material-flow.mjs"
   },
   "engines": {
     "node": ">=22.0.0"

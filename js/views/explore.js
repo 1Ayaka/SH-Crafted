@@ -14,6 +14,7 @@ import { registerPage, unregisterPage, consumeEnter, transitionTo } from '../tra
 import { saveCraft, saveDistrict } from '../admin.js';
 import { mountEditableModule } from '../editable.js';
 import { claimInheritor, engagementFor, inheritorButtonText, recordCraftView } from '../community.js';
+import { graphId, parseGraphId } from '../agent/graph-adapter.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -45,6 +46,9 @@ export async function exploreView(root) {
   let listRenderLimit = LIST_PAGE_SIZE;
   let query = '';
   let category = '';
+  let activeDistrictId = null;
+  let selectedCraft = null;
+  const explorationHistory = [];
   const cleanups = [];
   let viewDisposed = false;
   let renderGeneration = 0;
@@ -272,6 +276,7 @@ export async function exploreView(root) {
     removePanelWithMotion(closingPanel, immediate);
   }
   function showProjectPanel(host, craft) {
+    selectedCraft = craft;
     // The map only carries catalogue metadata. Warm this one package while the
     // visitor reads its introduction so opening the detail feels immediate.
     ensureCraftLoaded(craft.craftId).catch(() => {});
@@ -396,6 +401,8 @@ export async function exploreView(root) {
 
   function enterFocus3D(nodeName) {
     const crafts = nodeCrafts(nodeName);
+    activeDistrictId = NODE_TO_DISTRICT[nodeName] || null;
+    explorationHistory.push(graphId('region', activeDistrictId || nodeName));
     exitFocus3D(true, true);
     hideSlip(); slip?.remove(); slip = null; slipFor = null;
     map3d.focusDistrict(nodeName);
@@ -592,6 +599,8 @@ export async function exploreView(root) {
   }
 
   function enterFlatFocus(d, stage) {
+    activeDistrictId = d.id;
+    explorationHistory.push(graphId('region', d.id));
     exitFlatFocus(true);
     stage.classList.add('focusing');
     stage.querySelectorAll('.district').forEach((g) => g.classList.toggle('focused', g.dataset.district === d.id));
@@ -731,6 +740,80 @@ export async function exploreView(root) {
 
   render();
 
+  function contextForAgent() {
+    const districtCraftsForContext = activeDistrictId ? districtCrafts(activeDistrictId) : craftRecords;
+    return {
+      route: '/explore', page_type: 'heritage_explore',
+      current_root: selectedCraft ? { id: graphId('heritage', selectedCraft.craftId), type: 'heritage', title: selectedCraft.title } : null,
+      selected_node: selectedCraft ? { id: graphId('heritage', selectedCraft.craftId), type: 'heritage', title: selectedCraft.title, summary: selectedCraft.summary } : null,
+      active_branch: activeDistrictId ? 'LOCATED_IN' : null,
+      visible_nodes: districtCraftsForContext.slice(0, 12).map((craft, index) => ({ id: graphId('heritage', craft.craftId), type: 'heritage', title: craft.title, index: index + 1, aliases: [craft.title] })),
+      breadcrumbs: explorationHistory.slice(-8),
+      history: explorationHistory.slice(-8),
+      available_actions: ['get_current_context', 'search_graph', 'open_node', 'open_region', 'open_heritage_detail', 'go_back', 'show_help'],
+      context_revision: 'explore-local',
+    };
+  }
+
+  function districtNodeName(districtId) {
+    return Object.entries(NODE_TO_DISTRICT).find(([, id]) => id === districtId)?.[0] || null;
+  }
+
+  const agentHost = {
+    context: contextForAgent,
+    async openNode({ node_id }) {
+      const parsed = parseGraphId(node_id);
+      if (parsed?.type === 'heritage') {
+        const craft = craftRecords.find((item) => item.craftId === parsed.rawId);
+        if (!craft) throw Object.assign(new Error('没有找到这个项目。'), { code: 'node_not_found' });
+        selectedCraft = craft;
+        transitionTo(`#/craft/${encodeURIComponent(craft.craftId)}`);
+        return { ok: true, node_id };
+      }
+      if (parsed?.type === 'region') return this.openRegion({ region_id: node_id });
+      throw Object.assign(new Error('当前页面不支持打开这种节点。'), { code: 'unsupported_node_type' });
+    },
+    async openHeritageDetail({ heritage_id }) { return this.openNode({ node_id: heritage_id }); },
+    async setRootNode({ node_id }) { return this.openNode({ node_id }); },
+    async openRegion({ region_id }) {
+      const parsed = parseGraphId(region_id);
+      const district = DISTRICTS.find((item) => item.id === parsed?.rawId);
+      if (!district) throw Object.assign(new Error('没有找到这个地区。'), { code: 'node_not_found' });
+      mode = 'map'; setMode('map'); await ensureMapBuilt();
+      const nodeName = districtNodeName(district.id);
+      if (map3d && nodeName) enterFocus3D(nodeName);
+      else if (mapViewEl?.querySelector('.map-stage')) enterFlatFocus(district, mapViewEl.querySelector('.map-stage'));
+      return { ok: true, region_id };
+    },
+    async expandBranch({ result }) {
+      if (result?.nodes?.length === 1 && result.nodes[0].type === 'region') await this.openRegion({ region_id: result.nodes[0].id });
+      return { ok: true };
+    },
+    async goBack() {
+      if (projectPanel) { clearProjectPanel(); return { ok: true }; }
+      if (focusOverlay) { exitFocus3D(); return { ok: true }; }
+      if (flatFocusEl) { exitFlatFocus(); return { ok: true }; }
+      transitionTo('#/'); return { ok: true };
+    },
+    async returnToRoot() {
+      if (selectedCraft) { transitionTo(`#/craft/${encodeURIComponent(selectedCraft.craftId)}`); return { ok: true }; }
+      selectedCraft = null; activeDistrictId = null; await this.goBack(); return { ok: true };
+    },
+    async focusModel() { return { ok: true }; },
+    async readSummary({ target_id }) {
+      const parsed = parseGraphId(target_id); const craft = craftRecords.find((item) => item.craftId === parsed?.rawId);
+      if (!craft) return { ok: true, message: '当前没有可朗读的项目摘要，请先打开一个非遗项目。' };
+      const spoken = `${craft.title}。${String(craft.summary || '目前资料中没有找到项目摘要。').slice(0, 220)}`;
+      const started = agent.speak(spoken);
+      return { ok: true, message: started ? '正在为你朗读项目摘要。' : '语音未开启；摘要已经显示在页面上。' };
+    },
+    async stopSpeaking() { agent.stopSpeaking(); return { ok: true }; },
+    async setVoicePreferences(args) { return agent.setVoicePreferences(args); },
+    async showHelp() { agent.say('当前可以说：打开某个项目、打开某个地区、查看第二个、返回、回到完成品或把摘要读给我听。'); return { ok: true }; },
+  };
+  agent.mount();
+  agent.setHost(agentHost);
+
   return {
     deactivate() {
       map3d?.setActive(false);
@@ -738,6 +821,8 @@ export async function exploreView(root) {
       unregisterPage('explore', wrap);
     },
     activate() {
+      agent.mount();
+      agent.setHost(agentHost);
       wrap.querySelectorAll('.ui-fade').forEach((node) => node.classList.remove('ui-fade'));
       wrap.classList.remove(TRANSITION_STATES.MAP_ENTER);
       bg.resetTransition();
@@ -763,6 +848,7 @@ export async function exploreView(root) {
       flatFocusFields.forEach((f) => f.destroy());
       map3d?.dispose();
       map3d = null;
+      agent.unmount();
       bg.destroy();
       unregisterPage('explore', wrap);
     },

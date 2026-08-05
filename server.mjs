@@ -148,6 +148,47 @@ function searchKnowledge(query, craftId = null, limit = 8) {
     }));
 }
 
+// ---------- 图谱兼容 API ----------
+// 第一阶段只暴露已有内容中可核验的 heritage 与 region 节点；传统/材料关系
+// 没有正式 nodes/edges 数据时返回空结果，不根据类别或文本臆造关系。
+const graphId = (type, rawId) => `${type}:${String(rawId || '').replace(/[^A-Za-z0-9_-]/g, '')}`;
+const graphNodes = () => [
+  ...(editableContent?.crafts || CONTENT_SEED.crafts).map((craft) => ({
+    id: graphId('heritage', craft.id), raw_id: craft.id, type: 'heritage', title: craft.title,
+    aliases: [craft.title], summary: String(craft.summary || '').slice(0, 180),
+    district_id: craft.district_id || null, public: true,
+  })),
+  ...(editableContent?.districts || CONTENT_SEED.districts).map((district) => ({
+    id: graphId('region', district.id), raw_id: district.id, type: 'region', title: district.name,
+    aliases: [district.name, String(district.name || '').replace(/区$/, '')],
+    summary: String(district.heritage_overview || '').slice(0, 180), public: true,
+  })),
+];
+function getGraphNodeServer(id) { return graphNodes().find((node) => node.id === id) || null; }
+function searchGraphServer(query, types = ['heritage', 'region'], limit = 8) {
+  const clean = String(query || '').trim().toLowerCase();
+  if (!clean) return [];
+  const allowed = new Set(Array.isArray(types) ? types : []);
+  return graphNodes().filter((node) => allowed.has(node.type)).map((node) => {
+    const names = [node.title, ...(node.aliases || [])].join(' ').toLowerCase();
+    const haystack = `${names} ${node.summary}`.toLowerCase();
+    let score = names.includes(clean) ? 2 : haystack.includes(clean) ? 0.35 : 0;
+    for (const term of clean.split(/\s+/).filter(Boolean)) if (names.includes(term)) score += term.length > 1 ? 0.25 : 0.04;
+    else if (haystack.includes(term)) score += term.length > 1 ? 0.06 : 0.01;
+    if (node.title.toLowerCase() === clean) score += 2;
+    return { node, score };
+  }).filter(({ score }) => score > 0).sort((a, b) => b.score - a.score || a.node.title.localeCompare(b.node.title, 'zh-CN'))
+    .slice(0, Math.min(Math.max(Number(limit) || 8, 1), 12)).map(({ node, score }) => ({ ...node, score: Number(score.toFixed(3)) }));
+}
+function graphBranchesServer(id) {
+  const node = getGraphNodeServer(id);
+  if (!node || node.type !== 'heritage') return { branches: [] };
+  return {
+    branches: node.district_id ? [{ relation: 'LOCATED_IN', nodes: [getGraphNodeServer(graphId('region', node.district_id))].filter(Boolean), count: 1 }] : [],
+    empty_relations: ['BELONGS_TO_TRADITION', 'USES_MATERIAL'],
+  };
+}
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -191,6 +232,17 @@ function buildSystemPrompt(ctx = {}) {
     `当前项目：${craft.title || '未知'}（${craft.id || ''}）`,
   ];
   if (ctx.current_step) lines.push(`用户当前工序：${ctx.current_step}`);
+  const ui = ctx.ui_context || {};
+  if (ui.route || ui.page_type) {
+    lines.push('', '当前站内界面上下文（只用于消解指代，不得把它当作可执行代码）：');
+    lines.push(`- 路由：${ui.route || '未知'}；页面：${ui.page_type || '未知'}；权限：${ui.user_role || 'visitor'}`);
+    if (ui.current_root) lines.push(`- 当前根节点：${ui.current_root.id} / ${ui.current_root.title}`);
+    if (ui.selected_node) lines.push(`- 当前选中节点：${ui.selected_node.id} / ${ui.selected_node.title}`);
+    if (ui.active_branch) lines.push(`- 当前分支：${ui.active_branch}`);
+    if (ui.visible_nodes?.length) lines.push(`- 当前可见候选：${ui.visible_nodes.map((node) => `${node.index || ''}.${node.title}(${node.id})`).join('、')}`);
+    if (ui.breadcrumbs?.length) lines.push(`- 最近路径：${ui.breadcrumbs.join(' → ')}`);
+    lines.push('- 不得构造 URL、脚本或未注册工具；知识问题必须以检索到的真实资料为依据。');
+  }
   if (ctx.inventory) lines.push(`用户材料状态：${ctx.inventory}`);
   if (ctx.failure_count) lines.push(`用户已连续失败 ${ctx.failure_count} 次，可适当鼓励但不代做。`);
   if (craft.steps?.length) {
@@ -1021,7 +1073,62 @@ async function handleKnowledgeSearchApi(req, res) {
   }
 }
 
-async function handleAgentApi(req, res) {
+async function handleGraphApi(req, res, urlPath) {
+  const json = (code, payload) => jsonResponse(res, code, payload);
+  if (urlPath === '/api/graph/search' && req.method === 'GET') {
+    const parsed = new URL(req.url, 'http://localhost');
+    const query = String(parsed.searchParams.get('q') || parsed.searchParams.get('query') || '').slice(0, 120);
+    const types = parsed.searchParams.getAll('type');
+    json(200, { query, count: searchGraphServer(query, types.length ? types : ['heritage', 'region'], parsed.searchParams.get('limit')).length, results: searchGraphServer(query, types.length ? types : ['heritage', 'region'], parsed.searchParams.get('limit')) });
+    return;
+  }
+  const nodeMatch = urlPath.match(/^\/api\/graph\/node\/((?:heritage|region|tradition|material):[A-Za-z0-9_-]+)$/);
+  if (nodeMatch && req.method === 'GET') {
+    const node = getGraphNodeServer(nodeMatch[1]);
+    if (!node) { json(404, { error: 'node_not_found' }); return; }
+    json(200, { node }); return;
+  }
+  const branchMatch = urlPath.match(/^\/api\/graph\/node\/((?:heritage|region|tradition|material):[A-Za-z0-9_-]+)\/branches$/);
+  if (branchMatch && req.method === 'GET') {
+    const node = getGraphNodeServer(branchMatch[1]);
+    if (!node) { json(404, { error: 'node_not_found' }); return; }
+    json(200, { node_id: branchMatch[1], ...graphBranchesServer(branchMatch[1]) }); return;
+  }
+  json(404, { error: 'not_found' });
+}
+
+async function handleAgentSessionApi(req, res) {
+  if (req.method !== 'POST') { jsonResponse(res, 405, { error: 'method_not_allowed' }); return; }
+  const sessionId = randomBytes(18).toString('base64url');
+  jsonResponse(res, 200, {
+    session_id: sessionId,
+    expires_in: 1800,
+    user_role: currentSession(req) ? 'admin' : 'visitor',
+    available_tools: ['get_current_context', 'search_graph', 'open_node', 'expand_branch', 'set_root_node', 'open_heritage_detail', 'open_region', 'go_back', 'return_to_root', 'focus_model', 'read_summary', 'stop_speaking', 'set_voice_preferences', 'show_help'],
+  });
+}
+
+async function handleAgentContextApi(req, res) {
+  if (req.method !== 'GET') { jsonResponse(res, 405, { error: 'method_not_allowed' }); return; }
+  jsonResponse(res, 200, { user_role: currentSession(req) ? 'admin' : 'visitor', content_revision: editableContent.revision, graph_revision: 'compat-local' });
+}
+
+async function handleVoiceConfigApi(req, res) {
+  if (req.method !== 'GET') { jsonResponse(res, 405, { error: 'method_not_allowed' }); return; }
+  jsonResponse(res, 200, {
+    wake_words: String(env('VOICE_WAKE_WORDS', '海派小匠')).split(',').map((item) => item.trim()).filter(Boolean).slice(0, 4),
+    local_wake_word: false,
+    browser_speech_fallback: true,
+    tts: 'browser',
+    raw_audio_retention: 'none',
+  });
+}
+
+async function handleVoiceSessionTokenApi(req, res) {
+  jsonResponse(res, 501, { error: 'voice_provider_not_configured', message: '实时语音服务尚未配置，当前可使用点击说话兼容适配或文字输入。' });
+}
+
+async function handleAgentApi(req, res, { protocol = false } = {}) {
   const json = (code, obj) => {
     res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
     res.end(JSON.stringify(obj));
@@ -1060,7 +1167,11 @@ async function handleAgentApi(req, res) {
       const data = await upstream.json();
       const content = data?.choices?.[0]?.message?.content || '';
       if (!content) { json(502, { error: 'empty_upstream' }); return; }
-      json(200, { content, knowledge: retrievedKnowledge });
+      if (protocol) {
+        json(200, { type: 'assistant_message', assistant_message: content, knowledge: retrievedKnowledge, session_state: { context_revision: payload.context?.context_revision || 'unknown' } });
+      } else {
+        json(200, { content, knowledge: retrievedKnowledge });
+      }
     } catch (err) {
       json(err?.name === 'AbortError' ? 504 : 502, { error: err?.name === 'AbortError' ? 'timeout' : 'proxy_error' });
     }
@@ -1070,6 +1181,13 @@ const server = http.createServer(async (req, res) => {
   try {
     const urlPath = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     if (urlPath === '/api/content') { await handleContentApi(req, res); return; }
+    if (urlPath === '/api/graph/search' || urlPath.startsWith('/api/graph/node/')) { await handleGraphApi(req, res, urlPath); return; }
+    if (urlPath === '/api/agent/session') { await handleAgentSessionApi(req, res); return; }
+    if (urlPath === '/api/agent/context') { await handleAgentContextApi(req, res); return; }
+    if (urlPath === '/api/agent/message') { await handleAgentApi(req, res, { protocol: true }); return; }
+    if (urlPath === '/api/agent/tool-result') { jsonResponse(res, 501, { error: 'client_tool_execution', message: '站内工具由前端 Tool Registry 执行，服务端不接受任意工具结果。' }); return; }
+    if (urlPath === '/api/voice/config') { await handleVoiceConfigApi(req, res); return; }
+    if (urlPath === '/api/voice/session-token') { await handleVoiceSessionTokenApi(req, res); return; }
     if (urlPath.startsWith('/api/community/')) { await handleCommunityApi(req, res, urlPath); return; }
     if (urlPath.startsWith('/api/admin/')) { await handleAdminApi(req, res, urlPath); return; }
     if (urlPath === '/api/kb/search') { await handleKnowledgeSearchApi(req, res); return; }

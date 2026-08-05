@@ -7,6 +7,7 @@ import { DISTRICT_PROFILES } from '../config.js';
 import { topNav } from './home.js';
 import { createLayerBG } from '../layerbg.js';
 import { RESOURCE_SHAPES, resourceShape } from '../workbench-preview.js';
+import { materialInventoryBeforeStep, uniqueMaterialNames } from '../material-flow.js';
 
 const plusSvg = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>';
 const minusSvg = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12"/></svg>';
@@ -476,9 +477,7 @@ export async function adminCraftView(root, { id }) {
     const materialsEditor = el('div', { class: 'admin-material-transform-list' });
     const renderMaterialTransforms = () => {
       materialsEditor.innerHTML = '';
-      const inheritedNames = activeIndex > 0
-        ? [...new Set(steps[activeIndex - 1].material_transforms.map((item) => item.output_name.trim()).filter(Boolean))]
-        : [];
+      const inheritedNames = uniqueMaterialNames(materialInventoryBeforeStep(steps, activeIndex));
       const transformFor = (name, defaultOutput = '') => {
         let transform = step.material_transforms.find((item) => item.input_name === name);
         if (!transform) {
@@ -492,25 +491,51 @@ export async function adminCraftView(root, { id }) {
         el('span', { text: '完成后变为' }),
         el('span'),
       ]));
-      inheritedNames.filter((name) => !step.materials.includes(name)).forEach((name) => {
-        const transform = transformFor(name, name);
-        const output = el('input', {
+      if (inheritedNames.length) materialsEditor.appendChild(el('p', {
+        class: 'admin-material-flow-help',
+        text: '既有材料可在本步使用或暂存。暂存不会删除材料，后续工序仍可重新启用；只有“完成后变为”留空才表示永久消耗。',
+      }));
+      inheritedNames.forEach((name) => {
+        const transform = step.material_transforms.find((item) => item.input_name === name);
+        const isActive = Boolean(transform);
+        const output = isActive ? el('input', {
           value: transform.output_name,
           'aria-label': `继承材料 ${name} 完成后变为`,
           placeholder: '留空表示本步消耗',
+        }) : el('span', { class: 'admin-held-material-label', text: '本步暂存，不参与加工' });
+        if (isActive) output.addEventListener('input', () => { transform.output_name = output.value; markDirty(); });
+        const toggle = el('button', {
+          class: `admin-material-toggle${isActive ? ' is-hold' : ' is-use'}`,
+          type: 'button',
+          text: isActive ? '移出本步' : '本步使用',
+          'aria-label': isActive ? `将继承材料 ${name} 移出本步并暂存` : `本步使用继承材料 ${name}`,
+          onclick: () => {
+            if (isActive) {
+              step.material_transforms.splice(step.material_transforms.indexOf(transform), 1);
+              const materialIndex = step.materials.indexOf(name);
+              if (materialIndex >= 0) {
+                step.materials.splice(materialIndex, 1);
+                markResourcesDirty();
+              } else markDirty();
+            } else {
+              step.material_transforms.push({ input_name: name, output_name: name });
+              markDirty();
+            }
+            renderMaterialTransforms();
+          },
         });
-        output.addEventListener('input', () => { transform.output_name = output.value; markDirty(); });
-        materialsEditor.appendChild(el('div', { class: 'admin-material-transform-row is-inherited' }, [
+        materialsEditor.appendChild(el('div', { class: `admin-material-transform-row is-inherited${isActive ? '' : ' is-held'}` }, [
           el('div', { class: 'admin-inherited-material' }, [
             el('span', { text: name }),
-            el('small', { text: '上一步产物 · 自动带入' }),
+            el('small', { text: isActive ? '既有材料 · 本步使用' : '既有材料 · 已暂存' }),
           ]),
           el('span', { class: 'admin-transform-arrow', text: '→', 'aria-hidden': 'true' }),
           output,
-          el('span', { class: 'admin-row-spacer' }),
+          toggle,
         ]));
       });
       step.materials.forEach((value, index) => {
+        if (inheritedNames.includes(value)) return;
         const transform = transformFor(value, value);
         const input = el('input', { value, 'aria-label': `材料 ${index + 1}` });
         const output = el('input', {
