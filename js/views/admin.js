@@ -340,7 +340,7 @@ export async function adminCraftView(root, { id }) {
   const graphData = structuredClone(craft.config?.graphData || craft.communityDetails?.star_data || { summary: '', relations: [], keywords: [] });
   graphData.relations = Array.isArray(graphData.relations) ? graphData.relations.map((item) => typeof item === 'string' ? ({ type: 'tradition', title: item, summary: '' }) : item) : [];
   graphData.keywords = Array.isArray(graphData.keywords) ? graphData.keywords : [];
-  graphData.images = Array.isArray(graphData.images) ? graphData.images : [];
+  graphData.images = Array.isArray(graphData.images) && graphData.images.length ? graphData.images : (Array.isArray(graphData.overview_images) ? graphData.overview_images : []);
   let activeIndex = 0;
   let dirty = false;
   let changeVersion = 0;
@@ -354,26 +354,50 @@ export async function adminCraftView(root, { id }) {
   const graphEditor = el('section', { class: 'admin-graph-editor' });
   const graphSummary = el('textarea', { rows: '3', maxlength: '2000', placeholder: '星图摘要' }, [graphData.summary || '']);
   const graphKeywords = el('input', { value: graphData.keywords.join('、'), placeholder: '关键词，用顿号分隔' });
-  const graphImages = el('textarea', { rows: '6', placeholder: '节点图片 JSON 数组' }, [JSON.stringify(graphData.images, null, 2)]);
   const graphRelations = el('div', { class: 'admin-graph-relations' });
   let graphDirty = false;
   const graphState = el('span', { class: 'admin-save-status is-saved', text: '星图已保存' });
   const markGraphDirty = () => { graphDirty = true; graphState.className = 'admin-save-status is-dirty'; graphState.textContent = '星图有未保存修改'; };
+  const imageCollectionEditor = (images, label) => {
+    const host = el('div', { class: 'admin-image-collection' });
+    const render = () => {
+      host.replaceChildren(el('p', { class: 'admin-field-help', text: label }));
+      const picker = el('div', { class: 'admin-documentary-picker' });
+      (craft.config?.works || []).slice(0, 8).forEach((work) => {
+        const image = { title: work.name || '节点图片', image_url: work.frame || '', description: '', source_url: '' };
+        const button = el('button', { class: 'admin-documentary-source', type: 'button', draggable: 'true', onclick: () => { images.push({ ...image }); markGraphDirty(); render(); } }, [el('img', { src: craftAssetUrl(craft, image.image_url), alt: image.title, loading: 'lazy' }), el('span', { text: image.title })]);
+        button.addEventListener('dragstart', (event) => event.dataTransfer?.setData('application/x-sh-crafted-image', JSON.stringify(image)));
+        picker.appendChild(button);
+      });
+      const drop = el('div', { class: 'admin-documentary-drop', text: '将默认图片拖到这里，或点击图片添加' });
+      drop.addEventListener('dragover', (event) => { event.preventDefault(); drop.classList.add('is-over'); });
+      drop.addEventListener('dragleave', () => drop.classList.remove('is-over'));
+      drop.addEventListener('drop', (event) => { event.preventDefault(); drop.classList.remove('is-over'); try { const image = JSON.parse(event.dataTransfer?.getData('application/x-sh-crafted-image') || '{}'); if (image.image_url) { images.push(image); markGraphDirty(); render(); } } catch (_) {} });
+      const list = el('div', { class: 'admin-image-list' });
+      images.forEach((image, index) => {
+        const title = el('input', { value: image.title || '', placeholder: '图片标题' });
+        const description = el('textarea', { rows: '2', placeholder: '图片说明' }, [image.description || '']);
+        const source = el('input', { value: image.source_url || '', placeholder: '来源链接（可选）' });
+        [title, description, source].forEach((control) => control.addEventListener('input', () => { image.title = title.value; image.description = description.value; image.source_url = source.value; markGraphDirty(); }));
+        list.appendChild(el('article', { class: 'admin-documentary-item' }, [el('img', { src: craftAssetUrl(craft, image.image_url), alt: image.title || '节点图片', loading: 'lazy' }), el('div', { class: 'admin-documentary-fields' }, [title, description, source]), iconButton('删除图片', minusSvg, () => { images.splice(index, 1); markGraphDirty(); render(); })]));
+      });
+      host.append(picker, drop, list);
+    };
+    render();
+    return host;
+  };
   const renderGraphRelations = () => {
     graphRelations.replaceChildren();
     graphData.relations.forEach((relation, index) => {
       const type = el('select', {}, ['tradition', 'material', 'region'].map((value) => { const option = el('option', { value, text: value === 'material' ? '材料' : value === 'region' ? '地区' : '传统' }); option.selected = relation.type === value; return option; }));
       const title = el('input', { value: relation.title || '', placeholder: '关联节点名称' });
       const summary = el('input', { value: relation.summary || '', placeholder: '节点说明（可选）' });
-      const images = el('textarea', { rows: '3', placeholder: '该节点图片 JSON 数组' }, [JSON.stringify(relation.images || [], null, 2)]);
       [type, title, summary].forEach((control) => control.addEventListener('input', () => { relation.type = type.value; relation.title = title.value; relation.summary = summary.value; markGraphDirty(); }));
-      images.addEventListener('input', () => { try { relation.images = JSON.parse(images.value || '[]'); images.setCustomValidity(''); markGraphDirty(); } catch { images.setCustomValidity('请输入有效的 JSON 数组'); } });
-      graphRelations.appendChild(el('div', { class: 'admin-graph-relation-row' }, [type, title, summary, images, el('button', { type: 'button', class: 'admin-icon-button', text: '删除', onclick: () => { graphData.relations.splice(index, 1); markGraphDirty(); renderGraphRelations(); } })]));
+      graphRelations.appendChild(el('div', { class: 'admin-graph-relation-row' }, [type, title, summary, el('div', {}, [imageCollectionEditor(relation.images || (relation.images = []), '该关联节点图片'),]), el('button', { type: 'button', class: 'admin-icon-button', text: '删除', onclick: () => { graphData.relations.splice(index, 1); markGraphDirty(); renderGraphRelations(); } })]));
     });
     graphRelations.appendChild(el('button', { class: 'admin-add-row', type: 'button', text: '添加关联节点', onclick: () => { graphData.relations.push({ type: 'tradition', title: '', summary: '' }); markGraphDirty(); renderGraphRelations(); } }));
   };
   [graphSummary, graphKeywords].forEach((control) => control.addEventListener('input', markGraphDirty));
-  graphImages.addEventListener('input', () => { try { graphData.images = JSON.parse(graphImages.value || '[]'); graphImages.setCustomValidity(''); markGraphDirty(); } catch { graphImages.setCustomValidity('请输入有效的 JSON 数组'); } });
   const graphSaveButton = el('button', { class: 'btn-ghost', type: 'button', text: '保存星图资料', onclick: async () => {
     graphSaveButton.disabled = true;
     try {
@@ -385,7 +409,7 @@ export async function adminCraftView(root, { id }) {
     } catch (error) { adminNotice(error.message, true); }
     graphSaveButton.disabled = false;
   } });
-  graphEditor.append(el('div', { class: 'admin-section-heading' }, [el('div', {}, [el('h2', { text: '知识星图' }), el('p', { text: '维护该非遗及关联节点的文字和图片；不会覆盖已审核内容、证据或工序。' })]), el('div', {}, [graphState, graphSaveButton])]), el('label', { class: 'admin-field' }, [el('span', { text: '星图摘要' }), graphSummary]), el('label', { class: 'admin-field' }, [el('span', { text: '星图关键词' }), graphKeywords]), el('label', { class: 'admin-field' }, [el('span', { text: '主节点图片（JSON 数组）' }), graphImages, el('small', { text: '每项可填写 title、image_url、description、source_url。' })]), graphRelations);
+  graphEditor.append(el('div', { class: 'admin-section-heading' }, [el('div', {}, [el('h2', { text: '知识星图' }), el('p', { text: '维护该非遗及关联节点的文字、图片和关系；默认关键帧可直接点击或拖入，不需要编辑 JSON。' })]), el('div', {}, [graphState, graphSaveButton])]), el('label', { class: 'admin-field' }, [el('span', { text: '星图摘要' }), graphSummary]), el('label', { class: 'admin-field' }, [el('span', { text: '星图关键词' }), graphKeywords]), imageCollectionEditor(graphData.images, '主节点图片'), graphRelations);
   renderGraphRelations();
   const saveButton = el('button', { class: 'btn btn-primary', text: '保存全部工序' });
   const saveStatus = el('span', { class: 'admin-save-status is-saved', text: '已保存' });
@@ -668,6 +692,52 @@ export async function adminCraftView(root, { id }) {
     };
     renderOperations();
 
+    const documentaryEditor = el('section', { class: 'admin-documentary-editor' });
+    const defaultWorks = (craft.config?.works || []).slice(0, 8);
+    const ensureClipImage = (work) => ({
+      title: work.name || '纪录片关键帧', image_url: work.frame || '', evidence_id: work.evidenceId || '', description: '', source_url: '',
+    });
+    const renderDocumentaryEditor = () => {
+      documentaryEditor.replaceChildren(
+        el('div', { class: 'admin-section-heading' }, [
+          el('div', {}, [el('h3', { text: '纪录片片段与关键帧' }), el('p', { text: '默认关键帧来自项目已有纪录片资料。拖入不合适的图片可删除或重新选择；视频地址为可选项。' })]),
+        ]),
+      );
+      const picker = el('div', { class: 'admin-documentary-picker', 'aria-label': '已有纪录片关键帧' });
+      defaultWorks.forEach((work) => {
+        const card = el('button', { class: 'admin-documentary-source', type: 'button', draggable: 'true', title: '拖入下方片段列表', onclick: () => { step.documentary_clips.push(ensureClipImage(work)); markDirty(); renderDocumentaryEditor(); } }, [
+          el('img', { src: craftAssetUrl(craft, work.frame), alt: work.name || '纪录片关键帧', loading: 'lazy' }),
+          el('span', { text: work.name || '纪录片关键帧' }),
+        ]);
+        card.addEventListener('dragstart', (event) => { event.dataTransfer?.setData('application/x-sh-crafted-frame', JSON.stringify(ensureClipImage(work))); });
+        picker.appendChild(card);
+      });
+      const list = el('div', { class: 'admin-documentary-list' });
+      const drop = el('div', { class: 'admin-documentary-drop', text: '将上方关键帧拖到这里，或点击图片添加' });
+      drop.addEventListener('dragover', (event) => { event.preventDefault(); drop.classList.add('is-over'); });
+      drop.addEventListener('dragleave', () => drop.classList.remove('is-over'));
+      drop.addEventListener('drop', (event) => {
+        event.preventDefault(); drop.classList.remove('is-over');
+        try { const clip = JSON.parse(event.dataTransfer?.getData('application/x-sh-crafted-frame') || '{}'); if (clip.image_url) { step.documentary_clips.push(clip); markDirty(); renderDocumentaryEditor(); } } catch (_) { /* ignore invalid drag payload */ }
+      });
+      (step.documentary_clips || []).forEach((clip, index) => {
+        const title = el('input', { value: clip.title || '', placeholder: '片段标题' });
+        const description = el('textarea', { rows: '2', placeholder: '图片或片段说明' }, [clip.description || '']);
+        const video = el('input', { value: clip.video_url || '', placeholder: '视频地址（可选）' });
+        const start = el('input', { type: 'number', min: '0', step: '1', value: String(clip.start_seconds || 0), placeholder: '起始秒' });
+        const end = el('input', { type: 'number', min: '0', step: '1', value: String(clip.end_seconds || 0), placeholder: '结束秒' });
+        const sync = () => { Object.assign(clip, { title: title.value, description: description.value, video_url: video.value, start_seconds: Number(start.value) || 0, end_seconds: Number(end.value) || 0 }); markDirty(); };
+        [title, description, video, start, end].forEach((control) => control.addEventListener('input', sync));
+        list.appendChild(el('article', { class: 'admin-documentary-item' }, [
+          clip.image_url ? el('img', { src: craftAssetUrl(craft, clip.image_url), alt: clip.title || '已选关键帧', loading: 'lazy' }) : el('div', { class: 'admin-documentary-placeholder', text: '视频' }),
+          el('div', { class: 'admin-documentary-fields' }, [title, description, video, el('div', { class: 'admin-documentary-time' }, [start, end])]),
+          iconButton('删除片段', minusSvg, () => { step.documentary_clips.splice(index, 1); markDirty(); renderDocumentaryEditor(); }),
+        ]));
+      });
+      documentaryEditor.append(picker, drop, list);
+    };
+    renderDocumentaryEditor();
+
     const visualResources = [...new Set([
       ...step.materials,
       ...step.tools,
@@ -726,7 +796,7 @@ export async function adminCraftView(root, { id }) {
         guideEditor,
       ]),
       el('div', { class: 'admin-field' }, [el('label', { text: '完成结果' }), result]),
-      el('div', { class: 'admin-field' }, [el('label', { text: '纪录片片段（JSON 数组，可选）' }), (() => { const clips = el('textarea', { rows: '5', placeholder: '[{"title":"","video_url":"https://...","start_seconds":0,"end_seconds":30,"description":"","source_url":""}]' }, [JSON.stringify(step.documentary_clips || [], null, 2)]); clips.addEventListener('input', () => { try { step.documentary_clips = JSON.parse(clips.value || '[]'); clips.setCustomValidity(''); markDirty(); } catch { clips.setCustomValidity('请输入有效的 JSON 数组'); } }); return clips; })()]),
+      documentaryEditor,
       el('div', { class: 'admin-resource-columns' }, [
         el('section', { class: 'admin-material-transform-section' }, [
           el('h3', { text: '所需材料及升级结果' }),

@@ -15,6 +15,8 @@ sudo docker compose logs -f funasr
 
 `docker compose up -d` 可重复执行；不要再次运行同名 `docker run`。如果终端提示 `container name "/sh-crafted-funasr" is already in use`，先执行 `sudo docker ps -a --filter 'name=^/sh-crafted-funasr$'` 和 `sudo docker logs --tail=120 sh-crafted-funasr`，已有容器退出时使用 `sudo docker start sh-crafted-funasr`，不要继续创建第二个容器。完整迁移与回滚步骤见 `docs/FunASR本地语音识别部署与运维.md`。
 
+Compose 会直接以前台方式启动 `funasr-wss-server-2pass`。不要把 `run_server_2pass.sh` 直接作为容器主命令：该脚本会把服务放到后台后退出，导致容器显示 `Restarting (0)`。
+
 Linux 服务器首次启动会下载模型，时间和磁盘空间取决于模型。上线前使用项目侧测试：
 
 ```bash

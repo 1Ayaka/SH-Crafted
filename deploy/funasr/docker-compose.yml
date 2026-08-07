@@ -12,15 +12,20 @@ services:
       - bash
       - -lc
       - >-
-        cd /workspace/FunASR/runtime && exec bash run_server_2pass.sh
+        cd /workspace/FunASR/runtime/websocket/build/bin && exec ./funasr-wss-server-2pass
         --download-model-dir /workspace/models
         --vad-dir ${FUNASR_VAD_MODEL:-damo/speech_fsmn_vad_zh-cn-16k-common-onnx}
         --model-dir ${FUNASR_OFFLINE_MODEL:-damo/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-onnx}
         --online-model-dir ${FUNASR_ONLINE_MODEL:-damo/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online-onnx}
         --punc-dir ${FUNASR_PUNC_MODEL:-damo/punc_ct-transformer_zh-cn-common-vad_realtime-vocab272727-onnx}
         --itn-dir ${FUNASR_ITN_MODEL:-thuduj12/fst_itn_zh}
+        --lm-dir ${FUNASR_LM_MODEL:-damo/speech_ngram_lm_zh-cn-ai-wesp-fst}
+        --decoder-thread-num ${FUNASR_DECODER_THREADS:-2}
+        --model-thread-num ${FUNASR_MODEL_THREADS:-1}
+        --io-thread-num ${FUNASR_IO_THREADS:-1}
+        --port 10095
+        --certfile '' --keyfile ''
         --hotword /workspace/models/hotwords.txt
-        --certfile 0
     healthcheck:
       test: ["CMD-SHELL", "bash -lc 'test -f /workspace/models/.funasr-ready || pgrep -f funasr-wss-server >/dev/null'"]
       interval: 30s

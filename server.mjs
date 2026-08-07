@@ -347,11 +347,13 @@ function normalizeDocumentaryClips(value) {
   return value.slice(0, 6).map((clip, index) => ({
     title: cleanText(clip?.title, 160) || `纪录片片段 ${index + 1}`,
     video_url: cleanMediaSource(clip?.video_url || clip?.url || ''),
+    image_url: cleanImageSource(clip?.image_url || clip?.image || ''),
+    evidence_id: cleanText(clip?.evidence_id, 160),
     start_seconds: Math.max(0, Number(clip?.start_seconds ?? clip?.start ?? 0) || 0),
     end_seconds: Math.max(0, Number(clip?.end_seconds ?? clip?.end ?? 0) || 0),
     description: cleanText(clip?.description, 1000),
     source_url: cleanPublicUrl(clip?.source_url || clip?.source || ''),
-  })).filter((item) => item.video_url);
+  })).filter((item) => item.video_url || item.image_url);
 }
 
 function cleanMediaSource(value) {

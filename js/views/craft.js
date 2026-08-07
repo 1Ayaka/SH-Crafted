@@ -376,17 +376,21 @@ export async function craftView(root, { id }) {
   function currentStep() { return craft.steps[S.stepIndex] || null; }
 
   function documentaryPanel(step) {
-    const clip = (step?.documentary_clips || []).find((item) => item?.video_url);
+    const clip = (step?.documentary_clips || []).find((item) => item?.video_url || item?.image_url);
     if (!clip) return null;
-    const video = el('video', { class: 'wb-documentary-video', src: clip.video_url, controls: 'controls', preload: 'metadata', playsinline: 'playsinline' });
+    const media = clip.video_url
+      ? el('video', { class: 'wb-documentary-video', src: clip.video_url, controls: 'controls', preload: 'metadata', playsinline: 'playsinline' })
+      : el('img', { class: 'wb-documentary-video wb-documentary-image', src: craftAssetUrl(craft, clip.image_url), alt: clip.title || step.displayName, loading: 'lazy' });
     const start = Math.max(0, Number(clip.start_seconds) || 0);
     const end = Math.max(0, Number(clip.end_seconds) || 0);
-    video.addEventListener('loadedmetadata', () => { if (start && start < video.duration) video.currentTime = start; }, { once: true });
-    video.addEventListener('timeupdate', () => { if (end > start && video.currentTime >= end) { video.pause(); video.currentTime = start; } });
+    if (clip.video_url) {
+      media.addEventListener('loadedmetadata', () => { if (start && start < media.duration) media.currentTime = start; }, { once: true });
+      media.addEventListener('timeupdate', () => { if (end > start && media.currentTime >= end) { media.pause(); media.currentTime = start; } });
+    }
     return el('aside', { class: 'wb-documentary', 'aria-label': '当前工序纪录片片段' }, [
       el('p', { class: 'wb-documentary-kicker', text: '纪录片片段' }),
       el('h4', { text: clip.title || step.displayName }),
-      video,
+      media,
       clip.description ? el('p', { class: 'wb-documentary-description', text: clip.description }) : null,
       clip.source_url ? el('a', { class: 'ev-link', href: clip.source_url, target: '_blank', rel: 'noopener noreferrer', text: '查看片段来源' }) : null,
     ]);
@@ -821,7 +825,8 @@ export async function craftView(root, { id }) {
     const feedback = el('p', { class: 'wb-feedback', role: 'status' });
     const progress = el('span', { class: 'wb-progress' }, craft.steps.map((s, i) =>
       el('i', { class: `pg${i < S.stepIndex ? ' done' : i === S.stepIndex ? ' now' : ''}`, title: s.displayName })));
-    const main = el('div', { class: 'wb-main' }, [
+    const documentary = documentaryPanel(step);
+    const main = el('div', { class: `wb-main${documentary ? ' has-documentary' : ''}` }, [
       el('div', { class: 'wb-step-bar' }, [
         el('span', { class: 'cur', text: `当前工序 ${S.stepIndex + 1}/${craft.steps.length}：${step.displayName}` }),
         reviewTag(), progress,
@@ -1076,7 +1081,8 @@ export async function craftView(root, { id }) {
 
     const progress = el('span', { class: 'wb-progress' }, craft.steps.map((s, i) =>
       el('i', { class: `pg${i < S.stepIndex ? ' done' : i === S.stepIndex ? ' now' : ''}`, title: s.displayName })));
-    const main = el('div', { class: 'wb-main' }, [
+    const documentary = documentaryPanel(step);
+    const main = el('div', { class: `wb-main${documentary ? ' has-documentary' : ''}` }, [
       el('div', { class: 'wb-step-bar' }, [
         el('span', { class: 'cur', text: `当前工序 ${S.stepIndex + 1}/${craft.steps.length}：${step.displayName}` }),
         reviewTag(), progress,

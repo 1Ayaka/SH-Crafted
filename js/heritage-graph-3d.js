@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { OrbitControls } from '../vendor/controls/OrbitControls.js';
 import { reducedMotion } from './particles.js';
 import { goBackGraphRoot, graphStateContext, openGraphBranch, returnGraphRoot, returnInitialGraphRoot, selectGraphNode, setGraphBranchPage, setGraphRoot } from './heritage-graph.js';
-import { graphNeighborhood } from './agent/graph-adapter.js';
 
 const STAR_WHITE = 0xffffff;
 const STAR_SOFT = 0xffffff;
@@ -274,8 +273,9 @@ export function mountHeritageGraph(container, state, { onSelect, onChange } = {}
 
     if (state.mode === 'root') {
       graphGroup.add(makeOrbitRings(rootPosition, ROOT_RINGS));
-      const neighborhood = graphNeighborhood(root.id).filter((node) => node.id !== root.id).slice(0, 28);
-      const visibleNodes = neighborhood.length ? neighborhood : state.portals.map((portal) => portal.target).filter(Boolean);
+      // Root view is deliberately shallow: show only the three curated first-level
+      // relation portals. A portal can then open one second-level branch.
+      const visibleNodes = state.portals.map((portal) => portal.target).filter(Boolean).slice(0, 3);
       visibleNodes.forEach((portalNode, index) => {
         const portal = state.portals.find((item) => item.target?.id === portalNode.id) || { available: true, relation: portalNode.type, label: portalNode.title, target: portalNode, result_count: 0 };
         const position = nodePosition(portalNode, index, visibleNodes.length, 2.9, 5.35, 0.14);
