@@ -86,7 +86,9 @@ try {
       kind: 'full', district_id: 'jiading', title: '社区测试条目', category: '传统技艺',
       summary: '这是一条用于验证社区投稿审核与正式发布链路的测试内容。',
       history: '测试历史说明。', features: '测试特色说明。', include_steps: true,
-      steps: [{ name: '准备材料', description: '整理并检查材料。', result: '得到已整理材料', materials: ['材料甲'], tools: ['工具甲'], actions: ['整理'] }],
+      steps: [{ name: '准备材料', description: '整理并检查材料。', result: '得到已整理材料', materials: ['材料甲'], tools: ['工具甲'], actions: ['整理'], documentary_clips: [{ title: '准备材料片段', video_url: 'assets/video/test.mp4', start_seconds: 0, end_seconds: 10 }] }],
+      overview_images: [{ title: '测试概览图', image_url: 'data:image/png;base64,iVBORw0KGgo=', description: '用于验证投稿概览图必填规则。' }],
+      star_data: { summary: '测试星图资料。', keywords: ['测试'], relations: ['测试传统'], images: [{ title: '测试节点图', image_url: 'data:image/png;base64,iVBORw0KGgo=' }] },
       gallery_urls: [], contributor_name: '测试投稿人', contributor_contact: 'test@example.invalid', website: '',
     },
   });
@@ -147,7 +149,7 @@ try {
     body: {
       kind: 'note', district_id: 'pudong', title: '待驳回测试条目',
       summary: '这是一条用来验证驳回后不会进入正式内容库的自动化测试内容。',
-      include_steps: false, gallery_urls: [], website: '',
+      include_steps: false, gallery_urls: [], overview_images: [{ image_url: 'data:image/png;base64,iVBORw0KGgo=', description: '驳回流程测试概览图。' }], website: '',
     },
   });
   const pendingForRejection = await json('/api/admin/submissions?status=pending', { cookie: adminCookie });

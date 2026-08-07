@@ -1,0 +1,29 @@
+services:
+  funasr:
+    image: ${FUNASR_IMAGE:?Set FUNASR_IMAGE to a fixed official FunASR runtime tag}
+    restart: unless-stopped
+    privileged: true
+    ports:
+      - "${FUNASR_PORT:-127.0.0.1:10095}:10095"
+    volumes:
+      - ${FUNASR_MODEL_DIR:-./models}:/workspace/models
+      - ./hotwords.txt:/workspace/models/hotwords.txt:ro
+    command:
+      - bash
+      - -lc
+      - >-
+        cd /workspace/FunASR/runtime && exec bash run_server_2pass.sh
+        --download-model-dir /workspace/models
+        --vad-dir ${FUNASR_VAD_MODEL:-damo/speech_fsmn_vad_zh-cn-16k-common-onnx}
+        --model-dir ${FUNASR_OFFLINE_MODEL:-damo/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-onnx}
+        --online-model-dir ${FUNASR_ONLINE_MODEL:-damo/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online-onnx}
+        --punc-dir ${FUNASR_PUNC_MODEL:-damo/punc_ct-transformer_zh-cn-common-vad_realtime-vocab272727-onnx}
+        --itn-dir ${FUNASR_ITN_MODEL:-thuduj12/fst_itn_zh}
+        --hotword /workspace/models/hotwords.txt
+        --certfile 0
+    healthcheck:
+      test: ["CMD-SHELL", "bash -lc 'test -f /workspace/models/.funasr-ready || pgrep -f funasr-wss-server >/dev/null'"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10m

@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>隔空手势测试页 — SH-Crafted Gesture Test</title>
+<style>
+  :root {
+    --sand: #E8DCC7; --moss: #606C38; --sage: #8B9D83;
+    --ochre: #C08E3A; --terracotta: #C66B3D; --ink: #2B3327;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--sand); color: var(--ink);
+    font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+    min-height: 100vh; display: flex; flex-direction: column;
+  }
+  header {
+    padding: 16px 24px; display: flex; align-items: center; gap: 16px;
+    border-bottom: 1px solid rgba(96,108,56,0.2);
+  }
+  header h1 { font-size: 18px; font-weight: 600; }
+  main { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+  .camera-preview {
+    position: relative; width: 320px; height: 240px; border-radius: 12px;
+    overflow: hidden; background: rgba(0,0,0,0.05);
+    border: 1px solid rgba(96,108,56,0.3);
+  }
+  .camera-preview video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+  .camera-preview canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .gesture-label {
+    margin-top: 16px; padding: 8px 20px; border-radius: 999px;
+    background: rgba(139,157,131,0.2); font-size: 16px; letter-spacing: 0.05em;
+  }
+  .metrics { margin-top: 20px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .metric {
+    padding: 10px 16px; background: rgba(241,232,214,0.8); border-radius: 10px;
+    text-align: center; font-size: 13px;
+  }
+  .metric .value { font-size: 20px; font-weight: 600; color: var(--moss); }
+  .controls { margin-top: 20px; display: flex; gap: 12px; }
+  button {
+    padding: 10px 24px; border-radius: 999px; border: 1px solid var(--moss);
+    background: var(--sand); color: var(--ink); cursor: pointer;
+    font-size: 14px; letter-spacing: 0.05em;
+  }
+  button:hover { background: var(--moss); color: var(--sand-light); }
+  button.danger { border-color: var(--terracotta); color: var(--terracotta); }
+  button.danger:hover { background: var(--terracotta); color: var(--sand-light); }
+  .debug { margin-top: 20px; max-width: 600px; width: 100%; }
+  .debug pre {
+    background: rgba(0,0,0,0.03); border-radius: 8px; padding: 12px;
+    font-size: 11px; max-height: 200px; overflow-y: auto;
+  }
+  .error { margin-top: 12px; padding: 8px 16px; background: rgba(198,107,61,0.12); border-radius: 8px; font-size: 13px; color: var(--terracotta); }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>隔空手势测试页</h1>
+  <span style="color:var(--ink);font-size:12px;">Phase 0 — MediaPipe Hand Landmarker 验证</span>
+</header>
+<main>
+  <div class="camera-preview">
+    <video id="video" playsinline muted autoplay></video>
+    <canvas id="overlay"></canvas>
+  </div>
+  <div class="gesture-label" id="gesture-label">手势未启用</div>
+  <div class="metrics">
+    <div class="metric"><span class="value" id="metric-fps">--</span><br>推理 FPS</div>
+    <div class="metric"><span class="value" id="metric-latency">--</span><br>推理延迟 (ms)</div>
+    <div class="metric"><span class="value" id="metric-hand">--</span><br>手部状态</div>
+  </div>
+  <div class="controls">
+    <button id="btn-start" onclick="startGesture()">开启手势测试</button>
+    <button id="btn-stop" class="danger hidden" onclick="stopGesture()">停止</button>
+  </div>
+  <div class="debug">
+    <h3 style="font-size:13px;margin-bottom:6px;">调试信息</h3>
+    <pre id="debug-output">等待启动…</pre>
+  </div>
+  <div id="error-msg" class="error hidden"></div>
+</main>
+
+<script type="module">
+  import { createCameraManager } from '../js/gesture/camera-manager.js';
+  import { createWorkerClient } from '../js/gesture/mediapipe-worker-client.js';
+  import { createCoordinateMapper } from '../js/gesture/coordinate-mapper.js';
+  import { createGestureClassifier } from '../js/gesture/gesture-classifier.js';
+  import { createGestureSmoother } from '../js/gesture/gesture-smoother.js';
+
+  // ---- DOM 绑定 ----
+  const videoEl = document.getElementById('video');
+  const overlayCanvas = document.getElementById('overlay');
+  const overlayCtx = overlayCanvas.getContext('2d');
+  const gestureLabel = document.getElementById('gesture-label');
+  const metricFps = document.getElementById('metric-fps');
+  const metricLatency = document.getElementById('metric-latency');
+  const metricHand = document.getElementById('metric-hand');
+  const btnStart = document.getElementById('btn-start');
+  const btnStop = document.getElementById('btn-stop');
+  const debugOutput = document.getElementById('debug-output');
+  const errorMsg = document.getElementById('error-msg');
+
+  // ---- 状态 ----
+  let camera = null;
+  let workerClient = null;
+  let mapper = null;
+  let classifier = null;
+  let smoother = null;
+  let active = false;
+  let lastLandmarks = null;
+  let frameCount = 0;
+  let fpsTimer = 0;
+  let currentGesture = '无';
+
+  function log(msg) {
+    const time = new Date().toLocaleTimeString();
+    debugOutput.textContent = `[${time}] ${msg}\n` + debugOutput.textContent.split('\n').slice(0, 30).join('\n');
+  }
+
+  function showError(msg) {
+    errorMsg.textContent = msg;
+    errorMsg.classList.remove('hidden');
+  }
+
+  function hideError() {
+    errorMsg.classList.add('hidden');
+  }
+
+  function drawLandmarks(bitmap, landmarks) {
+    overlayCanvas.width = 320;
+    overlayCanvas.height = 240;
+    overlayCtx.clearRect(0, 0, 320, 240);
+
+    if (!landmarks) return;
+
+    // 关键点连接线（MediaPipe 手部骨架）
+    const connections = [
+      [0,1],[1,2],[2,3],[3,4],    // 拇指
+      [0,5],[5,6],[6,7],[7,8],    // 食指
+      [0,9],[9,10],[10,11],[11,12], // 中指
+      [0,13],[13,14],[14,15],[15,16], // 无名指
+      [0,17],[17,18],[18,19],[19,20], // 小指
+      [5,9],[9,13],[13,17],       // 掌指关节连线
+    ];
+
+    overlayCtx.strokeStyle = 'rgba(96,108,56,0.6)';
+    overlayCtx.lineWidth = 2;
+    for (const [a, b] of connections) {
+      const ax = landmarks[a * 3] * 320;
+      const ay = landmarks[a * 3 + 1] * 240;
+      const bx = landmarks[b * 3] * 320;
+      const by = landmarks[b * 3 + 1] * 240;
+      overlayCtx.beginPath();
+      overlayCtx.moveTo(ax, ay);
+      overlayCtx.lineTo(bx, by);
+      overlayCtx.stroke();
+    }
+
+    // 关键点
+    for (let i = 0; i < 21; i++) {
+      const x = landmarks[i * 3] * 320;
+      const y = landmarks[i * 3 + 1] * 240;
+      overlayCtx.fillStyle = i === 8 ? '#C66B3D' : i === 4 ? '#C08E3A' : '#606C38';
+      overlayCtx.beginPath();
+      overlayCtx.arc(x, y, i === 8 ? 5 : 3, 0, Math.PI * 2);
+      overlayCtx.fill();
+    }
+  }
+
+  function updateMetrics(fps, latency, handStatus) {
+    metricFps.textContent = fps > 0 ? String(Math.round(fps)) : '--';
+    metricLatency.textContent = latency > 0 ? String(Math.round(latency)) : '--';
+    metricHand.textContent = handStatus;
+  }
+
+  function onGestureEvent(event) {
+    switch (event.type) {
+      case 'cursor':
+        currentGesture = '食指移动';
+        break;
+      case 'pinch':
+        if (event.phase === 'start') currentGesture = '捏合中…';
+        else if (event.phase === 'move') currentGesture = '捏合拖动…';
+        else if (event.phase === 'end' && event.wasClick) currentGesture = '✓ 捏合点击';
+        else currentGesture = '捏合释放';
+        break;
+      case 'drag':
+        currentGesture = `拖动 (${event.dx?.toFixed(2)}, ${event.dy?.toFixed(2)})`;
+        break;
+      case 'palm':
+        if (event.phase === 'start') currentGesture = '张掌';
+        else currentGesture = '张掌结束';
+        break;
+      case 'swipe-left':
+        currentGesture = '← 左挥返回';
+        break;
+      case 'hand-lost':
+        currentGesture = '手已离开';
+        break;
+      default:
+        currentGesture = event.type;
+    }
+    gestureLabel.textContent = currentGesture;
+  }
+
+  window.startGesture = async function () {
+    hideError();
+    log('正在申请摄像头权限…');
+    btnStart.classList.add('hidden');
+
+    try {
+      // 1. 创建摄像头
+      camera = createCameraManager({
+        onFrame(bitmap, timestamp) {
+          if (!active || !workerClient?.isReady()) {
+            bitmap?.close?.();
+            return;
+          }
+          workerClient.sendFrame(bitmap);
+        },
+        onError(err) {
+          log(`摄像头错误: ${err.code} — ${err.message}`);
+          showError(`摄像头错误: ${err.message}`);
+        },
+      });
+
+      // 2. 创建坐标映射器
+      mapper = createCoordinateMapper({
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        mirrored: true,
+      });
+
+      // 3. 创建手势分类器
+      classifier = createGestureClassifier({
+        onGesture: onGestureEvent,
+      });
+
+      // 4. 创建平滑器
+      smoother = createGestureSmoother();
+
+      // 5. 启动摄像头
+      const { videoWidth, videoHeight } = await camera.start();
+      mapper.setVideoSize(videoWidth, videoHeight);
+      videoEl.srcObject = camera.getStream();
+      log(`摄像头已启动: ${videoWidth}x${videoHeight}`);
+
+      // 6. 创建 Worker 客户端
+      workerClient = createWorkerClient({
+        onReady() {
+          log('MediaPipe 模型已加载，Worker 就绪');
+        },
+        onLandmarks(landmarks, timing, gen) {
+          frameCount++;
+          if (!fpsTimer) fpsTimer = performance.now();
+          const now = performance.now();
+          if (now - fpsTimer >= 1000) {
+            const fps = frameCount / ((now - fpsTimer) / 1000);
+            updateMetrics(fps, timing?.inferenceDuration || 0, landmarks ? '已检测' : '未检测');
+            frameCount = 0;
+            fpsTimer = now;
+          }
+
+          // 绘制关键点叠加层
+          drawLandmarks(null, landmarks);
+
+          // 坐标映射 + 手势分类
+          if (landmarks) {
+            const indexTip = { x: landmarks[8 * 3], y: landmarks[8 * 3 + 1] };
+            const screen = mapper.landmarkToScreen(indexTip.x, indexTip.y);
+            const smoothed = smoother.smoothPointer(screen.x, screen.y, now);
+            classifier.update(landmarks, now);
+            lastLandmarks = landmarks;
+          } else {
+            classifier.update(null, now);
+            lastLandmarks = null;
+          }
+        },
+        onError(msg) {
+          log(`Worker 错误: ${msg}`);
+        },
+      });
+
+      // 7. 初始化 Worker
+      await workerClient.init();
+      log('Worker 初始化完成');
+
+      active = true;
+      btnStop.classList.remove('hidden');
+      gestureLabel.textContent = '就绪 — 请将手放入摄像头画面';
+      log('手势测试就绪。将手放入摄像头画面，观察手势检测。');
+    } catch (error) {
+      log(`启动失败: ${error.message}`);
+      showError(`启动失败: ${error.message}（请确保使用 HTTPS 或 localhost，并已允许摄像头权限）`);
+      btnStart.classList.remove('hidden');
+      active = false;
+    }
+  };
+
+  window.stopGesture = function () {
+    active = false;
+    camera?.destroy();
+    camera = null;
+    workerClient?.destroy();
+    workerClient = null;
+    classifier?.reset();
+    classifier = null;
+    smoother?.reset();
+    smoother = null;
+    mapper = null;
+    lastLandmarks = null;
+    frameCount = 0;
+    fpsTimer = 0;
+    videoEl.srcObject = null;
+    overlayCtx.clearRect(0, 0, 320, 240);
+    gestureLabel.textContent = '手势未启用';
+    updateMetrics(0, 0, '已停止');
+    btnStart.classList.remove('hidden');
+    btnStop.classList.add('hidden');
+    log('手势测试已停止，所有资源已释放');
+  };
+
+  // 初始日志
+  log('测试页已加载。点击"开启手势测试"开始。');
+  log(`浏览器: ${navigator.userAgent.slice(0, 60)}…`);
+  log(`MediaDevices 支持: ${Boolean(navigator.mediaDevices?.getUserMedia)}`);
+  log(`Worker 支持: ${Boolean(window.Worker)}`);
+</script>
+</body>
+</html>

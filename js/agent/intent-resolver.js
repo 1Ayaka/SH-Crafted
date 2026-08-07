@@ -1,4 +1,4 @@
-import { graphId, searchGraph } from './graph-adapter.js';
+import { heritageForGraphTarget, searchGraph } from './graph-adapter.js';
 
 const STOP_RE = /^(停|别说了|停止朗读|停下|取消|闭嘴)$/;
 const RELATION_RE = [
@@ -45,6 +45,21 @@ export function resolveIntent(input, context) {
     return { name: 'read_summary', args: { target_id: context.selected_node?.id || context.current_root?.id, content: 'summary', max_seconds: 35 } };
   }
   if (/帮助|怎么用|可以做什么/.test(text)) return { name: 'show_help', args: {} };
+
+  // “还有什么象牙非遗”是在全图中按材料反向探索，不是展开当前作品的材料分支。
+  // 先解析为稳定的 material: ID，真正的页面跳转仍由白名单 open_node 工具完成。
+  if (/(还有什么|有哪些|相关|同类).*(非遗|项目)|(?:非遗|项目).*(材料|材质)/.test(text)) {
+    const materialQuery = text
+      .replace(/我想|请|帮我|看一下|看看|还有什么|有哪些|相关的?|同类的?|非遗|项目|工艺/g, '')
+      .trim();
+    const materials = searchGraph(materialQuery, { types: ['material', 'tradition'], limit: 4 })
+      .map((item) => ({ ...item, related: heritageForGraphTarget(item.id) }))
+      .filter((item) => item.related.nodes.length)
+      .sort((a, b) => b.related.nodes.length - a.related.nodes.length || b.score - a.score);
+    if (materials.length >= 1) {
+      return { name: 'open_node', args: { node_id: materials[0].id, focus_camera: true, open_summary: true } };
+    }
+  }
   for (const [pattern, relation] of RELATION_RE) if (pattern.test(text)) return { name: 'expand_branch', args: { relation } };
 
   const target = visibleTarget(text, context);

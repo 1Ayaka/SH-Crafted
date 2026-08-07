@@ -3,6 +3,10 @@
 // heritage:/region: 命名空间，后续接入 nodes/edges.jsonl 时只替换本模块。
 import { allCrafts } from '../data.js';
 import { DISTRICTS, DISTRICT_PROFILES, CRAFT_CONFIG } from '../config.js';
+import { GRAPH_SEED_EDGES, GRAPH_SEED_NODES } from '../graph-seed.js';
+import { CURATED_GRAPH_EDGES, CURATED_GRAPH_NODES } from '../graph-curated-catalog.js';
+
+const ALL_GRAPH_EDGES = [...GRAPH_SEED_EDGES, ...CURATED_GRAPH_EDGES];
 
 const RELATIONS = Object.freeze([
   'LOCATED_IN',
@@ -22,6 +26,7 @@ export function parseGraphId(value) {
 }
 
 function craftNode(craft) {
+  const primarySource = craft.externalSources?.[0] || {};
   return {
     id: graphId('heritage', craft.craftId),
     raw_id: craft.craftId,
@@ -29,9 +34,15 @@ function craftNode(craft) {
     title: craft.title,
     aliases: [craft.title, craft.config?.craftName].filter(Boolean),
     summary: String(craft.summary || '').slice(0, 180),
+    overview_image: craft.config?.works?.[0]?.frame || craft.config?.heroFrame || '',
+    graph_data: craft.config?.graphData || {},
+    images: craft.config?.graphData?.images || craft.config?.graphData?.overview_images || [],
     district_id: craft.config?.districtId || null,
+    heritage_level: craft.config?.heritageLevel || (/^SHIH_\d{4}$/.test(craft.craftId) ? 'primary' : 'secondary'),
     public: true,
     source_ids: (craft.externalSources || []).map((source) => source.source_id).slice(0, 5),
+    source_title: primarySource.title || '',
+    source_url: primarySource.url || '',
   };
 }
 
@@ -46,13 +57,43 @@ function districtNode(district) {
     summary: String(profile.heritageOverview || '').slice(0, 180),
     public: true,
     source_ids: profile.sourceUrl ? [`region_source:${district.id}`] : [],
+    source_title: profile.sourceLabel || `${profile.name || district.name}地区资料`,
+    source_url: profile.sourceUrl || '',
   };
 }
 
 export function graphNodes() {
-  const crafts = allCrafts().map(craftNode);
+  // 工艺包是按需异步加载的；配置中的轻量节点保证图谱入口、搜索和
+  // 智能体在首屏或离线测试时仍能识别稳定 ID。真实工艺包加载后优先覆盖它。
+  const configuredCrafts = Object.entries(CRAFT_CONFIG).map(([craftId, config]) => ({
+    craftId,
+    title: config.craftName || craftId,
+    summary: '',
+    config,
+    externalSources: [],
+  }));
+  const crafts = [...allCrafts(), ...configuredCrafts].map(craftNode);
   const districts = DISTRICTS.map(districtNode);
-  return [...crafts, ...districts];
+  const seen = new Set();
+  const seenHeritageTitles = new Set();
+  const graphRelations = crafts.flatMap((craft) => (craft.graph_data?.relations || []).map((relation, index) => ({
+    id: graphId(relation.type || 'tradition', relation.id || `${craft.raw_id}_${index}_${relation.title}`),
+    raw_id: relation.id || `${craft.raw_id}_${index}`,
+    type: relation.type || 'tradition',
+    title: relation.title,
+    aliases: [relation.title],
+    summary: relation.summary || '',
+    images: relation.images || [],
+    public: true,
+  })));
+  return [...crafts, ...districts, ...graphRelations, ...GRAPH_SEED_NODES, ...CURATED_GRAPH_NODES].filter((node) => {
+    if (seen.has(node.id)) return false;
+    const titleKey = node.type === 'heritage' ? String(node.title || '').trim() : '';
+    if (titleKey && seenHeritageTitles.has(titleKey)) return false;
+    seen.add(node.id);
+    if (titleKey) seenHeritageTitles.add(titleKey);
+    return true;
+  });
 }
 
 export function getGraphNode(id) {
@@ -106,12 +147,118 @@ export function isSupportedRelation(relation) {
 export function relationsForNode(id) {
   const node = getGraphNode(id);
   if (!node || node.type !== 'heritage') return [];
-  // 目前只有地区归属来自已存在的策展/审核数据；传统与材料不从类别或
-  // 文本推断，避免把未经证据确认的关系伪装成正式图谱关系。
+  // 地区归属来自项目配置；传统与材料只来自已核验的种子边，避免把
+  // 未经证据确认的文本推断伪装成正式图谱关系。
   const config = CRAFT_CONFIG[node.raw_id] || {};
-  return config.districtId
-    ? [{ relation: 'LOCATED_IN', target_id: graphId('region', config.districtId), source: 'curated_district_mapping' }]
+  const districtId = node.district_id || config.districtId;
+  const edges = districtId
+    ? [{ relation: 'LOCATED_IN', target_id: graphId('region', districtId), source: 'curated_district_mapping' }]
     : [];
+  const customRelations = (node.graph_data?.relations || []).map((relation, index) => ({
+    relation: relation.type === 'material' ? 'USES_MATERIAL' : relation.type === 'region' ? 'LOCATED_IN' : 'BELONGS_TO_TRADITION',
+    target_id: graphId(relation.type || 'tradition', relation.id || `${node.raw_id}_${index}_${relation.title}`),
+    source: 'admin_graph_data',
+    source_title: node.graph_data?.summary || '',
+  }));
+  return [
+    ...edges,
+    ...customRelations,
+    ...ALL_GRAPH_EDGES
+      .filter((edge) => edge.from === node.id)
+      .map((edge) => ({
+        relation: edge.relation,
+        target_id: edge.to,
+        source: edge.source_id,
+        source_title: edge.source_title,
+        source_url: edge.source_url,
+        evidence: edge.evidence || '',
+      })),
+  ];
+}
+
+export function relatedHeritageForRelation(targetId, relation, { excludeId = null } = {}) {
+  const target = getGraphNode(targetId);
+  if (!target) return [];
+  const ids = new Set(
+    ALL_GRAPH_EDGES
+      .filter((edge) => edge.relation === relation && edge.to === targetId)
+      .map((edge) => edge.from),
+  );
+  if (relation === 'LOCATED_IN' && target.type === 'region') {
+    return [...graphNodes()].filter((node) => node.type === 'heritage' && node.district_id === target.raw_id && node.id !== excludeId);
+  }
+  return [...ids]
+    .filter((id) => id !== excludeId)
+    .map((id) => getGraphNode(id))
+    .filter(Boolean);
+}
+
+export function heritageForGraphTarget(targetId, { excludeId = null } = {}) {
+  const target = getGraphNode(targetId);
+  if (!target) return { target: null, relation: null, nodes: [] };
+  if (target.type === 'heritage') return { target, relation: null, nodes: [target] };
+  const relation = {
+    region: 'LOCATED_IN',
+    tradition: 'BELONGS_TO_TRADITION',
+    material: 'USES_MATERIAL',
+  }[target.type] || null;
+  return {
+    target,
+    relation,
+    nodes: relation ? relatedHeritageForRelation(target.id, relation, { excludeId }) : [],
+  };
+}
+
+export function graphPortals(rootId) {
+  const root = getGraphNode(rootId);
+  if (!root || root.type !== 'heritage') return [];
+  const edges = relationsForNode(rootId);
+  return RELATIONS.map((relation) => {
+    const candidates = edges
+      .filter((item) => item.relation === relation)
+      .map((item) => {
+        const target = getGraphNode(item.target_id);
+        const relatedCount = target
+          ? relatedHeritageForRelation(target.id, relation, { excludeId: root.id }).length
+          : -1;
+        return { item, target, relatedCount };
+      })
+      .sort((a, b) => b.relatedCount - a.relatedCount);
+    const selected = candidates.find((candidate) => candidate.target) || candidates[0];
+    const edge = selected?.item;
+    const target = selected?.target || null;
+    return {
+      relation,
+      label: relationLabel(relation),
+      target,
+      evidence: edge?.source || null,
+      source_title: edge?.source_title || null,
+      source_url: edge?.source_url || null,
+      available: Boolean(target),
+      result_count: Math.max(0, selected?.relatedCount || 0),
+    };
+  });
+}
+
+export function graphNeighborhood(rootId) {
+  const root = getGraphNode(rootId);
+  if (!root) return [];
+  const nodes = new Map([[root.id, root]]);
+  graphPortals(rootId).forEach((portal) => {
+    if (!portal.target) return;
+    nodes.set(portal.target.id, portal.target);
+    relatedHeritageForRelation(portal.target.id, portal.relation, { excludeId: rootId })
+      .forEach((node) => nodes.set(node.id, node));
+  });
+  return [...nodes.values()];
+}
+
+export function relatedHeritageForRegion(regionId, { excludeId = null } = {}) {
+  const parsed = parseGraphId(regionId);
+  if (!parsed || parsed.type !== 'region') return [];
+  return allCrafts()
+    .filter((craft) => craft.config?.districtId === parsed.rawId && graphId('heritage', craft.craftId) !== excludeId)
+    .map(craftNode);
 }
 
 export function expandGraphBranch(rootId, relation) {

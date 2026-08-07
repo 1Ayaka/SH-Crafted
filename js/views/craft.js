@@ -18,6 +18,8 @@ import { mountEditableModule } from '../editable.js';
 import { createWorkbenchSurface } from '../workbench-preview.js';
 import { graphId, parseGraphId } from '../agent/graph-adapter.js';
 import { materialTransformMap } from '../material-flow.js';
+import { createHeritageGraphState } from '../heritage-graph.js';
+import { mountHeritageGraph } from '../heritage-graph-3d.js';
 
 const OUTPUT_PALETTE = [
   '#6F8C73', '#A56A4E', '#B48A42', '#5D7F84', '#9C6B76',
@@ -148,6 +150,10 @@ export async function craftView(root, { id }) {
   const cleanups = [];
   const pmHandles = [];          // 粒子模型句柄（clearWorkbench/cleanup 时 dispose）
   const wbPreviewHandles = [];
+  let graphExplorer = null;
+  let graphOverlay = null;
+  let graphReturnFocus = null;
+  let finishedModelHandle = null;
 
   // ---------- 工艺专属分层背景 + 底层环境墨晕（与首页同一管线）----------
   const entering = consumeEnter();
@@ -230,7 +236,7 @@ export async function craftView(root, { id }) {
 
   // 成品模型与纹样提前预载（进入工作台即开始），完成作品时揭晓瞬时
   function preloadFinished() {
-    const modelSet = CRAFT_MODEL_PATHS[id];
+    const modelSet = CRAFT_MODEL_PATHS[id] || (craft.config?.modelPath ? { finished: craft.config.modelPath } : null);
     if (!modelSet) return;
     import('../particlemodel.js').then((m) => {
       if (modelSet.finished) m.preloadModel(modelSet.finished);
@@ -369,6 +375,23 @@ export async function craftView(root, { id }) {
   // ---------- 右：工作台 ----------
   function currentStep() { return craft.steps[S.stepIndex] || null; }
 
+  function documentaryPanel(step) {
+    const clip = (step?.documentary_clips || []).find((item) => item?.video_url);
+    if (!clip) return null;
+    const video = el('video', { class: 'wb-documentary-video', src: clip.video_url, controls: 'controls', preload: 'metadata', playsinline: 'playsinline' });
+    const start = Math.max(0, Number(clip.start_seconds) || 0);
+    const end = Math.max(0, Number(clip.end_seconds) || 0);
+    video.addEventListener('loadedmetadata', () => { if (start && start < video.duration) video.currentTime = start; }, { once: true });
+    video.addEventListener('timeupdate', () => { if (end > start && video.currentTime >= end) { video.pause(); video.currentTime = start; } });
+    return el('aside', { class: 'wb-documentary', 'aria-label': '当前工序纪录片片段' }, [
+      el('p', { class: 'wb-documentary-kicker', text: '纪录片片段' }),
+      el('h4', { text: clip.title || step.displayName }),
+      video,
+      clip.description ? el('p', { class: 'wb-documentary-description', text: clip.description }) : null,
+      clip.source_url ? el('a', { class: 'ev-link', href: clip.source_url, target: '_blank', rel: 'noopener noreferrer', text: '查看片段来源' }) : null,
+    ]);
+  }
+
   function resourceVisual(name, step = currentStep()) {
     const visual = (step?.resource_visuals || []).find((item) => item.name === name);
     return { shape: visual?.shape || '', scale: Number(visual?.scale) || 1 };
@@ -462,7 +485,7 @@ export async function craftView(root, { id }) {
       ]));
       return;
     }
-    const modelSet = CRAFT_MODEL_PATHS[id];
+    const modelSet = CRAFT_MODEL_PATHS[id] || (craft.config?.modelPath ? { finished: craft.config.modelPath } : null);
     if (!modelSet) {
       renderIdleFlat('三维模型待接入，暂以纪录片关键帧展示；建议先查看工序。');
       return;
@@ -632,7 +655,8 @@ export async function craftView(root, { id }) {
     const progress = el('span', { class: 'wb-progress' }, craft.steps.map((s, i) =>
       el('i', { class: `pg${i < S.stepIndex ? ' done' : i === S.stepIndex ? ' now' : ''}`, title: s.displayName })));
 
-    const main = el('div', { class: 'wb-main' }, [
+    const documentary = documentaryPanel(step);
+    const main = el('div', { class: `wb-main${documentary ? ' has-documentary' : ''}` }, [
       el('div', { class: 'wb-step-bar' }, [
         el('span', { class: 'cur', text: `当前工序 ${S.stepIndex + 1}/${craft.steps.length}：${step.displayName}` }),
         reviewTag(),
@@ -1057,11 +1081,11 @@ export async function craftView(root, { id }) {
         el('span', { class: 'cur', text: `当前工序 ${S.stepIndex + 1}/${craft.steps.length}：${step.displayName}` }),
         reviewTag(), progress,
       ]),
-      el('div', { class: 'wb-stage-layout' }, [tableSurface, actionPalette]),
+      el('div', { class: 'wb-stage-layout' }, [tableSurface, actionPalette, documentary]),
       feedback,
       el('div', { class: 'wb-actions' }, [
         el('button', { class: 'btn-quick-fill', text: '一键填入', title: '自动把当前步骤所需物品放到桌面', onclick: quickFillCurrentStep }),
-        el('button', { class: 'btn-ghost', text: '查看纪录片片段', onclick: () => openEvidenceModal(craft, step.evidence_ids, { title: `证据 · ${step.displayName}` }) }),
+        !documentary && step.evidence_ids?.length ? el('button', { class: 'btn-ghost', text: '查看纪录片证据', onclick: () => openEvidenceModal(craft, step.evidence_ids, { title: `证据 · ${step.displayName}` }) }) : null,
         el('span', { class: 'wb-note', text: '动作需要拖到桌面工作区后才会执行。' }),
       ]),
     ]);
@@ -1309,13 +1333,165 @@ export async function craftView(root, { id }) {
     }).catch(() => pzWrap.classList.add('show'));
   }
 
+  function closeHeritageGraph() {
+    const explorer = graphExplorer;
+    const overlay = graphOverlay;
+    graphExplorer = null;
+    graphOverlay = null;
+    document.body.classList.remove('heritage-graph-open');
+    try { explorer?.dispose?.(); } catch (error) { console.warn('知识图谱资源释放失败', error); }
+    overlay?.remove();
+    const restoreFocus = graphReturnFocus;
+    graphReturnFocus = null;
+    window.__gestureSystem?.unregisterViewContext?.('craft-graph');
+    requestAnimationFrame(() => {
+      registerGestureFinishedModel();
+      registerGestureScrollZones();
+      restoreFocus?.focus?.();
+    });
+  }
+
+  function openHeritageGraph() {
+    if (graphOverlay) return;
+    const state = createHeritageGraphState(graphId('heritage', craft.craftId));
+    if (!state.root) return;
+    graphReturnFocus = document.activeElement;
+    const graphHeading = el('h1', { id: 'heritage-graph-heading', text: state.root.title });
+    const subtitle = el('p', { class: 'heritage-graph-subtitle', text: '选择一条关系继续探索' });
+    const trail = el('nav', { class: 'heritage-graph-trail', 'aria-label': '知识图谱路径' });
+    const info = el('aside', { class: 'heritage-graph-info', 'aria-live': 'polite' });
+    const canvasHost = el('div', { class: 'heritage-graph-stage', 'aria-label': '知识图谱三维舞台' });
+    const closeButton = el('button', { class: 'heritage-graph-close', type: 'button', 'aria-label': '关闭知识图谱', text: '返回完成品' });
+    const overlay = el('section', {
+      class: 'heritage-graph-overlay', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'heritage-graph-heading',
+    }, [
+      el('div', { class: 'heritage-graph-wash', 'aria-hidden': 'true' }),
+      el('header', { class: 'heritage-graph-header' }, [
+        el('div', { class: 'heritage-graph-heading' }, [
+          el('span', { class: 'heritage-graph-kicker', text: '非遗知识图谱' }),
+          graphHeading,
+          subtitle,
+        ]),
+        closeButton,
+      ]),
+      trail,
+      canvasHost,
+      info,
+      el('p', { class: 'heritage-graph-hint', text: '拖拽旋转 · 滚轮缩放 · 点击节点查看资料', 'aria-hidden': 'true' }),
+    ]);
+    graphOverlay = overlay;
+    document.body.appendChild(overlay);
+    document.body.classList.add('heritage-graph-open');
+    // Only the foreground Three.js scene may own a gesture drag session.
+    window.__gestureSystem?.unregisterViewContext?.('craft-finished-model');
+    closeButton.addEventListener('click', closeHeritageGraph);
+
+    const renderTrail = (context) => {
+      trail.innerHTML = '';
+      (context.breadcrumbs || []).forEach((id, index) => {
+        const isLast = index === context.breadcrumbs.length - 1;
+        const node = index === 0 ? context.current_root : (index === context.breadcrumbs.length - 1 ? context.selected_node : null);
+        trail.appendChild(el('span', { class: isLast ? 'is-current' : '', text: node?.title || id }));
+        if (!isLast) trail.appendChild(el('span', { class: 'heritage-graph-trail-sep', text: '·', 'aria-hidden': 'true' }));
+      });
+    };
+    const renderInfo = (context, selected = context.selected_node) => {
+      info.innerHTML = '';
+      if (!selected) return;
+      const heading = el('div', { class: 'heritage-graph-info-head' }, [
+        el('span', { class: `heritage-graph-type type-${selected.type}`, text: selected.type === 'heritage' ? '非遗项目' : selected.type === 'region' ? '地区' : selected.type === 'tradition' ? '传统' : '材料' }),
+        el('h3', { text: selected.title }),
+      ]);
+      const summary = selected.summary
+        ? el('p', { text: selected.summary })
+        : el('p', { class: 'is-muted', text: '该节点的详细摘要与来源正在整理中。' });
+      info.append(heading, selected.images?.length ? el('div', { class: 'heritage-graph-image-gallery' }, selected.images.slice(0, 8).map((image) => el('figure', { class: 'heritage-graph-image-card' }, [el('img', { src: image.image_url || image.url, alt: image.title || selected.title, loading: 'lazy' }), image.title || image.description ? el('figcaption', { text: image.title || image.description }) : null]))) : null, summary);
+      if (context.mode === 'root') {
+        info.appendChild(el('p', { class: 'heritage-graph-info-note', text: '中央节点是当前完成品。三个固定入口只显示已接入并附有来源的关系。' }));
+      }
+      if (context.mode === 'branch' && selected.type === 'heritage' && selected.id !== context.current_root?.id) {
+        info.appendChild(el('button', {
+          class: 'btn btn-primary heritage-graph-root-button', type: 'button', text: '以此项目继续探索',
+          onclick: () => { graphExplorer?.setRoot(selected); renderGraphUI(); },
+        }));
+      }
+      if (context.mode === 'branch') {
+        if (context.can_previous_page) info.appendChild(el('button', {
+          class: 'btn-ghost heritage-graph-back-button', type: 'button', text: '上一组节点',
+          onclick: () => { graphExplorer?.previousPage(); renderGraphUI(); },
+        }));
+        if (context.can_next_page) info.appendChild(el('button', {
+          class: 'btn-ghost heritage-graph-back-button', type: 'button', text: `下一组节点（共 ${context.branch_total} 项）`,
+          onclick: () => { graphExplorer?.nextPage(); renderGraphUI(); },
+        }));
+        info.appendChild(el('button', {
+          class: 'btn-ghost heritage-graph-back-button', type: 'button', text: '回到当前根节点',
+          onclick: () => { graphExplorer?.returnRoot(); renderGraphUI(); },
+        }));
+      }
+      if (context.can_go_back && context.mode !== 'branch') {
+        info.appendChild(el('button', {
+          class: 'btn-ghost heritage-graph-back-button', type: 'button', text: '上一步',
+          onclick: () => { graphExplorer?.goBack(); renderGraphUI(); },
+        }));
+      }
+      if (context.initial_root?.id && context.current_root?.id !== context.initial_root.id) {
+        info.appendChild(el('button', {
+          class: 'btn-ghost heritage-graph-back-button', type: 'button', text: '返回最初作品',
+          onclick: () => { graphExplorer?.returnInitial(); renderGraphUI(); },
+        }));
+      }
+      const reviewLabel = selected.review_status === 'supported' ? '来源支持 · 待人工复核' : selected.review_status === 'verified' ? '已核验' : '';
+      const sourceText = selected.source_ids?.length
+        ? `${reviewLabel ? `${reviewLabel} · ` : ''}来源记录：${selected.source_ids.join('、')}`
+        : '当前节点暂无来源链接。';
+      info.appendChild(el('small', { class: 'heritage-graph-source', text: sourceText }));
+      if (selected.source_url) info.appendChild(el('a', {
+        class: 'ev-link heritage-graph-source-link', href: selected.source_url, target: '_blank', rel: 'noopener noreferrer',
+        text: `查看来源：${selected.source_title || '公开资料'}`,
+      }));
+    };
+    const renderGraphUI = () => {
+      if (!graphExplorer) return;
+      const context = graphExplorer.context();
+      graphHeading.textContent = context.mode === 'branch' ? context.selected_node?.title || state.root.title : state.root.title;
+      subtitle.textContent = context.mode === 'branch'
+        ? `${context.relation_label || '关联项目'} · 第 ${context.branch_page + 1}/${context.branch_page_count} 组`
+        : '选择一条关系继续探索';
+      renderTrail(context);
+      renderInfo(context);
+      syncAgentContext();
+    };
+    try {
+      graphExplorer = mountHeritageGraph(canvasHost, state, {
+        onSelect(selection) {
+          if (selection?.unavailable) {
+            info.innerHTML = '';
+            info.append(
+              el('h3', { text: selection.portal.label }),
+              el('p', { class: 'is-muted', text: '目前资料中没有找到可公开展示的核验关系，暂不展开。' }),
+            );
+            return;
+          }
+          renderGraphUI();
+        },
+        onChange() { renderGraphUI(); },
+      });
+      registerGestureHeritageGraph();
+      renderGraphUI();
+      closeButton.focus();
+    } catch (error) {
+      info.appendChild(el('p', { class: 'is-muted', text: `星图暂时无法加载：${error.message || '浏览器不支持当前三维效果'}。你仍可以返回完成品。` }));
+    }
+  }
+
   // --- 完成态：墨粒外爆 → 成品三维墨点模型居中揭晓（弧线俯冲进场） ---
   function renderComplete() {
     clearWorkbench();
     body.classList.add('playing');
     body.classList.remove('reading-open');
 
-    const modelSet = CRAFT_MODEL_PATHS[id];
+    const modelSet = CRAFT_MODEL_PATHS[id] || (craft.config?.modelPath ? { finished: craft.config.modelPath } : null);
     const hasModel = !!(modelSet && modelSet.finished);
 
     // 中央主舞台：爆炸画布 + 成品模型舞台叠放
@@ -1328,13 +1504,16 @@ export async function craftView(root, { id }) {
       el('span', { class: 'finish-ceremony-motes', 'aria-hidden': 'true' }, Array.from({ length: 12 }, (_, index) => el('i', { style: { '--i': index } }))),
     ]);
     const pmStage = hasModel ? el('div', { class: 'pm-stage finish-model', style: { opacity: '0' } }) : null;
-    let finishedModelHandle = null;
+    const graphEntry = el('button', {
+      class: 'heritage-graph-entry', type: 'button', text: '点击完成品，探索知识图谱',
+      onclick: openHeritageGraph,
+    });
     const zoomControls = hasModel ? el('div', { class: 'pm-zoom-controls', 'aria-label': '模型缩放' }, [
       el('button', { type: 'button', text: '缩小', disabled: true, onclick: () => finishedModelHandle?.zoomBy(0.82) }),
       el('button', { type: 'button', text: '还原', disabled: true, onclick: () => finishedModelHandle?.resetZoom() }),
       el('button', { type: 'button', text: '放大', disabled: true, onclick: () => finishedModelHandle?.zoomBy(1.22) }),
     ]) : null;
-    const stageWrap = el('div', { class: 'finish-stage' }, [burstCv, ceremony, ...(pmStage ? [pmStage, zoomControls] : [])]);
+    const stageWrap = el('div', { class: 'finish-stage' }, [burstCv, ceremony, ...(pmStage ? [pmStage, zoomControls] : []), graphEntry]);
     const stageCap = el('p', {
       class: 'pm-cap',
       text: hasModel
@@ -1342,6 +1521,10 @@ export async function craftView(root, { id }) {
           ? '玉石实体成品 · 花纹来自纪录片真实影像取样 · 表面墨粒缓慢下落 · 点击爆散'
           : '玉石实体成品 · 表面墨粒缓慢下落 · 拖拽旋转 · 滚轮缩放 · 点击爆散')
         : '墨粒聚成成品影像 · 拖拽平移 · 滚轮缩放',
+    });
+    stageWrap.addEventListener('click', (event) => {
+      if (event.target.closest('button, .pm-zoom-controls')) return;
+      if (event.target.closest('.pm-stage, .pz-wrap')) openHeritageGraph();
     });
 
     // 侧栏：代表影像 + 已核验的外部资料（置于主舞台侧边，不把模型挤离中心）
@@ -1432,6 +1615,13 @@ export async function craftView(root, { id }) {
       });
       if (!h) return;
       finishedModelHandle = h;
+      registerGestureFinishedModel();
+      pmStage.setAttribute('role', 'button');
+      pmStage.setAttribute('tabindex', '0');
+      pmStage.setAttribute('aria-label', '打开三维非遗知识图谱');
+      pmStage.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openHeritageGraph(); }
+      });
       zoomControls.querySelectorAll('button').forEach((button) => { button.disabled = false; });
       pmStage.style.opacity = '1';
       h.playEnter();
@@ -1448,13 +1638,17 @@ export async function craftView(root, { id }) {
   agent.setCraft(craft);
   agent.setHost({
     context() {
+      const graphContext = graphExplorer?.context?.();
       return {
         route: `/craft/${encodeURIComponent(craft.craftId)}`,
-        page_type: 'heritage_detail',
+        page_type: graphContext ? 'heritage_graph' : 'heritage_detail',
         current_root: { id: graphId('heritage', craft.craftId), type: 'heritage', title: craft.title, summary: craft.summary },
-        selected_node: { id: graphId('heritage', craft.craftId), type: 'heritage', title: craft.title, summary: craft.summary },
-        visible_nodes: [], breadcrumbs: [graphId('heritage', craft.craftId)], history: S.log.slice(-8),
-        available_actions: ['get_current_context', 'search_graph', 'expand_branch', 'open_node', 'open_heritage_detail', 'open_region', 'go_back', 'return_to_root', 'focus_model', 'read_summary', 'stop_speaking', 'show_help'],
+        ...(graphContext || {
+          selected_node: { id: graphId('heritage', craft.craftId), type: 'heritage', title: craft.title, summary: craft.summary },
+          visible_nodes: [], breadcrumbs: [graphId('heritage', craft.craftId)],
+        }),
+        history: S.log.slice(-8),
+        available_actions: graphContext?.available_actions || ['get_current_context', 'search_graph', 'expand_branch', 'open_node', 'open_heritage_detail', 'open_region', 'go_back', 'return_to_root', 'focus_model', 'read_summary', 'stop_speaking', 'show_help'],
         context_revision: `craft:${craft.craftId}`,
       };
     },
@@ -1474,7 +1668,7 @@ export async function craftView(root, { id }) {
     },
     async goBack() { transitionTo('#/explore'); return { ok: true }; },
     async returnToRoot() { return { ok: true }; },
-    async focusModel() { finishedModelHandle?.focus?.(); return { ok: true }; },
+    async focusModel() { closeHeritageGraph(); finishedModelHandle?.resetZoom?.(); return { ok: true }; },
     async readSummary() {
       const started = agent.speak(`${craft.title}。${String(craft.summary || '目前资料中没有找到项目摘要。').slice(0, 220)}`);
       return { ok: true, message: started ? '正在为你朗读项目摘要。' : '语音未开启；摘要已经显示在页面上。' };
@@ -1486,10 +1680,89 @@ export async function craftView(root, { id }) {
   agent.onToggle((open) => { if (open) collapsePanelsForAgent(); });
   syncAgentContext();
 
+  // ---- 手势系统集成 ----
+  function registerGestureHeritageGraph() {
+    const gs = window.__gestureSystem;
+    if (!gs || !graphExplorer) return;
+    try {
+      const adapter = graphExplorer.gestureAdapter?.();
+      if (!adapter) return;
+      gs.registerViewContext('craft-graph', {
+        threeContexts: [{
+          name: 'heritage-graph-3d',
+          raycaster: adapter.raycaster,
+          camera: adapter.camera,
+          getTargets: () => adapter.getRaycastTargets(),
+          getInteractiveGroups: () => adapter.getInteractiveGroups(),
+          rendererDomElement: adapter.rendererDomElement,
+          onHover: (group) => adapter.onHover(group),
+          onHoverClear: () => adapter.onHoverClear(),
+          onClick: (group) => adapter.onClick(group),
+          onDragStart: () => {},
+          onDragMove: (dx, dy) => adapter.onDragMove?.(dx, dy),
+          onDragEnd: () => {},
+          onZoom: (factor) => adapter.zoomBy?.(factor),
+          isInteractive: (group) => adapter.isInteractive?.(group) ?? true,
+        }],
+      });
+    } catch { /* gesture not available */ }
+  }
+
+  function registerGestureFinishedModel() {
+    const gs = window.__gestureSystem;
+    if (!gs || !finishedModelHandle || graphExplorer) return;
+    try {
+      const adapter = finishedModelHandle.gestureAdapter?.();
+      if (!adapter) return;
+      gs.registerViewContext('craft-finished-model', {
+        threeContexts: [{
+          name: 'particle-model-finished',
+          raycaster: null,
+          camera: null,
+          getTargets: () => [],
+          getInteractiveGroups: () => [],
+          rendererDomElement: adapter.rendererDomElement,
+          onClick: () => openHeritageGraph(),
+          onDragStart: () => adapter.startDrag?.(),
+          onDragMove: (dx, dy) => adapter.applyDrag(dx, dy),
+          onDragEnd: () => adapter.endDrag(),
+          onZoom: (factor) => adapter.zoomBy?.(factor),
+        }],
+      });
+    } catch { /* gesture not available */ }
+  }
+
+  function registerGestureScrollZones() {
+    const gs = window.__gestureSystem;
+    if (!gs) return;
+    gs.registerViewContext('craft-panels', {
+      scrollZones: [
+        { id: 'craft-reading-col', element: readingCol, options: { topZoneHeight: 60, bottomZoneHeight: 60 } },
+      ],
+    });
+  }
+
+  function unregisterGestureContexts() {
+    const gs = window.__gestureSystem;
+    if (!gs) return;
+    gs.unregisterViewContext('craft-graph');
+    gs.unregisterViewContext('craft-finished-model');
+    gs.unregisterViewContext('craft-panels');
+  }
+
+  const onGestureReady = () => {
+    registerGestureFinishedModel();
+    registerGestureHeritageGraph();
+    registerGestureScrollZones();
+  };
+  document.addEventListener('sh-crafted:gesture-ready', onGestureReady);
+  cleanups.push(() => document.removeEventListener('sh-crafted:gesture-ready', onGestureReady));
+
   // Esc：先收小蕉，再收阅读面板，再从体验退回阅读，最后回地图
   const onKey = (e) => {
     if (e.key !== 'Escape') return;
     if (document.querySelector('.modal-mask')) return; // 弹窗自行处理
+    if (graphOverlay) { closeHeritageGraph(); return; }
     if (agent.isOpen()) { agent.close(); body.classList.remove('panels-collapsed'); return; }
     if (body.classList.contains('reading-open')) { body.classList.remove('reading-open'); return; }
     if (S.phase === 'playing' || S.phase === 'finishing') {
@@ -1506,9 +1779,12 @@ export async function craftView(root, { id }) {
 
   renderPanels();
   renderIdle();
+  registerGestureScrollZones();
 
   return {
     cleanup() {
+      closeHeritageGraph();
+      unregisterGestureContexts();
       cleanups.forEach((fn) => fn());
       fields.splice(0).forEach((f) => f.destroy());
       pmHandles.splice(0).forEach((h) => { try { h.dispose(); } catch (_) {} });

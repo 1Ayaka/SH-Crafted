@@ -41,6 +41,7 @@ export async function exploreView(root) {
   let map3d = null;
   let mapViewEl = null;      // 地图视图容器（三维或平面，只构建一次）
   let mapBuildPromise = null;
+  let gestureRegisterTimer = 0;
   let listViewEl = null;
   const LIST_PAGE_SIZE = 60;
   let listRenderLimit = LIST_PAGE_SIZE;
@@ -123,6 +124,11 @@ export async function exploreView(root) {
   });
   const segMap = el('button', { class: 'on', text: '地图', onclick: () => setMode('map') });
   const segList = el('button', { text: '列表', onclick: () => setMode('list') });
+  const mapZoom = el('span', { class: 'map-zoom-controls', role: 'group', 'aria-label': '地图缩放' }, [
+    el('button', { type: 'button', text: '缩小', onclick: () => map3d?.gestureAdapter?.().zoomBy(1.18) }),
+    el('button', { type: 'button', text: '还原', onclick: () => map3d?.gestureAdapter?.().resetView() }),
+    el('button', { type: 'button', text: '放大', onclick: () => map3d?.gestureAdapter?.().zoomBy(0.84) }),
+  ]);
   let contributionDistrictId = '';
   const contributeButton = el('button', {
     class: 'toolbar-contribute', type: 'button', text: '添加文化遗产', hidden: true,
@@ -137,6 +143,7 @@ export async function exploreView(root) {
   const toolbar = el('div', { class: 'toolbar' }, [
     search,
     el('span', { class: 'seg', role: 'group', 'aria-label': '视图切换' }, [segMap, segList]),
+    mapZoom,
     contributeButton,
   ]);
   stageWrap.appendChild(toolbar);
@@ -336,6 +343,7 @@ export async function exploreView(root) {
       ]),
     ]);
     host.appendChild(projectPanel);
+    registerGestureExploreScrollZones();
     mountEditableModule(projectHeading, [{ key: 'title', element: title }], (values) => saveCraft(craft.craftId, values));
     mountEditableModule(intro, [{ key: 'summary', element: summary }], (values) => saveCraft(craft.craftId, values));
   }
@@ -480,6 +488,7 @@ export async function exploreView(root) {
       }
       map3d = instance;
       if (mode !== 'map') map3d.setActive(false);
+      registerGestureMap3D();
       wrap3d.querySelector('.map3d-loading')?.remove();
       container.appendChild(el('p', { class: 'map-caption', text: '三维模型为项目提供的行政区块模型，节点沿用模型中的历史名称（上海市核心区、南汇区、崇明县等）· 所有上海区块均可点击查看地区介绍' }));
       container.appendChild(el('div', { class: 'map-legend', role: 'note' }, [
@@ -727,6 +736,70 @@ export async function exploreView(root) {
     map3d?.setActive(true);
   }
 
+  // ---- 手势系统集成 ----
+  function registerGestureMap3D() {
+    const gs = window.__gestureSystem;
+    if (!map3d || viewDisposed) return;
+    if (!gs) {
+      clearTimeout(gestureRegisterTimer);
+      gestureRegisterTimer = window.setTimeout(registerGestureMap3D, 250);
+      return;
+    }
+    clearTimeout(gestureRegisterTimer);
+    gestureRegisterTimer = 0;
+    try {
+      const adapter = map3d.gestureAdapter?.();
+      if (!adapter) return;
+      gs.registerViewContext('explore-map3d', {
+        threeContexts: [{
+          name: 'map3d',
+          raycaster: adapter.raycaster,
+          camera: adapter.camera,
+          getTargets: () => adapter.getRaycastTargets(),
+          getInteractiveGroups: () => adapter.getDistrictNames(),
+          rendererDomElement: adapter.rendererDomElement,
+          onHover: (group, mesh) => adapter.onHover(mesh || group),
+          onHoverClear: () => adapter.onHoverClear(),
+          onClick: (group, mesh) => adapter.onClick(mesh || group),
+          onDragStart: () => {},
+          onDragMove: (dx, dy) => adapter.onDragMove?.(dx, dy),
+          onDragEnd: () => {},
+          onZoom: (factor) => adapter.zoomBy?.(factor),
+          isInteractive: () => true,
+        }],
+      });
+    } catch { /* gesture not available */ }
+  }
+
+  function registerGestureExploreScrollZones() {
+    const gs = window.__gestureSystem;
+    if (!gs) return;
+    const projectScroll = projectPanel?.querySelector('.project-story-scroll');
+    gs.registerViewContext('explore-panels', {
+      scrollZones: [
+        ...(projectScroll ? [{ id: 'explore-project-scroll', element: projectScroll, options: { topZoneHeight: 60, bottomZoneHeight: 60 } }] : []),
+      ],
+    });
+  }
+
+  function unregisterGestureExploreContexts() {
+    const gs = window.__gestureSystem;
+    if (!gs) return;
+    gs.unregisterViewContext('explore-map3d');
+    gs.unregisterViewContext('explore-panels');
+  }
+
+  // app.js loads the gesture module asynchronously. Re-register when it
+  // becomes available so map-first and gesture-first startup orders behave
+  // identically.
+  const onGestureReady = () => {
+    registerGestureMap3D();
+    if (projectPanel) registerGestureExploreScrollZones();
+  };
+  document.addEventListener('sh-crafted:gesture-ready', onGestureReady);
+  cleanups.push(() => document.removeEventListener('sh-crafted:gesture-ready', onGestureReady));
+  cleanups.push(() => clearTimeout(gestureRegisterTimer));
+
   // Esc 返回上一层状态
   const onKey = (e) => {
     if (!wrap.isConnected) return;
@@ -842,6 +915,7 @@ export async function exploreView(root) {
       clearTimeout(slipTimer);
       slip?.remove(); slip = null; slipFor = null;
       cleanups.forEach((fn) => fn());
+      unregisterGestureExploreContexts();
       exitFocus3D(true, true);
       exitFlatFocus(true);
       flushPanelExits();

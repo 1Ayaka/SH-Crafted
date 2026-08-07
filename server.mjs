@@ -6,6 +6,9 @@
 // - DeepSeek 密钥只存在于服务器进程内（启动时从 .env 或 DEEPSEEK_API_KEY 读取），
 //   绝不发送给浏览器、绝不打印日志
 import http from 'node:http';
+import net from 'node:net';
+import { createVoiceGateway } from './server/voice/voice-gateway.mjs';
+import { createVoiceSessionManager } from './server/voice/voice-session-manager.mjs';
 import { createReadStream } from 'node:fs';
 import { chmod, copyFile, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
@@ -34,6 +37,15 @@ async function loadLocalEnv() {
 
 const LOCAL_ENV = await loadLocalEnv();
 const env = (name, fallback = '') => process.env[name] ?? LOCAL_ENV[name] ?? fallback;
+
+const VOICE_STT_PROVIDER = env('VOICE_STT_PROVIDER', 'funasr-local').trim().toLowerCase();
+const VOICE_FUNASR_WS_URL = env('VOICE_FUNASR_WS_URL', 'ws://127.0.0.1:10095');
+const VOICE_ALLOWED_ORIGIN = env('VOICE_ALLOWED_ORIGIN', '').trim();
+const voiceSessions = createVoiceSessionManager({
+  ttlMs: Math.min(15 * 60 * 1000, Math.max(60 * 1000, Number(env('VOICE_SESSION_TTL_SECONDS', '300')) * 1000)),
+  maxPerIp: Math.min(5, Math.max(1, Number(env('VOICE_MAX_SESSIONS_PER_IP', '2')))),
+  bindIp: env('VOICE_BIND_SESSION_IP', 'false').toLowerCase() === 'true',
+});
 
 function arg(name) {
   const i = process.argv.indexOf(`--${name}`);
@@ -156,7 +168,9 @@ const graphNodes = () => [
   ...(editableContent?.crafts || CONTENT_SEED.crafts).map((craft) => ({
     id: graphId('heritage', craft.id), raw_id: craft.id, type: 'heritage', title: craft.title,
     aliases: [craft.title], summary: String(craft.summary || '').slice(0, 180),
-    district_id: craft.district_id || null, public: true,
+    district_id: craft.district_id || null,
+    overview_image: (editableContent?.craft_gallery || []).find((item) => item.craft_id === craft.id)?.image_url || craft.cover_path || '',
+    public: true,
   })),
   ...(editableContent?.districts || CONTENT_SEED.districts).map((district) => ({
     id: graphId('region', district.id), raw_id: district.id, type: 'region', title: district.name,
@@ -311,6 +325,43 @@ function cleanPublicUrl(value) {
   }
 }
 
+function cleanImageSource(value) {
+  const source = cleanText(value, 8_000_000);
+  if (!source) return '';
+  if (/^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/i.test(source)) return source;
+  return cleanPublicUrl(source);
+}
+
+function normalizeGraphImages(value) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 12).map((item, index) => ({
+    title: cleanText(item?.title, 160) || `节点图片 ${index + 1}`,
+    image_url: cleanImageSource(item?.image_url || item?.url),
+    description: cleanText(item?.description, 1000),
+    source_url: cleanPublicUrl(item?.source_url || item?.source || ''),
+  })).filter((item) => item.image_url);
+}
+
+function normalizeDocumentaryClips(value) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 6).map((clip, index) => ({
+    title: cleanText(clip?.title, 160) || `纪录片片段 ${index + 1}`,
+    video_url: cleanMediaSource(clip?.video_url || clip?.url || ''),
+    start_seconds: Math.max(0, Number(clip?.start_seconds ?? clip?.start ?? 0) || 0),
+    end_seconds: Math.max(0, Number(clip?.end_seconds ?? clip?.end ?? 0) || 0),
+    description: cleanText(clip?.description, 1000),
+    source_url: cleanPublicUrl(clip?.source_url || clip?.source || ''),
+  })).filter((item) => item.video_url);
+}
+
+function cleanMediaSource(value) {
+  const source = cleanText(value, 8000);
+  if (!source) return '';
+  if (/^data:video\/(mp4|webm|ogg);base64,[A-Za-z0-9+/=]+$/i.test(source)) return source;
+  if (/^(https?:\/\/|\/|assets\/|data\/)[^\s]+$/i.test(source)) return source;
+  return cleanPublicUrl(source);
+}
+
 function normalizeSubmissionSteps(value) {
   if (!Array.isArray(value)) return [];
   return value.slice(0, 12).map((step, index) => {
@@ -329,6 +380,7 @@ function normalizeSubmissionSteps(value) {
       materials,
       tools,
       actions,
+      documentary_clips: normalizeDocumentaryClips(step?.documentary_clips),
       correct_action_id: actions[0].id,
     };
   });
@@ -345,6 +397,13 @@ function normalizeSubmission(body) {
   const includeSteps = Boolean(body?.include_steps) && kind === 'full';
   const steps = includeSteps ? normalizeSubmissionSteps(body?.steps) : [];
   if (includeSteps && !steps.length) throw new Error('steps_required');
+  const overviewImages = (Array.isArray(body?.overview_images) ? body.overview_images : [])
+    .slice(0, 8).map((item, index) => ({
+      title: cleanText(item?.title, 160) || `概览图 ${index + 1}`,
+      description: cleanText(item?.description, 1000),
+      image_url: cleanImageSource(item?.image_url || item?.url),
+    })).filter((item) => item.image_url && item.description);
+  if (!overviewImages.length) throw new Error('overview_image_required');
   return {
     kind,
     district_id: districtId,
@@ -354,9 +413,16 @@ function normalizeSubmission(body) {
     history: cleanText(body?.history, 5000),
     features: cleanText(body?.features, 5000),
     source_url: cleanPublicUrl(body?.source_url),
-    cover_url: cleanPublicUrl(body?.cover_url),
+    cover_url: cleanImageSource(body?.cover_url),
     gallery_urls: [...new Set((Array.isArray(body?.gallery_urls) ? body.gallery_urls : [])
-      .slice(0, 8).map((item) => cleanPublicUrl(item)).filter(Boolean))],
+      .slice(0, 8).map((item) => cleanImageSource(item)).filter(Boolean))],
+    overview_images: overviewImages,
+    star_data: {
+      summary: cleanText(body?.star_data?.summary, 2000),
+      relations: cleanList(body?.star_data?.relations, 20),
+      keywords: cleanList(body?.star_data?.keywords, 20),
+      images: normalizeGraphImages(body?.star_data?.images),
+    },
     include_steps: includeSteps,
     steps,
     contributor_name: cleanText(body?.contributor_name, 100),
@@ -741,6 +807,7 @@ function normalizeSteps(craftId, incoming, previous) {
       correct_action_id: correct,
       quick_fill: normalizeQuickFill(quickFillInput, resourceGroups.flatMap((group) => group.options), actions, correct),
       evidence_ids: cleanList(old.evidence_ids || value?.evidence_ids, 30),
+      documentary_clips: normalizeDocumentaryClips(hasOwn(value, 'documentary_clips') ? value.documentary_clips : old.documentary_clips),
       review_status: old.review_status || 'edited_by_admin',
     };
   });
@@ -819,7 +886,7 @@ async function handleCommunityApi(req, res, urlPath) {
     if (attempt.resetAt <= now) { attempt.count = 0; attempt.resetAt = now + 60 * 60 * 1000; }
     if (attempt.count >= 5) { jsonResponse(res, 429, { error: 'submission_rate_limited' }, responseHeaders); return; }
     try {
-      const body = await readJsonBody(req, 160 * 1024);
+      const body = await readJsonBody(req, 8 * 1024 * 1024);
       if (cleanText(body.website, 200)) { jsonResponse(res, 400, { error: 'invalid_submission' }, responseHeaders); return; }
       const normalized = normalizeSubmission(body);
       attempt.count += 1;
@@ -867,11 +934,20 @@ async function publishSubmission(submission) {
       source_directory: '',
       source: 'community',
       submission_id: submission.id,
+      graph_data: {
+        summary: submission.star_data?.summary || '',
+        relations: (submission.star_data?.relations || []).map((title) => ({ type: 'tradition', title, summary: '' })),
+        keywords: submission.star_data?.keywords || [],
+        images: submission.star_data?.images || [],
+        overview_images: submission.overview_images || [],
+      },
       community_details: {
         history: submission.history || '',
         features: submission.features || '',
         source_url: submission.source_url || '',
         contributor_name: submission.contributor_name || '',
+        star_data: submission.star_data || {},
+        overview_images: submission.overview_images || [],
       },
     });
 
@@ -890,13 +966,15 @@ async function publishSubmission(submission) {
       };
     });
     next.craft_steps.push(...normalizeSteps(craftId, incomingSteps, []));
-    submission.gallery_urls.forEach((url, index) => {
+    const overviewImages = submission.overview_images?.length ? submission.overview_images : submission.gallery_urls.map((url, index) => ({ title: `概览图 ${index + 1}`, description: '社区投稿概览图片', image_url: url }));
+    overviewImages.forEach((image, index) => {
       next.craft_gallery.push({
         id: `${craftId}_work_${String(index + 1).padStart(2, '0')}`,
         sort: index + 1,
         craft_id: craftId,
-        title: `${submission.title}社区资料图 ${index + 1}`,
-        image_url: url,
+        title: image.title || `${submission.title}社区资料图 ${index + 1}`,
+        description: image.description || '',
+        image_url: image.image_url,
         source_path: '',
         evidence_id: '',
       });
@@ -958,6 +1036,56 @@ async function handleAdminApi(req, res, urlPath) {
   if (urlPath === '/api/admin/logout' && req.method === 'POST') {
     sessions.delete(session.token);
     jsonResponse(res, 200, { authenticated: false }, { 'Set-Cookie': sessionCookie(req, '', 0) });
+    return;
+  }
+
+  if (urlPath === '/api/admin/crafts/import' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req, 8 * 1024 * 1024);
+      const title = cleanText(body.title || body.name, 200);
+      const summary = cleanText(body.summary || body.description, 10000);
+      if (title.length < 2) throw new Error('title_required');
+      if (summary.length < 10) throw new Error('summary_required');
+      const requestedId = cleanText(body.id, 80).replace(/[^A-Za-z0-9_-]/g, '_');
+      const craftId = requestedId && !editableContent.crafts.some((craft) => craft.id === requestedId)
+        ? requestedId
+        : `ADMIN_${Date.now().toString(36)}_${randomBytes(3).toString('hex')}`;
+      const graph = body.graph_data || body.star_data || {};
+      const overviewImages = (Array.isArray(body.overview_images) ? body.overview_images : []).slice(0, 8).map((item, index) => ({
+        title: cleanText(item?.title, 160) || `概览图 ${index + 1}`,
+        description: cleanText(item?.description, 1000),
+        image_url: cleanImageSource(item?.image_url || item?.url),
+      })).filter((item) => item.image_url && item.description);
+      if (!overviewImages.length) throw new Error('overview_image_required');
+      const imported = await saveContent(cleanText(body.revision, 100), (next) => {
+        const sort = Math.max(0, ...next.crafts.map((craft) => Number(craft.sort) || 0)) + 1;
+        next.crafts.push({
+          id: craftId, sort, title, district_id: cleanText(body.district_id, 80),
+          category: cleanText(body.category, 100) || '类别待审核', summary,
+          cover_path: cleanImageSource(body.cover_url || body.cover_path),
+          model_path: cleanText(body.model_path || body.model_url, 1200),
+          source_directory: '', source: 'admin-import',
+          graph_data: {
+            summary: cleanText(graph.summary, 2000),
+            relations: Array.isArray(graph.relations) ? graph.relations.slice(0, 24).map((relation) => ({ type: ['tradition', 'material', 'region'].includes(relation?.type) ? relation.type : 'tradition', title: cleanText(relation?.title || relation, 160), summary: cleanText(relation?.summary, 1000), images: normalizeGraphImages(relation?.images) })).filter((relation) => relation.title) : [],
+            keywords: cleanList(graph.keywords, 30), overview_images: overviewImages, images: normalizeGraphImages(graph.images),
+          },
+        });
+        const importedSteps = Array.isArray(body.steps) ? body.steps.slice(0, 24).map((step, index) => ({
+          id: `${craftId}_step_${String(index + 1).padStart(2, '0')}`,
+          source_step_id: `${craftId}_step_${String(index + 1).padStart(2, '0')}`,
+          name: cleanText(step?.name, 200), action: cleanText(step?.description || step?.action, 5000),
+          result: cleanText(step?.result, 1000), materials: cleanList(step?.materials, 30), tools: cleanList(step?.tools, 20),
+          actions: cleanList(step?.actions, 15).map((label, actionIndex) => ({ id: `${craftId}_step_${String(index + 1).padStart(2, '0')}_action_${actionIndex + 1}`, label })),
+          documentary_clips: normalizeDocumentaryClips(step?.documentary_clips),
+        })) : [];
+        if (importedSteps.length) next.craft_steps.push(...normalizeSteps(craftId, importedSteps, []));
+      });
+      jsonResponse(res, 201, { ok: true, craft_id: craftId, revision: imported.revision });
+    } catch (error) {
+      const code = error?.code === 'content_conflict' ? 409 : error?.message === 'body_too_large' ? 413 : 400;
+      jsonResponse(res, code, { error: error?.message || 'import_failed', revision: editableContent.revision });
+    }
     return;
   }
 
@@ -1042,6 +1170,21 @@ async function handleAdminApi(req, res, urlPath) {
           if ('title' in body) item.title = cleanText(body.title, 200);
           if ('category' in body) item.category = cleanText(body.category, 100);
           if ('summary' in body) item.summary = cleanText(body.summary, 10000);
+          if ('graph_data' in body) {
+            const graph = body.graph_data && typeof body.graph_data === 'object' ? body.graph_data : {};
+            item.graph_data = {
+              summary: cleanText(graph.summary, 2000),
+              relations: Array.isArray(graph.relations) ? graph.relations.slice(0, 24).map((relation) => ({
+                id: cleanText(relation?.id, 100),
+                type: ['tradition', 'material', 'region'].includes(relation?.type) ? relation.type : 'tradition',
+                title: cleanText(relation?.title, 160),
+                summary: cleanText(relation?.summary, 1000), images: normalizeGraphImages(relation?.images),
+              })).filter((relation) => relation.title) : [],
+              keywords: cleanList(graph.keywords, 30),
+              overview_images: Array.isArray(graph.overview_images) ? graph.overview_images.slice(0, 8) : [],
+              images: normalizeGraphImages(graph.images),
+            };
+          }
         });
       } else {
         jsonResponse(res, 404, { error: 'not_found' });
@@ -1113,19 +1256,66 @@ async function handleAgentContextApi(req, res) {
   jsonResponse(res, 200, { user_role: currentSession(req) ? 'admin' : 'visitor', content_revision: editableContent.revision, graph_revision: 'compat-local' });
 }
 
+function requestIp(req) {
+  return String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown').split(',')[0].trim();
+}
+
+async function handleVoiceSessionApi(req, res) {
+  if (req.method !== 'POST') { jsonResponse(res, 405, { error: 'method_not_allowed' }); return; }
+  try {
+    const payload = await readJsonBody(req).catch(() => ({}));
+    const session = voiceSessions.create({ ip: requestIp(req), contextRevision: payload.context_revision || 'unknown' });
+    jsonResponse(res, 200, {
+      ...session,
+      transport: 'websocket', websocket_url: '/api/voice/stream', provider: VOICE_STT_PROVIDER,
+      mode: '2pass', sample_rate: 16000, channels: 1, format: 'pcm_s16le',
+      max_duration_seconds: Math.min(60, Math.max(5, Number(env('VOICE_MAX_DURATION_SECONDS', '30')))),
+      supports_partial: VOICE_STT_PROVIDER === 'funasr-local', supports_hotwords: VOICE_STT_PROVIDER === 'funasr-local',
+      raw_audio_retention: 'none',
+    });
+  } catch (error) {
+    jsonResponse(res, error?.message === 'VOICE_RATE_LIMITED' ? 429 : 503, { error: error?.message || 'voice_session_unavailable' });
+  }
+}
+
+async function handleVoiceHealthApi(req, res) {
+  if (req.method !== 'GET') { jsonResponse(res, 405, { error: 'method_not_allowed' }); return; }
+  if (VOICE_STT_PROVIDER !== 'funasr-local') { jsonResponse(res, 200, { status: 'disabled', provider: VOICE_STT_PROVIDER, streaming: false }); return; }
+  let status = 'down';
+  try {
+    const target = new URL(VOICE_FUNASR_WS_URL);
+    await new Promise((resolve, reject) => {
+      const socket = net.createConnection({ host: target.hostname, port: Number(target.port || 80) });
+      const timer = setTimeout(() => { socket.destroy(); reject(new Error('timeout')); }, 1200);
+      socket.once('connect', () => { clearTimeout(timer); socket.destroy(); resolve(); });
+      socket.once('error', (error) => { clearTimeout(timer); reject(error); });
+    });
+    status = 'reachable';
+  } catch {}
+  jsonResponse(res, status === 'reachable' ? 200 : 503, { status, provider: 'funasr-local', streaming: true });
+}
+
 async function handleVoiceConfigApi(req, res) {
   if (req.method !== 'GET') { jsonResponse(res, 405, { error: 'method_not_allowed' }); return; }
   jsonResponse(res, 200, {
-    wake_words: String(env('VOICE_WAKE_WORDS', '海派小匠')).split(',').map((item) => item.trim()).filter(Boolean).slice(0, 4),
+    wake_words: String(env('VOICE_WAKE_WORDS', '小蕉小蕉')).split(',').map((item) => item.trim()).filter(Boolean).slice(0, 4),
+    provider: VOICE_STT_PROVIDER,
     local_wake_word: false,
+    wake_word_mode: VOICE_STT_PROVIDER === 'funasr-local' ? 'server_phrase_gate_single_turn' : 'browser_phrase_gate_single_turn',
+    wake_word_status: VOICE_STT_PROVIDER === 'funasr-local' ? 'available_with_opt_in' : 'fallback_only',
+    wake_single_turn: true,
     browser_speech_fallback: true,
     tts: 'browser',
+    streaming: VOICE_STT_PROVIDER === 'funasr-local',
+    sample_rate: 16000,
+    audio_format: 'pcm_s16le',
+    max_duration_seconds: Math.min(60, Math.max(5, Number(env('VOICE_MAX_DURATION_SECONDS', '30')))),
     raw_audio_retention: 'none',
   });
 }
 
 async function handleVoiceSessionTokenApi(req, res) {
-  jsonResponse(res, 501, { error: 'voice_provider_not_configured', message: '实时语音服务尚未配置，当前可使用点击说话兼容适配或文字输入。' });
+  await handleVoiceSessionApi(req, res);
 }
 
 async function handleAgentApi(req, res, { protocol = false } = {}) {
@@ -1186,6 +1376,8 @@ const server = http.createServer(async (req, res) => {
     if (urlPath === '/api/agent/context') { await handleAgentContextApi(req, res); return; }
     if (urlPath === '/api/agent/message') { await handleAgentApi(req, res, { protocol: true }); return; }
     if (urlPath === '/api/agent/tool-result') { jsonResponse(res, 501, { error: 'client_tool_execution', message: '站内工具由前端 Tool Registry 执行，服务端不接受任意工具结果。' }); return; }
+    if (urlPath === '/api/voice/session') { await handleVoiceSessionApi(req, res); return; }
+    if (urlPath === '/api/voice/health') { await handleVoiceHealthApi(req, res); return; }
     if (urlPath === '/api/voice/config') { await handleVoiceConfigApi(req, res); return; }
     if (urlPath === '/api/voice/session-token') { await handleVoiceSessionTokenApi(req, res); return; }
     if (urlPath.startsWith('/api/community/')) { await handleCommunityApi(req, res, urlPath); return; }
@@ -1268,6 +1460,23 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+const voiceGateway = createVoiceGateway({
+  server,
+  sessions: voiceSessions,
+  upstreamUrl: VOICE_FUNASR_WS_URL,
+  allowedOrigin: VOICE_ALLOWED_ORIGIN,
+  maxDurationMs: Math.min(60, Math.max(5, Number(env('VOICE_MAX_DURATION_SECONDS', '30')))) * 1000,
+  maxBytes: Math.min(8_000_000, Math.max(256_000, Number(env('VOICE_MAX_AUDIO_BYTES', '4000000')))),
+  maxConnectionsPerIp: Math.min(3, Math.max(1, Number(env('VOICE_MAX_CONNECTIONS_PER_IP', '1')))),
+  funasr: {
+    connectTimeoutMs: Math.min(10000, Math.max(500, Number(env('VOICE_FUNASR_CONNECT_TIMEOUT_MS', '3000')))),
+    finalTimeoutMs: Math.min(10000, Math.max(1000, Number(env('VOICE_FUNASR_FINAL_TIMEOUT_MS', '5000')))),
+    chunkSize: String(env('VOICE_FUNASR_CHUNK_SIZE', '5,10,5')).split(',').map(Number).filter(Number.isFinite).slice(0, 3),
+    chunkInterval: Math.min(30, Math.max(1, Number(env('VOICE_FUNASR_CHUNK_INTERVAL', '10')))),
+  },
+});
+
+server.on('close', () => voiceGateway.close());
 server.listen(PORT, HOST, () => {
   console.log(`SH-Crafted v1 已启动: http://localhost:${PORT}/`);
 });

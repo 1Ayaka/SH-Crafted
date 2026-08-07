@@ -1,6 +1,6 @@
 import { el } from '../ui.js';
 import { adminNotice } from '../editable.js';
-import { adminState, isAdmin, loadSubmissions, login, logout, reviewSubmission, saveCraftSteps } from '../admin.js';
+import { adminState, importCraft, isAdmin, loadSubmissions, login, logout, reviewSubmission, saveCraft, saveCraftSteps } from '../admin.js';
 import { allCrafts, craftAssetUrl, ensureCraftLoaded } from '../data.js';
 import { loadCommunityStats } from '../community.js';
 import { DISTRICT_PROFILES } from '../config.js';
@@ -86,6 +86,26 @@ export async function adminHomeView(root) {
     loadCommunityStats({ refresh: true }).catch(() => ({})),
   ]);
   const pendingCount = submissionData.submissions?.length || 0;
+  const adminImportTemplate = { schema: 'sh-crafted.heritage-submission/v1', title: '', district_id: '', category: '', summary: '', cover_url: '', model_path: 'assets/models/crafts/example.glb', overview_images: [{ title: '', image_url: '', description: '' }], graph_data: { summary: '', keywords: [], images: [{ title: '', image_url: '', description: '', source_url: '' }], relations: [{ type: 'tradition', title: '', summary: '', images: [{ title: '', image_url: '', description: '' }] }] }, steps: [{ name: '', description: '', materials: [], tools: [], actions: [], documentary_clips: [{ title: '', video_url: 'https://', start_seconds: 0, end_seconds: 30, description: '', source_url: '' }] }] };
+  const importInput = el('input', { type: 'file', accept: '.json,.jsonl,application/json,application/x-ndjson' });
+  importInput.addEventListener('change', async () => {
+    const file = importInput.files?.[0]; if (!file) return;
+    try {
+      const text = (await file.text()).replace(/^\uFEFF/, '').trim();
+      const rows = /\.jsonl$/i.test(file.name) ? text.split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line)) : [JSON.parse(text)];
+      if (rows.length !== 1) throw new Error('管理员导入一次只支持一个主非遗条目');
+      const record = rows[0]?.heritage || rows[0]?.craft || rows[0];
+      await importCraft({
+        ...record,
+        graph_data: record.graph_data || record.star_data || {},
+        model_path: record.model_path || record.model_url || record.model || '',
+        overview_images: record.overview_images || [],
+      });
+      alert('主非遗导入成功，正在刷新管理列表。');
+      location.reload();
+    } catch (error) { alert(`导入失败：${error.message || 'JSON 格式错误'}`); }
+    finally { importInput.value = ''; }
+  });
   const content = el('main', { class: 'admin-dashboard' }, [
     el('div', { class: 'admin-page-heading' }, [
       el('div', {}, [
@@ -94,6 +114,8 @@ export async function adminHomeView(root) {
         el('p', { text: '返回首页、地图或详情页可以直接编辑文字；这里用于调整每个项目的制作工序。' }),
       ]),
       el('div', { class: 'admin-heading-actions' }, [
+        el('label', { class: 'btn-ghost admin-import-button' }, [el('span', { text: '导入主非遗 JSON' }), importInput]),
+        el('button', { class: 'btn-ghost', type: 'button', text: '下载管理员模板', onclick: () => { const url = URL.createObjectURL(new Blob([JSON.stringify(adminImportTemplate, null, 2)], { type: 'application/json' })); const link = document.createElement('a'); link.href = url; link.download = '主非遗导入模板.json'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 0); } }),
         el('a', { class: 'btn btn-primary', href: '#/admin/submissions', text: `审核社区投稿（${pendingCount}）` }),
         el('button', { class: 'btn-ghost', text: '退出登录', onclick: () => logout() }),
       ]),
@@ -239,6 +261,7 @@ function stepDraft(step) {
       : materials.map((name) => ({ input_name: name, output_name: name })),
     tools: [...(step.tools || [])],
     resource_visuals: (step.resource_visuals || []).map((visual) => ({ ...visual })),
+    documentary_clips: (step.documentary_clips || []).map((clip) => ({ ...clip })),
     resource_groups: step.interactionRule.resource_groups.map((group) => ({
       ...group,
       options: [...group.options],
@@ -314,6 +337,10 @@ export async function adminCraftView(root, { id }) {
     return { cleanup() {} };
   }
   const steps = craft.steps.map(stepDraft);
+  const graphData = structuredClone(craft.config?.graphData || craft.communityDetails?.star_data || { summary: '', relations: [], keywords: [] });
+  graphData.relations = Array.isArray(graphData.relations) ? graphData.relations.map((item) => typeof item === 'string' ? ({ type: 'tradition', title: item, summary: '' }) : item) : [];
+  graphData.keywords = Array.isArray(graphData.keywords) ? graphData.keywords : [];
+  graphData.images = Array.isArray(graphData.images) ? graphData.images : [];
   let activeIndex = 0;
   let dirty = false;
   let changeVersion = 0;
@@ -324,6 +351,42 @@ export async function adminCraftView(root, { id }) {
 
   const tabs = el('div', { class: 'admin-step-tabs', role: 'tablist', 'aria-label': '选择工序' });
   const editor = el('section', { class: 'admin-step-editor' });
+  const graphEditor = el('section', { class: 'admin-graph-editor' });
+  const graphSummary = el('textarea', { rows: '3', maxlength: '2000', placeholder: '星图摘要' }, [graphData.summary || '']);
+  const graphKeywords = el('input', { value: graphData.keywords.join('、'), placeholder: '关键词，用顿号分隔' });
+  const graphImages = el('textarea', { rows: '6', placeholder: '节点图片 JSON 数组' }, [JSON.stringify(graphData.images, null, 2)]);
+  const graphRelations = el('div', { class: 'admin-graph-relations' });
+  let graphDirty = false;
+  const graphState = el('span', { class: 'admin-save-status is-saved', text: '星图已保存' });
+  const markGraphDirty = () => { graphDirty = true; graphState.className = 'admin-save-status is-dirty'; graphState.textContent = '星图有未保存修改'; };
+  const renderGraphRelations = () => {
+    graphRelations.replaceChildren();
+    graphData.relations.forEach((relation, index) => {
+      const type = el('select', {}, ['tradition', 'material', 'region'].map((value) => { const option = el('option', { value, text: value === 'material' ? '材料' : value === 'region' ? '地区' : '传统' }); option.selected = relation.type === value; return option; }));
+      const title = el('input', { value: relation.title || '', placeholder: '关联节点名称' });
+      const summary = el('input', { value: relation.summary || '', placeholder: '节点说明（可选）' });
+      const images = el('textarea', { rows: '3', placeholder: '该节点图片 JSON 数组' }, [JSON.stringify(relation.images || [], null, 2)]);
+      [type, title, summary].forEach((control) => control.addEventListener('input', () => { relation.type = type.value; relation.title = title.value; relation.summary = summary.value; markGraphDirty(); }));
+      images.addEventListener('input', () => { try { relation.images = JSON.parse(images.value || '[]'); images.setCustomValidity(''); markGraphDirty(); } catch { images.setCustomValidity('请输入有效的 JSON 数组'); } });
+      graphRelations.appendChild(el('div', { class: 'admin-graph-relation-row' }, [type, title, summary, images, el('button', { type: 'button', class: 'admin-icon-button', text: '删除', onclick: () => { graphData.relations.splice(index, 1); markGraphDirty(); renderGraphRelations(); } })]));
+    });
+    graphRelations.appendChild(el('button', { class: 'admin-add-row', type: 'button', text: '添加关联节点', onclick: () => { graphData.relations.push({ type: 'tradition', title: '', summary: '' }); markGraphDirty(); renderGraphRelations(); } }));
+  };
+  [graphSummary, graphKeywords].forEach((control) => control.addEventListener('input', markGraphDirty));
+  graphImages.addEventListener('input', () => { try { graphData.images = JSON.parse(graphImages.value || '[]'); graphImages.setCustomValidity(''); markGraphDirty(); } catch { graphImages.setCustomValidity('请输入有效的 JSON 数组'); } });
+  const graphSaveButton = el('button', { class: 'btn-ghost', type: 'button', text: '保存星图资料', onclick: async () => {
+    graphSaveButton.disabled = true;
+    try {
+      graphData.summary = graphSummary.value;
+      graphData.keywords = String(graphKeywords.value || '').split(/[、,，\n]/).map((item) => item.trim()).filter(Boolean);
+      await saveCraft(craft.craftId, { graph_data: graphData });
+      graphDirty = false; graphState.className = 'admin-save-status is-saved'; graphState.textContent = '星图已保存';
+      adminNotice('星图资料已保存');
+    } catch (error) { adminNotice(error.message, true); }
+    graphSaveButton.disabled = false;
+  } });
+  graphEditor.append(el('div', { class: 'admin-section-heading' }, [el('div', {}, [el('h2', { text: '知识星图' }), el('p', { text: '维护该非遗及关联节点的文字和图片；不会覆盖已审核内容、证据或工序。' })]), el('div', {}, [graphState, graphSaveButton])]), el('label', { class: 'admin-field' }, [el('span', { text: '星图摘要' }), graphSummary]), el('label', { class: 'admin-field' }, [el('span', { text: '星图关键词' }), graphKeywords]), el('label', { class: 'admin-field' }, [el('span', { text: '主节点图片（JSON 数组）' }), graphImages, el('small', { text: '每项可填写 title、image_url、description、source_url。' })]), graphRelations);
+  renderGraphRelations();
   const saveButton = el('button', { class: 'btn btn-primary', text: '保存全部工序' });
   const saveStatus = el('span', { class: 'admin-save-status is-saved', text: '已保存' });
 
@@ -663,6 +726,7 @@ export async function adminCraftView(root, { id }) {
         guideEditor,
       ]),
       el('div', { class: 'admin-field' }, [el('label', { text: '完成结果' }), result]),
+      el('div', { class: 'admin-field' }, [el('label', { text: '纪录片片段（JSON 数组，可选）' }), (() => { const clips = el('textarea', { rows: '5', placeholder: '[{"title":"","video_url":"https://...","start_seconds":0,"end_seconds":30,"description":"","source_url":""}]' }, [JSON.stringify(step.documentary_clips || [], null, 2)]); clips.addEventListener('input', () => { try { step.documentary_clips = JSON.parse(clips.value || '[]'); clips.setCustomValidity(''); markDirty(); } catch { clips.setCustomValidity('请输入有效的 JSON 数组'); } }); return clips; })()]),
       el('div', { class: 'admin-resource-columns' }, [
         el('section', { class: 'admin-material-transform-section' }, [
           el('h3', { text: '所需材料及升级结果' }),
@@ -731,6 +795,7 @@ export async function adminCraftView(root, { id }) {
     ]),
     tabs,
     editor,
+    graphEditor,
   ]);
   render();
   const shell = await adminShell(root, 'admin', content);
@@ -741,6 +806,7 @@ export async function adminCraftView(root, { id }) {
     clearTimeout(autoSaveTimer);
     // 顶部导航等非本页按钮离开时仍尽力提交最后一次修改；本页的返回按钮会等待保存完成。
     if (dirty && !activeSave) void saveCraftSteps(craft.craftId, structuredClone(steps)).catch(() => {});
+    if (graphDirty) void saveCraft(craft.craftId, { graph_data: graphData }).catch(() => {});
     shell.cleanup();
     window.removeEventListener('beforeunload', beforeUnload);
   } };

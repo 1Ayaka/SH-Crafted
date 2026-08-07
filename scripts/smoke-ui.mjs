@@ -4,7 +4,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 
-const base = process.argv.find((arg) => arg.startsWith('--base='))?.slice(7) || 'http://127.0.0.1:7101';
+const base = process.argv.find((arg) => arg.startsWith('--base='))?.slice(7) || 'http://127.0.0.1:7100';
 const edge = process.env['PROGRAMFILES(X86)']
   ? path.join(process.env['PROGRAMFILES(X86)'], 'Microsoft', 'Edge', 'Application', 'msedge.exe')
   : 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
@@ -12,6 +12,7 @@ const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'sh-crafted-ui-'));
 const screenshots = {
   agent: path.join(os.tmpdir(), 'sh-crafted-agent-final.png'),
   complete: path.join(os.tmpdir(), 'sh-crafted-complete-final.png'),
+  graph: path.join(os.tmpdir(), 'sh-crafted-heritage-graph.png'),
   workbench: path.join(os.tmpdir(), 'sh-crafted-workbench-physics.png'),
   mapOverview: path.join(os.tmpdir(), 'sh-crafted-map-waterfall.png'),
   mapFocus: path.join(os.tmpdir(), 'sh-crafted-map-focus.png'),
@@ -75,17 +76,21 @@ try {
     const timer = setTimeout(() => {
       pending.delete(id);
       reject(new Error(`浏览器指令超时：${method}`));
-    }, 15000);
+    }, 30000);
     pending.set(id, { resolve, reject, timer });
     ws.send(JSON.stringify({ id, method, params }));
   });
   const evaluate = async (expression) => {
-    const result = await send('Runtime.evaluate', {
-      expression,
-      awaitPromise: true,
-      returnByValue: true,
-    });
-    return result.result.value;
+    try {
+      const result = await send('Runtime.evaluate', {
+        expression,
+        awaitPromise: true,
+        returnByValue: true,
+      });
+      return result.result.value;
+    } catch (error) {
+      throw new Error(`${error.message}；表达式：${String(expression).replace(/\s+/g, ' ').slice(0, 120)}`);
+    }
   };
   const screenshot = async (file) => {
     const result = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
@@ -272,6 +277,30 @@ try {
   }))()`);
   await screenshot(screenshots.complete);
 
+  await evaluate("document.querySelector('.heritage-graph-entry')?.click()");
+  await wait(1800);
+  const graph = await evaluate(`(() => {
+    const canvas = document.querySelector('.heritage-graph-canvas');
+    const overlay = document.querySelector('.heritage-graph-overlay');
+    return {
+      open: Boolean(overlay && canvas),
+      ringCount: Number(canvas?.dataset.ringCount || 0),
+      nodeCount: Number(canvas?.dataset.nodeCount || 0),
+      nodeMaterial: canvas?.dataset.nodeMaterial || '',
+      lineLengthMode: canvas?.dataset.lineLengthMode || '',
+      hoverTransition: canvas?.dataset.hoverTransition || '',
+      heading: document.querySelector('#heritage-graph-heading')?.textContent.trim() || '',
+    };
+  })()`);
+  await screenshot(screenshots.graph);
+  await evaluate("document.querySelector('.heritage-graph-close')?.click()");
+  await wait(450);
+  Object.assign(graph, await evaluate(`(() => ({
+    closed: !document.querySelector('.heritage-graph-overlay'),
+    bodyUnlocked: !document.body.classList.contains('heritage-graph-open'),
+    completionRetained: Boolean(document.querySelector('.wb-complete')),
+  }))()`));
+
   const modelCoverage = {};
   for (const craftId of ['SHIH_0007', 'SHIH_0008']) {
     await send('Page.navigate', { url: `${base}/#/craft/${craftId}` });
@@ -316,22 +345,35 @@ try {
   })()`);
   await screenshot(screenshots.mapOverview);
 
-  // Sweep the real WebGL canvas until raycasting finds a district with no
-  // projects, then use the same pointer position to enter it. This covers the
-  // interaction path rather than only trusting canvas dataset flags.
+  // Resolve the real WebGL targets synchronously through the same gesture
+  // raycaster used in production. Waiting for a render frame at every grid
+  // point made this check exceed CDP timeouts on CPU-only servers.
   const noProjectHit = await evaluate(`(async () => {
     const canvas = document.querySelector('.map3d-canvas');
-    if (!canvas) return null;
+    const system = window.__gestureSystem;
+    if (!canvas || !system?.threeAdapter) return null;
     const rect = canvas.getBoundingClientRect();
+    const { allCrafts } = await import('/js/data.js');
+    const nodeToDistrict = {
+      '上海市核心区': 'jingan', '南汇区': 'nanhui', '嘉定区': 'jiading',
+      '奉贤区': 'fengxian', '宝山区': 'baoshan', '崇明县': 'chongming',
+      '松江区': 'songjiang', '浦东新区': 'pudong', '金山区': 'jinshan',
+      '闵行区': 'minhang', '青浦区': 'qingpu',
+    };
+    const occupied = new Set(allCrafts().map((craft) => craft.config.districtId));
     for (let row = 0; row < 11; row += 1) {
       for (let col = 0; col < 17; col += 1) {
         const x = rect.left + rect.width * (0.2 + col / 16 * 0.64);
         const y = rect.top + rect.height * (0.22 + row / 10 * 0.66);
-        canvas.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: x, clientY: y }));
-        await new Promise((resolve) => setTimeout(resolve, 55));
-        const empty = document.querySelector('.slip-panel .slip-empty');
-        if (empty) {
-          return { x, y, title: document.querySelector('.slip-panel h4')?.textContent.trim() || '' };
+        const ndcX = ((x - rect.left) / rect.width) * 2 - 1;
+        const ndcY = -((y - rect.top) / rect.height) * 2 + 1;
+        const target = system.threeAdapter.raycast('map3d', ndcX, ndcY);
+        const title = target?.mesh?.userData?.district?.name || '';
+        const districtId = nodeToDistrict[title];
+        if (target && districtId && !occupied.has(districtId)) {
+          system.threeAdapter.hover('map3d', target.group, target.mesh);
+          await new Promise((resolve) => setTimeout(resolve, 80));
+          return { x, y, title };
         }
       }
     }
@@ -451,6 +493,11 @@ try {
   if (complete.externalCards !== 3) errors.push('延伸资料卡数量不是 3');
   if (complete.operationReplayVisible) errors.push('仍显示操作回看');
   if (complete.horizontalOverflow) errors.push('完成态产生横向溢出');
+  if (!graph.open || graph.ringCount < 6 || graph.nodeCount < 4) errors.push('知识星图未打开、天环不足或根节点不完整');
+  if (graph.nodeMaterial !== 'white-translucent') errors.push('知识星图节点未使用纯白半透明材质');
+  if (graph.lineLengthMode !== 'stable-id-random') errors.push('知识星图连线未使用稳定随机长度布局');
+  if (graph.hoverTransition !== 'damped-opacity-scale') errors.push('知识星图未启用阻尼悬停过渡');
+  if (!graph.closed || !graph.bodyUnlocked || !graph.completionRetained) errors.push('退出知识星图后页面未正确恢复');
   for (const craftId of ['SHIH_0007', 'SHIH_0008']) {
     if (!modelCoverage[craftId]?.canvas || modelCoverage[craftId]?.loading) {
       errors.push(`${craftId} 完成品模型未成功加载`);
@@ -490,7 +537,7 @@ try {
   if (!firstRippleDetected) errors.push('正确动作落到工作台后没有触发粒子水波扩散');
   if (idlePreview.deferredButton || !idlePreview.canvas || !idlePreview.finishedAssetLoaded) errors.push('三维预览没有在进入工艺页后自动加载');
 
-  console.log(JSON.stringify({ chat, idlePreview, complete, workbench, firstRippleDetected, modelCoverage, mapOverview, mapFocus, homeParticles, screenshots, errors }, null, 2));
+  console.log(JSON.stringify({ chat, idlePreview, complete, graph, workbench, firstRippleDetected, modelCoverage, mapOverview, mapFocus, homeParticles, screenshots, errors }, null, 2));
   if (errors.length) process.exitCode = 1;
 } finally {
   try {

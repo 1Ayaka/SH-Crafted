@@ -13,6 +13,29 @@ function cloneList(value, limit = 12) {
   )) : [];
 }
 
+// 惰性获取手势上下文（手势系统可能未初始化）
+function resolveGestureContext() {
+  try {
+    // 动态导入避免循环依赖和首屏阻塞
+    const system = window.__gestureSystem;
+    if (system && typeof system.getGestureContext === 'function') {
+      const ctx = system.getGestureContext();
+      if (ctx) {
+        return {
+          enabled: ctx.enabled,
+          state: ctx.state,
+          hovered_target: ctx.hoveredTarget ? {
+            type: ctx.hoveredTarget.type || 'unknown',
+            id: ctx.hoveredTarget.id || ctx.hoveredTarget.targetId || null,
+            title: ctx.hoveredTarget.title || null,
+          } : null,
+        };
+      }
+    }
+  } catch { /* 手势系统未初始化，返回默认值 */ }
+  return { enabled: false, state: 'DISABLED' };
+}
+
 export function buildAgentContext(hostContext = {}, voiceState = 'DISABLED') {
   const route = String(hostContext.route || location.hash.replace(/^#/, '') || '/');
   return {
@@ -26,6 +49,7 @@ export function buildAgentContext(hostContext = {}, voiceState = 'DISABLED') {
     history: cloneList(hostContext.history, 8),
     available_actions: cloneList(hostContext.available_actions || ACTIONS, 20),
     voice_state: voiceState,
+    gesture: resolveGestureContext(),
     user_role: adminState().authenticated ? 'admin' : 'visitor',
     locale: document.documentElement.lang || 'zh-CN',
     context_revision: String(hostContext.context_revision || hostContext.revision || 'local'),

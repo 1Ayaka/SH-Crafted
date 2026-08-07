@@ -801,6 +801,52 @@ export async function createParticleModel(container, url, opts = {}) {
 
   schedule();
 
+  // ---- 手势系统适配 ----
+  // 暴露旋转状态和渲染元素供手势拖动控制
+  const gestureAdapter = {
+    rendererDomElement: el,
+    startDrag() {
+      rot.dragging = true;
+      rot.moved = 999;
+      rot.vx = 0;
+      rot.vy = 0;
+      el.style.cursor = 'grabbing';
+    },
+    // 手势 drag → 模型旋转
+    applyDrag(dx, dy) {
+      if (!rot.dragging) {
+        this.startDrag();
+      }
+      rot.y += dx * 0.005;
+      rot.x += dy * 0.004;
+      rot.x = Math.max(-0.5, Math.min(0.5, rot.x));
+      rot.vy = dx * 0.005;
+      rot.vx = dy * 0.004;
+      rot.moved = 999;
+    },
+    endDrag() {
+      rot.dragging = false;
+      el.style.cursor = 'grab';
+    },
+    // 手势 palm → 取消拖拽
+    cancelDrag() {
+      rot.dragging = false;
+      rot.vx = 0;
+      rot.vy = 0;
+    },
+    // 手势点击（无拖动） → 散墨
+    triggerScatter() {
+      if (!reducedMotion) scatterAge = 0;
+    },
+    // 重置视角
+    resetView() {
+      setZoomTarget(1);
+    },
+    isDragging: () => rot.dragging,
+    getRotation: () => ({ x: rot.x, y: rot.y, dragging: rot.dragging }),
+    getElement: () => el,
+  };
+
   return {
     el,
     setActive,
@@ -826,6 +872,7 @@ export async function createParticleModel(container, url, opts = {}) {
       dyeDur = dur;
       dyeAge = 0;
     },
+    gestureAdapter: () => gestureAdapter,
     dispose() {
       setActive(false);
       document.removeEventListener('visibilitychange', onVis);

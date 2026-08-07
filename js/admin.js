@@ -77,7 +77,7 @@ async function save(path, body) {
   } catch (error) {
     if (error.status === 409) {
       state.revision = error.payload?.revision || state.revision;
-      throw new Error('内容已被另一位同事更新。请刷新页面查看最新版后再编辑。');
+      throw new Error('内容已被其他页面或操作更新。请刷新页面查看最新版后再编辑。');
     }
     if (error.status === 401) throw new Error('登录已过期，请重新登录。');
     throw new Error('保存失败，请稍后重试。');
@@ -87,6 +87,9 @@ async function save(path, body) {
 export const saveSiteTexts = (updates) => save('/api/admin/site-texts', { updates });
 export const saveDistrict = (id, fields) => save(`/api/admin/districts/${encodeURIComponent(id)}`, fields);
 export const saveCraft = (id, fields) => save(`/api/admin/crafts/${encodeURIComponent(id)}`, fields);
+export async function importCraft(payload) {
+  return api('/api/admin/crafts/import', { method: 'POST', body: JSON.stringify({ ...payload, revision: state.revision }) });
+}
 export const saveCraftSteps = (id, steps) => save(`/api/admin/crafts/${encodeURIComponent(id)}/steps`, { steps });
 
 export async function loadSubmissions(status = 'all') {

@@ -165,6 +165,7 @@ export async function loadAll(onProgress) {
       cfg.districtId = managedCraft.district_id || cfg.districtId;
       cfg.category = managedCraft.category || cfg.category;
       if (managedCraft.cover_path) cfg.heroFrame = managedCraft.cover_path.replace(`data/${pkg.directory}/`, '');
+      if (managedCraft.graph_data) cfg.graphData = managedCraft.graph_data;
     }
     const managedWorks = editorialGallery.get(pkg.video_id);
     if (managedWorks?.length) cfg.works = managedWorks.slice().sort((a, b) => (a.sort ?? 999) - (b.sort ?? 999)).map((work) => ({
@@ -237,6 +238,7 @@ export async function loadAll(onProgress) {
         material_transforms: jsonValue(step.material_transforms, []),
         tools: jsonValue(step.tools, []),
         resource_visuals: jsonValue(step.resource_visuals, []),
+        documentary_clips: jsonValue(step.documentary_clips, []),
         evidence_ids: jsonValue(step.evidence_ids, []),
         review_status: step.review_status || 'needs_review',
         managed_resource_groups: jsonValue(step.resource_groups, null),
@@ -335,6 +337,7 @@ export async function loadAll(onProgress) {
           material_transforms: jsonValue(step.material_transforms, []),
           tools: jsonValue(step.tools, []),
           resource_visuals: jsonValue(step.resource_visuals, []),
+          documentary_clips: jsonValue(step.documentary_clips, []),
           evidence_ids: [],
           managed_resource_groups: jsonValue(step.resource_groups, null),
           managed_quick_fill: jsonValue(step.quick_fill, null),
@@ -384,10 +387,14 @@ export async function loadAll(onProgress) {
         districtVerified: true,
         category: managedCraft.category || '类别待审核',
         heroFrame: managedCraft.cover_path || '',
+        modelPath: managedCraft.model_path || '',
         works,
         anchor,
         backgroundManifest: 'assets/bg2/manifest.json',
         community: true,
+        contentSource: managedCraft.source || 'community',
+        heritageLevel: managedCraft.source === 'admin-import' ? 'primary' : 'secondary',
+        graphData: managedCraft.graph_data || details.star_data || {},
       },
       allMaterials: [...new Set(managedCraftSteps.flatMap((step) => step.materials || []))],
       allTools: [...new Set(managedCraftSteps.flatMap((step) => step.tools || []))],

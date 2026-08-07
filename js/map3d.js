@@ -1276,6 +1276,50 @@ export async function createMap3D(container, hooks) {
 
   raf = requestAnimationFrame(tick);
 
+  // ---- 手势系统适配 ----
+  const districtNameFromGestureTarget = (target) => (
+    typeof target === 'string'
+      ? target
+      : target?.userData?.district?.name || target?.parent?.userData?.district?.name || null
+  );
+  const gestureAdapter = {
+    getRaycastTargets: () => raycastTargets,
+    raycaster,
+    camera,
+    rendererDomElement: renderer.domElement,
+    onHover(target) {
+      const districtName = districtNameFromGestureTarget(target);
+      applyHover(districtName);
+      hooks.onHover?.(districtName, districtName ? lastClient : null);
+    },
+    onHoverClear() { applyHover(null); },
+    onClick(target) {
+      const districtName = districtNameFromGestureTarget(target);
+      if (districtName && districts.has(districtName)) {
+        hooks.onSelect?.(districtName);
+      }
+    },
+    onDragMove(dx = 0, dy = 0) {
+      tween = null;
+      const offset = camera.position.clone().sub(controls.target);
+      const spherical = new THREE.Spherical().setFromVector3(offset);
+      spherical.theta -= Number(dx || 0) * 0.004;
+      spherical.phi = THREE.MathUtils.clamp(spherical.phi + Number(dy || 0) * 0.004, 0.24, controls.maxPolarAngle);
+      camera.position.copy(controls.target).add(new THREE.Vector3().setFromSpherical(spherical));
+      controls.update();
+    },
+    zoomBy(factor = 1) {
+      tween = null;
+      const offset = camera.position.clone().sub(controls.target);
+      const distance = THREE.MathUtils.clamp(offset.length() * Number(factor || 1), controls.minDistance, controls.maxDistance);
+      camera.position.copy(controls.target).add(offset.normalize().multiplyScalar(distance));
+      controls.update();
+    },
+    resetView() { exitFocus(); },
+    getHoveredDistrict() { return hovered || null; },
+    getDistrictNames: () => [...districts.keys()],
+  };
+
   return {
     focusDistrict,
     exitFocus,
@@ -1288,6 +1332,7 @@ export async function createMap3D(container, hooks) {
     resize,
     get focused() { return focused; },
     districtNames: [...districts.keys()],
+    gestureAdapter: () => gestureAdapter,
     dispose() {
       setActive(false);
       document.removeEventListener('visibilitychange', onVis);

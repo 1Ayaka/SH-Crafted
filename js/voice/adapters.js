@@ -8,11 +8,12 @@ export class BrowserSpeechToTextAdapter {
     if (!Recognition) throw new Error('speech_recognition_unavailable');
     return new Promise((resolve, reject) => {
       const recognition = new Recognition(); this.recognition = recognition;
+      let settled = false;
       recognition.lang = this.language; recognition.interimResults = false; recognition.continuous = continuous; recognition.maxAlternatives = 1;
       recognition.onstart = () => onStart?.();
-      recognition.onresult = (event) => { const text = event.results?.[0]?.[0]?.transcript?.trim() || ''; onText?.(text); if (resolveOnResult) resolve(text); };
-      recognition.onerror = (event) => { onError?.(event.error); reject(new Error(`speech_${event.error || 'error'}`)); };
-      recognition.onend = () => { this.recognition = null; onEnd?.(); };
+      recognition.onresult = (event) => { const text = event.results?.[0]?.[0]?.transcript?.trim() || ''; onText?.(text); if (resolveOnResult && !settled) { settled = true; resolve(text); } };
+      recognition.onerror = (event) => { onError?.(event.error); if (!settled) { settled = true; reject(new Error(`speech_${event.error || 'error'}`)); } };
+      recognition.onend = () => { this.recognition = null; onEnd?.(); if (resolveOnResult && !settled) { settled = true; resolve(''); } };
       recognition.start();
     });
   }
@@ -20,7 +21,7 @@ export class BrowserSpeechToTextAdapter {
 }
 
 export class BrowserWakeWordAdapter extends BrowserSpeechToTextAdapter {
-  constructor({ wakeWords = ['海派小匠'], ...options } = {}) { super(options); this.wakeWords = wakeWords; }
+  constructor({ wakeWords = ['小蕉小蕉'], ...options } = {}) { super(options); this.wakeWords = wakeWords; }
   async listen({ onWake, onError } = {}) {
     return super.listen({
       continuous: true, resolveOnResult: false,
@@ -33,16 +34,18 @@ export class BrowserWakeWordAdapter extends BrowserSpeechToTextAdapter {
 export class BrowserTextToSpeechAdapter {
   constructor() { this.current = null; }
   supported() { return 'speechSynthesis' in window; }
-  speak(text, { rate = 1 } = {}) {
+  speak(text, { rate = 1, onEnd, onError } = {}) {
     this.stop(); if (!this.supported()) return false;
     const utterance = new SpeechSynthesisUtterance(String(text || '')); utterance.lang = 'zh-CN'; utterance.rate = rate; this.current = utterance;
-    utterance.onend = () => { if (this.current === utterance) this.current = null; }; window.speechSynthesis.speak(utterance); return true;
+    utterance.onend = () => { if (this.current === utterance) this.current = null; onEnd?.(); };
+    utterance.onerror = () => { if (this.current === utterance) this.current = null; onError?.(); };
+    window.speechSynthesis.speak(utterance); return true;
   }
   stop() { try { window.speechSynthesis?.cancel(); } catch {} this.current = null; }
 }
 
 export class NoopLocalWakeWordAdapter {
-  constructor({ wakeWords = ['海派小匠'] } = {}) { this.wakeWords = wakeWords; }
+  constructor({ wakeWords = ['小蕉小蕉'] } = {}) { this.wakeWords = wakeWords; }
   supported() { return false; }
   async listen() { throw new Error('local_wake_word_model_not_configured'); }
   stop() {}

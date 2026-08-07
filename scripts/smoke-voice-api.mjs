@@ -1,0 +1,13 @@
+const base = process.argv.find((arg) => arg.startsWith('--base='))?.slice(7) || 'http://127.0.0.1:7100';
+const config = await fetch(`${base}/api/voice/config`).then((response) => response.json());
+const healthResponse = await fetch(`${base}/api/voice/health`);
+const health = await healthResponse.json();
+const sessionResponse = await fetch(`${base}/api/voice/session`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ context_revision: 'smoke' }) });
+const session = await sessionResponse.json();
+const errors = [];
+if (config.provider !== 'funasr-local') errors.push('voice provider is not funasr-local');
+if (config.raw_audio_retention !== 'none') errors.push('raw audio retention is not none');
+if (!session.session_id || session.transport !== 'websocket') errors.push('voice session was not issued');
+if (!['reachable', 'down', 'disabled'].includes(health.status)) errors.push('voice health response is invalid');
+console.log(JSON.stringify({ config, health, session: { ...session, session_id: session.session_id ? '[issued]' : '' }, errors }, null, 2));
+if (errors.length) process.exitCode = 1;

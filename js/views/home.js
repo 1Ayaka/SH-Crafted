@@ -16,7 +16,7 @@ import { mountEditableModule } from '../editable.js';
 export function topNav(active) {
   const editing = isAdmin();
   return el('header', { class: 'topnav' }, [
-    el('a', { class: 'brand', href: '#/explore', style: { display: 'flex', alignItems: 'center', gap: '14px' } }, [
+    el('a', { class: 'brand', href: '#/', 'aria-label': '返回初始页', style: { display: 'flex', alignItems: 'center', gap: '14px' } }, [
       el('span', { class: 'seal', text: '上海非遗' }),
       el('span', { class: 'name', text: '上海非物质文化遗产交互系统' }),
     ]),
@@ -24,6 +24,7 @@ export function topNav(active) {
       el('a', { href: '#/explore', class: active === 'explore' ? 'active' : '', text: '地图探索' }),
       active === 'explore' ? null : el('a', { href: '#/explore', class: active === 'craft' ? 'active' : '', text: '工艺互动' }),
       el('a', { href: '#/passport', class: active === 'passport' ? 'active' : '', text: '数据护照' }),
+      el('a', { href: '#/graph', class: active === 'graph' ? 'active graph-nav-link' : 'graph-nav-link', text: '知识星图' }),
       editing
         ? el('a', { href: '#/admin', class: active === 'admin' ? 'active admin-mode-link' : 'admin-mode-link', text: '工序管理' })
         : el('a', { href: '#/admin/login', class: active === 'admin' ? 'active admin-entry-link' : 'admin-entry-link', text: '管理' }),

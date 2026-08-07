@@ -85,7 +85,17 @@ sudo systemctl status sh-crafted
 
 ```bash
 curl -I http://127.0.0.1:7100/
+npm run gesture:test
 ```
+
+手势交互不需要额外服务端端口，但浏览器摄像头权限要求站点使用 HTTPS（本机 localhost 除外）。模型文件位于仓库的 `vendor/mediapipe/`，部署后应额外检查：
+
+```bash
+curl -I https://你的域名/vendor/mediapipe/hand_landmarker.task
+curl -I https://你的域名/vendor/mediapipe/vision_bundle.mjs
+```
+
+手势首次开启会先显示本地处理说明，用户确认后才申请摄像头权限。完整手势操作、浏览器兼容性、故障排查和回滚说明见 [`docs/手势交互部署与使用.md`](docs/手势交互部署与使用.md)。
 
 ## 4. 绑定域名与 Nginx
 

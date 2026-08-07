@@ -19,6 +19,9 @@ const intentContext = { visible_nodes: [
 ] };
 assert.deepEqual(resolveIntent('打开第二个', intentContext), { name: 'open_node', args: { node_id: 'heritage:two', focus_camera: true, open_summary: true } });
 assert.equal(resolveIntent('看看七宝皮影戏', intentContext).args.node_id, 'heritage:one');
+const ivoryIntent = resolveIntent('我想看一下还有什么象牙非遗', intentContext);
+assert.equal(ivoryIntent.name, 'open_node');
+assert.equal(ivoryIntent.args.node_id, 'tradition:ivory_carving');
 
 const changes = [];
 const machine = createVoiceStateMachine({ onChange: (next) => changes.push(next) });

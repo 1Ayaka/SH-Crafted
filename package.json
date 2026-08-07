@@ -18,9 +18,20 @@
     "admin:test-ui": "node scripts/smoke-admin-ui.mjs",
     "community:test": "node scripts/smoke-community-api.mjs",
     "agent:test-tools": "node scripts/test-agent-tools.mjs",
-    "material:test": "node scripts/test-material-flow.mjs"
+    "material:test": "node scripts/test-material-flow.mjs",
+    "graph:test": "node scripts/test-heritage-graph.mjs",
+    "graph:test-ui": "node scripts/smoke-heritage-graph-ui.mjs",
+    "gesture:test": "node scripts/test-gesture.mjs",
+    "voice:test": "node scripts/test-voice-state-machine.mjs",
+    "voice:test-protocol": "node scripts/test-funasr-protocol.mjs",
+    "voice:test-api": "node scripts/smoke-voice-api.mjs",
+    "voice:test-integration": "node scripts/smoke-funasr-service.mjs"
   },
   "engines": {
     "node": ">=22.0.0"
+  },
+  "dependencies": {
+    "@mediapipe/tasks-vision": "^0.10.18",
+    "ws": "^8.21.0"
   }
 }
