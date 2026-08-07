@@ -1,9 +1,9 @@
 {
-  "name": "sh-crafted",
+  "name": "tanwuzhi",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "上海非物质文化遗产交互体验",
+  "description": "探物志 - 上海非遗交互数字平台",
   "scripts": {
     "start": "node server.mjs",
     "dev": "node server.mjs",
@@ -17,6 +17,8 @@
     "content:seed": "node scripts/content-seed.mjs",
     "admin:test-ui": "node scripts/smoke-admin-ui.mjs",
     "community:test": "node scripts/smoke-community-api.mjs",
+    "content:migrate": "node scripts/migrate-content-store.mjs",
+    "content:backup": "node scripts/backup-content-store.mjs",
     "agent:test-tools": "node scripts/test-agent-tools.mjs",
     "material:test": "node scripts/test-material-flow.mjs",
     "graph:test": "node scripts/test-heritage-graph.mjs",

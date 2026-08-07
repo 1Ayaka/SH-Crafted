@@ -1,5 +1,5 @@
 [Unit]
-Description=SH-Crafted web application
+Description=探物志 web application
 After=network-online.target
 Wants=network-online.target
 

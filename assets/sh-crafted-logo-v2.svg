@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">探物志 logo, square seal</title>
+  <desc id="desc">A solid moss-green seal with a terracotta woven-line symbol.</desc>
+  <rect x="68" y="68" width="376" height="376" rx="108" fill="#606C38"/>
+  <path
+    d="M160 176h112v80h80v112H240v-80h-80V176Zm112 80h80v-80"
+    fill="none"
+    stroke="#C66B3D"
+    stroke-width="34"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

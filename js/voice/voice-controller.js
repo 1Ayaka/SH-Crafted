@@ -156,9 +156,10 @@ export function createVoiceController({ onTranscript, onPartialTranscript, onSta
       } catch (error) {
         if (generation !== loopGeneration || destroyed || !preferences.wakeEnabled || String(error?.message).includes('CANCELLED')) return;
         onNotice?.(errorMessage(error));
+        preferences.wakeEnabled = false;
+        persist();
         transition(VOICE_STATES.ERROR, { error: error?.message });
-        await new Promise((resolve) => setTimeout(resolve, 700));
-        transition(VOICE_STATES.WAKE_LISTENING, { reason: 'retry' });
+        return;
       }
     }
   }
@@ -167,7 +168,7 @@ export function createVoiceController({ onTranscript, onPartialTranscript, onSta
     if (destroyed) return;
     await loadConfig();
     if (provider === 'disabled') throw new Error('FUNASR_UNAVAILABLE');
-    if (machine.state() === VOICE_STATES.SUSPENDED) machine.reset({ reason: 'user_resume' });
+    if ([VOICE_STATES.SUSPENDED, VOICE_STATES.ERROR].includes(machine.state())) machine.reset({ reason: 'user_resume' });
     else if (machine.state() !== VOICE_STATES.DISABLED) cancelRecognition();
     loopGeneration += 1;
     transition(VOICE_STATES.REQUESTING_PERMISSION);
@@ -179,8 +180,14 @@ export function createVoiceController({ onTranscript, onPartialTranscript, onSta
       return;
     }
     const resumeWake = preferences.wakeEnabled;
-    const text = await recognizeOnce({ wakeScan: false });
-    await processSingleCommand(text);
+    try {
+      const text = await recognizeOnce({ wakeScan: false });
+      await processSingleCommand(text);
+    } catch (error) {
+      onNotice?.(errorMessage(error));
+      transition(VOICE_STATES.ERROR, { error: error?.message });
+      throw error;
+    }
     if (resumeWake && !destroyed) {
       const generation = ++loopGeneration;
       void runWakeLoop(generation);

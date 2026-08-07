@@ -113,14 +113,14 @@ try {
   await evaluate(`(() => {
     const input = document.querySelector('.ap-input-row input');
     if (!input) return false;
-    input.value = '嘉定竹刻有哪些历史资料？';
+    input.value = '竹子';
     document.querySelector('.ap-input-row .btn')?.click();
     return true;
   })()`);
   for (let attempt = 0; attempt < 30; attempt++) {
     const answered = await evaluate(`(() => (
       !document.querySelector('.ap-thinking')
-      && Boolean(document.querySelector('.ap-kb-details'))
+      && Boolean(document.querySelector('.ap-kb-details, .ap-explore-link, .ap-followup'))
     ))()`);
     if (answered) break;
     await wait(1000);
@@ -131,6 +131,9 @@ try {
     agentMessages: document.querySelectorAll('.ap-msg.agent').length,
     knowledgeDrawers: document.querySelectorAll('.ap-kb-details').length,
     knowledgeCollapsed: [...document.querySelectorAll('.ap-kb-details')].every((item) => !item.open),
+    explorationLinks: document.querySelectorAll('.ap-explore-link').length,
+    followups: document.querySelectorAll('.ap-followup').length,
+    bambooGraphLink: [...document.querySelectorAll('.ap-explore-link')].some((node) => node.textContent.includes('竹材') && node.textContent.includes('打开关系星图')),
     oppositeSides: (() => {
       const agent = [...document.querySelectorAll('.ap-msg.agent .bubble')].at(-1)?.getBoundingClientRect();
       const user = [...document.querySelectorAll('.ap-msg.user .bubble')].at(-1)?.getBoundingClientRect();
@@ -152,6 +155,15 @@ try {
       )),
     };
   })()`);
+
+  await evaluate(`(() => {
+    const link = [...document.querySelectorAll('.ap-explore-link')].find((node) => node.textContent.includes('竹材'));
+    link?.click();
+  })()`);
+  await wait(900);
+  chat.bambooGraphOpened = await evaluate("decodeURIComponent(location.hash).includes('/graph/material:bamboo')");
+  await evaluate("location.hash = '#/craft/SHIH_0001'");
+  await wait(2800);
 
   await evaluate("document.querySelector('.ap-close')?.click(); document.querySelector('.workbench-col .btn-primary')?.click()");
   await wait(900);
@@ -486,6 +498,10 @@ try {
   if (!chat.panelOpen) errors.push('小蕉面板未打开');
   if (!chat.agentMessages || chat.avatars !== chat.agentMessages) errors.push('小蕉消息头像数量不一致');
   if (!chat.knowledgeDrawers || !chat.knowledgeCollapsed) errors.push('知识库折叠状态异常');
+  if (!chat.explorationLinks) errors.push('智能体未生成可点击的图谱探索入口');
+  if (chat.followups < 2) errors.push('智能体未生成两个延伸问题');
+  if (!chat.bambooGraphLink) errors.push('“竹子”未生成竹材关系星图入口');
+  if (!chat.bambooGraphOpened) errors.push('竹材关系星图入口无法完成站内跳转');
   if (!chat.oppositeSides) errors.push('用户与小蕉消息未形成左右布局');
   if (chat.horizontalOverflow) errors.push('小蕉面板产生横向溢出');
   if (!complete.visible) errors.push('未进入完成态');

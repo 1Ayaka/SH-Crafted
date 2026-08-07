@@ -1,4 +1,4 @@
-# SH-Crafted 非遗投稿 JSON 标准
+# 探物志 非遗投稿 JSON 标准
 
 版本：`sh-crafted.heritage-submission/v1`
 

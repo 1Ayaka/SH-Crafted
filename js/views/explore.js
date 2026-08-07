@@ -844,6 +844,7 @@ export async function exploreView(root) {
         return { ok: true, node_id };
       }
       if (parsed?.type === 'region') return this.openRegion({ region_id: node_id });
+      if (['material', 'tradition'].includes(parsed?.type)) { transitionTo(`#/graph/${encodeURIComponent(node_id)}`); return { ok: true, node_id }; }
       throw Object.assign(new Error('当前页面不支持打开这种节点。'), { code: 'unsupported_node_type' });
     },
     async openHeritageDetail({ heritage_id }) { return this.openNode({ node_id: heritage_id }); },

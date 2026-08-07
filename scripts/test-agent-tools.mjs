@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createToolRegistry } from '../js/agent/tool-registry.js';
 import { createVoiceStateMachine, VOICE_STATES } from '../js/voice/voice-state-machine.js';
 import { resolveIntent } from '../js/agent/intent-resolver.js';
+import { heritageForGraphTarget, searchGraph } from '../js/agent/graph-adapter.js';
 
 globalThis.document = { documentElement: { lang: 'zh-CN' } };
 globalThis.location = { hash: '#/explore' };
@@ -13,6 +14,23 @@ assert.equal((await registry.execute('search_graph', { query: '七宝', extra: t
 assert.equal((await registry.execute('search_graph', { query: '七宝', limit: '3' })).error.code, 'invalid_arguments');
 assert.equal((await registry.execute('open_node', { node_id: 'heritage:missing' })).error.code, 'node_not_found');
 assert.equal((await registry.execute('get_current_context')).ok, true);
+const bambooResults = searchGraph('竹子', { limit: 8 });
+assert.equal(bambooResults.some((node) => node.id === 'material:bamboo'), true);
+for (const title of ['嘉定竹刻', '南桥撕纸', '药斑布', '象牙篾丝编织', '崇明土布', '月份牌年画', '七宝皮影戏', '毛氏风筝']) {
+  assert.equal(searchGraph(title, { types: ['heritage'], limit: 4 }).some((node) => node.type === 'heritage'), true, `${title} 未命中非遗节点`);
+}
+const bambooHeritage = heritageForGraphTarget('material:bamboo').nodes;
+assert.equal(bambooHeritage.some((node) => node.type === 'heritage'), true);
+assert.equal(bambooHeritage.some((node) => /竹刻|风筝/.test(node.title)), true);
+assert.equal(resolveIntent('竹子', { visible_nodes: [] }), null);
+assert.equal(resolveIntent('打开竹材', { visible_nodes: [] }).name, 'open_node');
+let openedNode = null;
+const navigationRegistry = createToolRegistry({
+  getContext: () => ({ route: '/craft/SHIH_0001', page_type: 'heritage_detail' }),
+  host: { openNode: async ({ node_id }) => { openedNode = node_id; return { ok: true }; } },
+});
+assert.equal((await navigationRegistry.execute('open_node', { node_id: 'material:bamboo' })).ok, true);
+assert.equal(openedNode, 'material:bamboo');
 const intentContext = { visible_nodes: [
   { id: 'heritage:one', type: 'heritage', title: '七宝皮影戏', index: 1 },
   { id: 'heritage:two', type: 'heritage', title: '象牙篾丝编织', index: 2 },

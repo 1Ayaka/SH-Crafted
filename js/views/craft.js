@@ -1662,6 +1662,7 @@ export async function craftView(root, { id }) {
       const parsed = parseGraphId(node_id);
       if (parsed?.type === 'heritage') { transitionTo(`#/craft/${encodeURIComponent(parsed.rawId)}`); return { ok: true, node_id }; }
       if (parsed?.type === 'region') { transitionTo('#/explore'); return { ok: true, node_id }; }
+      if (['material', 'tradition'].includes(parsed?.type)) { transitionTo(`#/graph/${encodeURIComponent(node_id)}`); return { ok: true, node_id }; }
       throw Object.assign(new Error('当前页面暂不支持打开这种节点。'), { code: 'unsupported_node_type' });
     },
     async openHeritageDetail({ heritage_id }) { return this.openNode({ node_id: heritage_id }); },

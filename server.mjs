@@ -1,4 +1,4 @@
-// SH-Crafted v1：依赖为零的静态文件服务器（node:http）+ DeepSeek 代理（/api/agent）
+// 探物志：依赖为零的静态文件服务器（node:http）+ DeepSeek 代理（/api/agent）
 // 用法: npm run dev -- --port 7100 --host 127.0.0.1
 // 也支持环境变量 PORT / HOST，默认端口 7100
 // 安全规则：
@@ -15,6 +15,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { dirname, extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildContentSeed } from './scripts/content-seed.mjs';
+import { createUnifiedContentStore } from './server/unified-content-store.mjs';
 
 const ROOT = fileURLToPath(new URL('.', import.meta.url));
 
@@ -68,6 +69,8 @@ const configuredContentStorePath = env('CONTENT_STORE_PATH').trim();
 const CONTENT_STORE_PATH = normalize(configuredContentStorePath || join(ROOT, '.content', 'content.json'));
 const configuredCommunityStorePath = env('COMMUNITY_STORE_PATH').trim();
 const COMMUNITY_STORE_PATH = normalize(configuredCommunityStorePath || join(ROOT, '.content', 'community.json'));
+const configuredContentDbPath = env('CONTENT_DB_PATH').trim();
+const CONTENT_DB_PATH = normalize(configuredContentDbPath || join(dirname(CONTENT_STORE_PATH), 'content.db'));
 const CONTENT_SEED = await buildContentSeed();
 const sessions = new Map();
 const loginAttempts = new Map();
@@ -122,12 +125,43 @@ function publicSource(source) {
   };
 }
 
+function editableKnowledgeChunks(craftId = null) {
+  const crafts = editableContent?.crafts || [];
+  const steps = editableContent?.craft_steps || [];
+  const selected = crafts.filter((craft) => !craftId || craft.id === craftId);
+  const chunks = [];
+  for (const craft of selected) {
+    const graph = craft.graph_data || {};
+    const relations = Array.isArray(graph.relations)
+      ? graph.relations.map((item) => `${item.title || item}${item.summary ? `：${item.summary}` : ''}`).join('；')
+      : '';
+    const text = [craft.summary, craft.history, craft.features, graph.summary, relations].filter(Boolean).join('\n');
+    if (text) chunks.push({
+      chunk_id: `content_${craft.id}_overview`, kind: 'published_content', title: craft.title, text,
+      craft_ids: [craft.id], evidence_ids: [], source_ids: [], authority_tier: null, review_status: 'edited_by_admin',
+    });
+    for (const [index, step] of steps.filter((item) => item.craft_id === craft.id).entries()) {
+      const stepText = [step.name, step.action, step.guide_text, step.result,
+        ...(Array.isArray(step.materials) ? step.materials : []), ...(Array.isArray(step.tools) ? step.tools : [])]
+        .filter(Boolean).join('；');
+      if (!stepText) continue;
+      chunks.push({
+        chunk_id: `content_${craft.id}_step_${step.id || index + 1}`, kind: 'published_process_step',
+        title: `${craft.title}：${step.name || `工序 ${index + 1}`}`, text: stepText,
+        craft_ids: [craft.id], evidence_ids: step.evidence_ids || [], source_ids: [], authority_tier: null,
+        review_status: step.review_status || 'edited_by_admin',
+      });
+    }
+  }
+  return chunks;
+}
+
 function searchKnowledge(query, craftId = null, limit = 8) {
   const q = searchUnits(query);
-  if (!q.clean || !KNOWLEDGE_BASE.chunks.length) return [];
+  if (!q.clean) return [];
   const kindBoost = { external_fact: 6, video_summary: 4, video_claim: 3, video_evidence: 2, process_step: 2, source_profile: 1, entity: 0 };
   const authorityBoost = { A: 4, B: 3, C: 1 };
-  return KNOWLEDGE_BASE.chunks
+  return [...KNOWLEDGE_BASE.chunks, ...editableKnowledgeChunks(craftId)]
     .filter((chunk) => !craftId || !chunk.craft_ids?.length || chunk.craft_ids.includes(craftId))
     .map((chunk) => {
       const haystack = `${chunk.title || ''}${chunk.text || ''}`;
@@ -237,11 +271,14 @@ function buildSystemPrompt(ctx = {}) {
   const lines = [
     '你是「小蕉」，一只正在收集上海非物质文化遗产资料的小猫助手，说话带一点猫的气质但克制。',
     '规则：',
-    '1. 证据优先：只依据下面提供的本项目资料（纪录片转写与知识草稿）回答；资料未提及的内容，回答「现有资料无法确认」，绝不编造。',
+    '1. 项目资料优先：先使用下面提供的纪录片、知识库和图谱资料。资料不足时可以补充合理的通识解释或探索性推测，但每个没有项目资料直接支持的段落必须以「【AI生成】」开头。',
     '2. 引用证据时附上时间码，格式【mm:ss–mm:ss】。',
     '3. 所有资料均为 AI 自动抽取的草稿（待人工审核），涉及事实表述时自然地带出「待审核」意识。',
     '4. 你不是传承人，不冒充传承人，不提供真实工艺教学级指导。',
-    '5. 回答简洁（一般不超过 150 字），可用短句分点。',
+    '5. 回答应当饱满但易读，一般为 300—500 个汉字。优先组织为：直接回答、关系与背景、两条延伸知识、下一步探索；不要为了凑长度重复。',
+    '6. 主动推测用户下一步可能想了解的方向，例如相关材料、地区、工艺或项目，但只能推荐下方提供的站内候选；链接和跳转由前端生成，不要编造 URL。',
+    '7. 解释某项技艺为何在某地发展时，可以从气候、原料、交通、市场和生活方式提出综合判断。项目资料没有直接支持的部分必须标注「【AI生成】」，并使用“可能、通常、可从……理解”等措辞。',
+    '8. 即使使用 AI 通识补充，也不得编造具体传承人、精确年份、名录等级、机构结论、引文或来源链接。',
     '',
     `当前项目：${craft.title || '未知'}（${craft.id || ''}）`,
   ];
@@ -259,6 +296,11 @@ function buildSystemPrompt(ctx = {}) {
   }
   if (ctx.inventory) lines.push(`用户材料状态：${ctx.inventory}`);
   if (ctx.failure_count) lines.push(`用户已连续失败 ${ctx.failure_count} 次，可适当鼓励但不代做。`);
+  if (ctx.exploration_candidates?.length) {
+    lines.push('', '本次可推荐的站内探索入口（均由前端现有图谱检索产生）：');
+    ctx.exploration_candidates.slice(0, 6).forEach((item) => lines.push(`- ${item.title}（${item.type}；${item.id}；${item.label}）`));
+    lines.push('可以在回答中自然提到其中一至两个名称；不得虚构候选之外的站内链接。');
+  }
   if (craft.steps?.length) {
     lines.push('', '候选工序（待审核）：');
     craft.steps.forEach((s, i) => lines.push(`${i + 1}. ${s.name}——${s.action}`));
@@ -491,10 +533,7 @@ async function loadContentStore() {
 }
 
 async function writeContentStore(content) {
-  await mkdir(dirname(CONTENT_STORE_PATH), { recursive: true });
-  const temporary = `${CONTENT_STORE_PATH}.tmp-${process.pid}`;
-  await writeFile(temporary, `${JSON.stringify(content, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
-  await rename(temporary, CONTENT_STORE_PATH);
+  return unifiedStore.write('content', content);
 }
 
 function saveContent(expectedRevision, mutate) {
@@ -517,10 +556,7 @@ function saveContent(expectedRevision, mutate) {
 }
 
 async function writeCommunityStore(content) {
-  await mkdir(dirname(COMMUNITY_STORE_PATH), { recursive: true });
-  const temporary = `${COMMUNITY_STORE_PATH}.tmp-${process.pid}`;
-  await writeFile(temporary, `${JSON.stringify(content, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
-  await rename(temporary, COMMUNITY_STORE_PATH);
+  return unifiedStore.write('community', content);
 }
 
 async function loadCommunityStore() {
@@ -815,8 +851,21 @@ function normalizeSteps(craftId, incoming, previous) {
   });
 }
 
-editableContent = await loadContentStore();
-communityState = await loadCommunityStore();
+const unifiedStore = await createUnifiedContentStore({
+  dbPath: CONTENT_DB_PATH,
+  legacyContentPath: CONTENT_STORE_PATH,
+  legacyCommunityPath: COMMUNITY_STORE_PATH,
+  seedContent: CONTENT_SEED,
+  seedCommunity: {
+    version: 1,
+    revision: makeRevision(),
+    updated_at: new Date().toISOString(),
+    engagement: {},
+    submissions: [],
+  },
+});
+editableContent = unifiedStore.content;
+communityState = unifiedStore.community;
 
 async function handleContentApi(req, res) {
   if (req.method !== 'GET') {
@@ -1212,7 +1261,7 @@ async function handleKnowledgeSearchApi(req, res) {
     const craftId = /^SHIH_\d{4}$/.test(String(payload.craft_id || '')) ? String(payload.craft_id) : null;
     if (!query) { json(400, { error: 'empty_query' }); return; }
     const results = searchKnowledge(query, craftId, payload.limit);
-    json(200, { query, craft_id: craftId, count: results.length, total_chunks: KNOWLEDGE_BASE.chunks.length, results });
+    json(200, { query, craft_id: craftId, count: results.length, total_chunks: KNOWLEDGE_BASE.chunks.length + editableKnowledgeChunks(craftId).length, results });
   } catch (err) {
     json(err?.message === 'body_too_large' ? 413 : 400, { error: err?.message || 'bad_request' });
   }
@@ -1478,7 +1527,19 @@ const voiceGateway = createVoiceGateway({
   },
 });
 
-server.on('close', () => voiceGateway.close());
+let shuttingDown = false;
+const shutdown = () => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(1), 5000).unref();
+};
+process.once('SIGTERM', shutdown);
+process.once('SIGINT', shutdown);
+server.on('close', () => {
+  voiceGateway.close();
+  unifiedStore.close();
+});
 server.listen(PORT, HOST, () => {
-  console.log(`SH-Crafted v1 已启动: http://localhost:${PORT}/`);
+  console.log(`探物志已启动: http://localhost:${PORT}/`);
 });

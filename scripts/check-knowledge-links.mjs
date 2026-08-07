@@ -17,7 +17,7 @@ async function check(source, index) {
       redirect: 'follow',
       signal: AbortSignal.timeout(25000),
       headers: {
-        'User-Agent': 'SH-Crafted-KB-LinkCheck/1.0 (+https://avonana.site)',
+        'User-Agent': 'Tanwuzhi-KB-LinkCheck/1.0 (+https://avonana.site)',
         Accept: 'text/html,application/xhtml+xml,application/pdf,*/*;q=0.5',
         Range: 'bytes=0-2047',
       },

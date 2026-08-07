@@ -29,6 +29,9 @@ function visibleTarget(text, context) {
   if (matches.length > 1) return { kind: 'ambiguous', candidates: matches.slice(0, 3) };
   const global = searchGraph(clean, { limit: 4 });
   if (global.length === 1) return { kind: 'node', node: global[0] };
+  if (global.length > 1 && global[0].score >= 1.5 && global[0].score - global[1].score >= 0.5) {
+    return { kind: 'node', node: global[0] };
+  }
   if (global.length > 1) return { kind: 'ambiguous', candidates: global.slice(0, 3) };
   return { kind: 'none' };
 }
@@ -63,7 +66,9 @@ export function resolveIntent(input, context) {
   for (const [pattern, relation] of RELATION_RE) if (pattern.test(text)) return { name: 'expand_branch', args: { relation } };
 
   const target = visibleTarget(text, context);
-  if (/打开|查看|看看|进入|带我|详情|同类项目/.test(text) || target.kind !== 'none') {
+  const navigationRequested = /打开|查看|看看|进入|带我|详情|同类项目/.test(text)
+    || /^(?:第\s*)?[一二三四五六七八九十\d]+个?$|^(这个|它|刚才那个|当前项目)$/.test(text);
+  if (navigationRequested) {
     if (target.kind === 'ambiguous') return { clarification: `你想打开${target.candidates.map((item) => item.title).join('，还是')}？`, candidates: target.candidates };
     if (target.kind === 'error') return { clarification: target.message };
     if (target.kind === 'node') {

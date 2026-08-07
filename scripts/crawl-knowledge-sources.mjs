@@ -54,7 +54,7 @@ async function allowedByRobots(url) {
   const parsed = new URL(url);
   const robotsUrl = `${parsed.origin}/robots.txt`;
   try {
-    const response = await fetch(robotsUrl, { headers: { 'User-Agent': 'SH-Crafted-KB/1.0 (+https://avonana.site)' }, signal: AbortSignal.timeout(10000) });
+    const response = await fetch(robotsUrl, { headers: { 'User-Agent': 'Tanwuzhi-KB/1.0 (+https://avonana.site)' }, signal: AbortSignal.timeout(10000) });
     if (!response.ok) return { allowed: true, robots_url: robotsUrl, status: response.status };
     const body = await response.text();
     return { allowed: parseRobots(body, parsed.pathname), robots_url: robotsUrl, status: response.status };
@@ -75,7 +75,7 @@ for (const source of sources) {
   try {
     const response = await fetch(source.url, {
       redirect: 'follow', signal: AbortSignal.timeout(25000),
-      headers: { 'User-Agent': 'SH-Crafted-KB/1.0 (+https://avonana.site)', Accept: 'text/html,application/xhtml+xml' },
+      headers: { 'User-Agent': 'Tanwuzhi-KB/1.0 (+https://avonana.site)', Accept: 'text/html,application/xhtml+xml' },
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const contentType = response.headers.get('content-type') || '';

@@ -172,6 +172,10 @@ try {
   if (!persistedContent.payload.crafts.some((craft) => craft.id === craftId)) throw new Error('published content did not persist after restart');
   console.log(`社区 API 冒烟测试通过：${craftId}`);
 } finally {
-  if (server && !server.killed) server.kill();
+  if (server && !server.killed) {
+    const exited = new Promise((resolve) => server.once('exit', resolve));
+    server.kill();
+    await exited;
+  }
   await rm(temporary, { recursive: true, force: true });
 }

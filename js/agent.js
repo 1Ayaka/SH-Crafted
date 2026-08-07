@@ -6,6 +6,7 @@ import { evidenceTimecode } from './data.js';
 import { buildAgentContext as buildUIAgentContext } from './agent/context-builder.js';
 import { createToolRegistry } from './agent/tool-registry.js';
 import { resolveIntent } from './agent/intent-resolver.js';
+import { getGraphNode, heritageForGraphTarget, relationsForNode, searchGraph } from './agent/graph-adapter.js';
 import { createVoiceController } from './voice/voice-controller.js';
 import { VOICE_STATES } from './voice/voice-state-machine.js';
 
@@ -45,13 +46,39 @@ function ensureVoice() {
     onPartialTranscript(text) {
       if (panel.nodes.voiceTranscript) panel.nodes.voiceTranscript.textContent = text ? `正在识别：${text}` : '';
     },
-    onNotice(text) { if (panel.open) addMsg('agent', [el('p', { text })], '小蕉'); },
+    onNotice(text) {
+      const tone = /不可用|失败|拒绝|中断|错误|没有听到/.test(String(text || '')) ? 'error' : 'info';
+      showVoiceFeedback(text, tone);
+    },
     onStateChange(next) {
       panel.voiceStatus = next;
       panel.nodes.voiceStatus && updateVoiceStatus();
     },
   });
   return panel.voice;
+}
+
+function showVoiceFeedback(text, tone = 'info') {
+  const node = panel.nodes.voiceFeedback;
+  if (!node) return;
+  const normalized = String(text || '').trim();
+  if (node.textContent === normalized && node.dataset.tone === tone) return;
+  node.textContent = normalized;
+  node.dataset.tone = tone;
+  node.hidden = !normalized;
+}
+
+function voiceFailureText(error) {
+  if (error?.name === 'NotAllowedError' || error?.message === 'NotAllowedError') {
+    return '麦克风权限被拒绝。请在浏览器地址栏的权限设置中允许麦克风，再点击恢复。';
+  }
+  const messages = {
+    FUNASR_UNAVAILABLE: '服务器语音识别暂时不可用，请检查 FunASR 服务或 SSH 隧道。',
+    VOICE_CONNECTION_FAILED: '无法连接语音识别服务，请检查 SSH 隧道是否仍在运行。',
+    VOICE_CONNECTION_CLOSED: '语音识别连接已中断，请检查 SSH 隧道后重试。',
+    VOICE_UPSTREAM_TIMEOUT: '语音识别响应超时，请稍后重试。',
+  };
+  return messages[String(error?.message || '')] || '麦克风暂时不可用。请检查设备、浏览器权限或语音服务。';
 }
 
 function ensureRegistry() {
@@ -88,7 +115,7 @@ async function runToolCommand(query) {
   const intent = resolveIntent(query, currentAgentContext());
   if (!intent) return false;
   if (intent.clarification) {
-    addMsg('agent', [el('p', { text: intent.clarification })], '小蕉');
+    addGuidedAnswer([el('p', { text: intent.clarification })], query, panel.craft);
     return true;
   }
   const registry = ensureRegistry();
@@ -228,12 +255,17 @@ async function askModel(query, retrieved, parentSignal) {
   if (parentSignal?.aborted) relayAbort();
   else parentSignal?.addEventListener('abort', relayAbort, { once: true });
   try {
+    const exploration = explorationPlan(query, panel.craft);
     const res = await fetch('/api/agent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         messages: [{ role: 'user', content: query }],
-        context: { ...buildAgentContext(retrieved), ui_context: currentAgentContext() },
+        context: {
+          ...buildAgentContext(retrieved),
+          ui_context: currentAgentContext(),
+          exploration_candidates: exploration.links.map(({ id, title, type, label }) => ({ id, title, type, label })),
+        },
       }),
       signal: ctrl.signal,
     });
@@ -261,6 +293,97 @@ async function searchKnowledgeBase(query, craftId, signal) {
   } catch {
     return [];
   }
+}
+
+function explorationPlan(query, craft = null) {
+  let results = searchGraph(query, { limit: 8 });
+  if (!results.length && craft?.title) results = searchGraph(craft.title, { limit: 5 });
+  const links = [];
+  const seen = new Set();
+  const add = (node, action = 'open_node') => {
+    if (!node?.id || seen.has(node.id)) return;
+    seen.add(node.id);
+    links.push({
+      id: node.id,
+      title: node.title,
+      type: node.type,
+      action,
+      label: node.type === 'heritage' ? '探索非遗项目' : '打开关系星图',
+    });
+  };
+  for (const [index, result] of results.entries()) {
+    if (result.type === 'heritage') {
+      add(result, 'open_heritage_detail');
+      if (index === 0) {
+        relationsForNode(result.id).slice(0, 4).forEach((edge) => add(getGraphNode(edge.target_id), 'open_node'));
+      }
+    }
+    else {
+      add(result, 'open_node');
+      if (index === 0) {
+        const related = heritageForGraphTarget(result.id, { excludeId: result.id }).nodes || [];
+        related.slice(0, 4).forEach((node) => add(node, 'open_heritage_detail'));
+      }
+    }
+  }
+  return { results, links: links.slice(0, 6) };
+}
+
+function followupQuestions(query, craft, plan) {
+  const primary = plan?.results?.[0];
+  if (primary?.type === 'material') {
+    return [
+      `为什么${primary.title}会在这些地区形成不同技艺？`,
+      `还有哪些上海非遗也使用${primary.title}？`,
+    ];
+  }
+  if (primary?.type === 'region') {
+    return [`${primary.title}的环境如何影响当地技艺？`, `沿着${primary.title}，还能探索哪些相关非遗？`];
+  }
+  if (primary?.type === 'tradition') {
+    return [`${primary.title}为什么会形成不同地方分支？`, `哪些材料和工序连接了这些项目？`];
+  }
+  if (primary?.type === 'heritage') {
+    return [`${primary.title}为什么会在当地发展起来？`, `有哪些材料或技艺与${primary.title}相关？`];
+  }
+  if (craft) return [`「${craft.title}」与哪些材料或工艺相近？`, `从这项技艺的哪一道工序开始探索？`];
+  const topic = String(query || '').replace(/[？?。！!，,]/g, '').replace(/^(请|介绍|讲讲|我想知道)/, '').trim().slice(0, 18);
+  return topic
+    ? [`“${topic}”与上海非遗有哪些联系？`, `可以从哪些材料、地区或工艺继续探索？`]
+    : ['从材料关系看，哪些非遗可以一起探索？', '上海不同地区的非遗有什么联系？'];
+}
+
+function appendExplorationGuidance(nodes, query, craft) {
+  const plan = explorationPlan(query, craft);
+  if (plan.links.length) {
+    const linkNodes = plan.links.map((link) => el('button', {
+      class: 'ap-explore-link', type: 'button',
+      onclick: async () => {
+        const args = link.action === 'open_heritage_detail' ? { heritage_id: link.id } : { node_id: link.id };
+        const result = await ensureRegistry().execute(link.action, args);
+        if (!result.ok) addMsg('agent', [el('p', { text: result.error?.message || '暂时无法打开这个探索入口。' })], '小蕉');
+      },
+    }, [el('strong', { text: link.title }), el('span', { text: link.label })]));
+    nodes.push(el('section', { class: 'ap-exploration' }, [
+      el('strong', { class: 'ap-exploration-title', text: '沿着这个话题继续探索' }),
+      el('p', { class: 'small muted', text: '这些入口来自当前站内图谱中已有的关系。' }),
+      el('div', { class: 'ap-explore-links' }, linkNodes),
+    ]));
+  }
+  const prompts = followupQuestions(query, craft, plan);
+  nodes.push(el('div', { class: 'ap-followups' }, [
+    el('span', { class: 'small muted', text: '你还可以问：' }),
+    ...prompts.slice(0, 2).map((prompt) => el('button', {
+      class: 'ap-followup', type: 'button', text: prompt,
+      onclick: () => { if (panel.nodes.input) panel.nodes.input.value = ''; answer(prompt); },
+    })),
+  ]));
+  return plan;
+}
+
+function addGuidedAnswer(nodes, query, craft) {
+  appendExplorationGuidance(nodes, query, craft);
+  addMsg('agent', nodes, '小蕉');
 }
 
 function appendKnowledgeHits(nodes, craft, hits, title = '统一知识库命中：') {
@@ -292,22 +415,31 @@ function appendKnowledgeHits(nodes, craft, hits, title = '统一知识库命中�
   ]));
 }
 
+function modelAnswerNode(line) {
+  const text = String(line || '').trim();
+  if (!text.startsWith('【AI生成】')) return el('p', { text });
+  return el('p', {}, [
+    el('span', { class: 'tag tag-ai', text: 'AI生成' }),
+    document.createTextNode(` ${text.replace(/^【AI生成】\s*/, '')}`),
+  ]);
+}
+
 function refreshNotice() {
   const n = panel.nodes.notice;
   if (!n) return;
   n.textContent = panel.modelStatus === 'ok'
-    ? '已接入模型应答：回答受本项目纪录片转写与知识草稿约束（均为 AI 自动抽取草稿，待审核），引用证据附时间码。'
+    ? '已接入模型应答：优先使用项目资料；通识补充会标注“AI生成”，引用项目证据时附时间码。'
     : panel.modelStatus === 'down'
       ? '模型不可用，已切换检索式应答：回答仅来自本项目的纪录片转写与知识草稿（AI 自动抽取，待审核）。'
-      : '优先模型应答，不可用时自动降级为检索式应答；内容来自本项目纪录片转写与知识草稿（AI 自动抽取，待审核）。';
+      : '优先模型应答，不可用时自动降级为检索式应答；模型的资料外补充会明确标注“AI生成”。';
 }
 
 // 检索式占位应答（降级路径）
-function retrievalAnswer(craft, claims, evidence, externalFacts, knowledgeHits = []) {
+function retrievalAnswer(query, craft, claims, evidence, externalFacts, knowledgeHits = []) {
   if (!claims.length && !evidence.length && !externalFacts.length && !knowledgeHits.length) {
-    addMsg('agent', [
+    addGuidedAnswer([
       el('p', { text: '现有资料无法确认。我只能检索本项目的纪录片转写与自动抽取的知识草稿；你可以换个问法，或到“工序与材料”面板查看结构化步骤。' }),
-    ], '小蕉');
+    ], query, craft);
     return;
   }
   const nodes = [];
@@ -350,6 +482,7 @@ function retrievalAnswer(craft, claims, evidence, externalFacts, knowledgeHits =
     }
   }
   appendKnowledgeHits(nodes, craft, knowledgeHits);
+  appendExplorationGuidance(nodes, query, craft);
   nodes.push(el('p', { class: 'small muted', text: '以上为检索式占位应答，内容来自未经人工审核的草稿，请以正式审核结果为准。' }));
   addMsg('agent', nodes, '小蕉');
 }
@@ -365,43 +498,43 @@ async function answer(query) {
   // 快路径：资源 / 动作 / 工序等直接读取结构化数据
   if (craft) {
     if (/材料|原料|物件/.test(query)) {
-      addMsg('agent', [
+      addGuidedAnswer([
         el('p', {}, [
           el('span', { text: `「${craft.title}」当前记录的材料与物件有：${craft.allResources.join('、') || '（资料待补充）'}。 ` }),
           el('span', { class: 'tag tag-review', text: '待审核' }),
         ]),
         el('p', { class: 'small muted', text: '工具已作为可复用物件并入资源集合；每一步的组合规则仍需人工审核。' }),
-      ], '小蕉');
+      ], query, craft);
       return;
     }
     if (/工具/.test(query)) {
-      addMsg('agent', [
+      addGuidedAnswer([
         el('p', {}, [
           el('span', { text: craft.allTools.length ? `记录的工具类物件有：${craft.allTools.join('、')}。它们与材料在同一列表中选择。 ` : '现有步骤资料中没有记录工具类物件。' }),
           craft.allTools.length ? el('span', { class: 'tag tag-review', text: '待审核' }) : null,
         ]),
         el('p', { class: 'small muted', text: '“材料/工具”分类只用于说明来源，工作台统一按资源处理。' }),
-      ], '小蕉');
+      ], query, craft);
       return;
     }
     if (/动作|怎么做|操作/.test(query)) {
-      addMsg('agent', [
+      addGuidedAnswer([
         el('p', {}, [
           el('span', { text: `当前可选动作包括：${craft.actions.map((action) => action.label).join('、')}。 ` }),
           el('span', { class: 'tag tag-review', text: '待审核' }),
         ]),
         el('p', { class: 'small muted', text: '动作来自人工覆盖规则或旧工序名称的兼容映射。' }),
-      ], '小蕉');
+      ], query, craft);
       return;
     }
     if (/工序|步骤|流程|几道|顺序/.test(query)) {
-      addMsg('agent', [
+      addGuidedAnswer([
         el('p', {}, [
           el('span', { text: `纪录片资料整理的候选工序共 ${craft.steps.length} 道：${craft.steps.map((s, i) => `${i + 1}. ${s.displayName}`).join(' → ')}。 ` }),
           el('span', { class: 'tag tag-review', text: '待审核' }),
         ]),
         el('p', { class: 'small muted', text: '顺序为 order_candidate 候选顺序，未经人工核定。' }),
-      ], '小蕉');
+      ], query, craft);
       return;
     }
   }
@@ -422,7 +555,7 @@ async function answer(query) {
         thinking?.remove();
         panel.modelStatus = 'ok';
         refreshNotice();
-        const nodes = modelResult.content.split(/\n+/).filter((line) => line.trim()).map((line) => el('p', { text: line }));
+        const nodes = modelResult.content.split(/\n+/).filter((line) => line.trim()).map(modelAnswerNode);
         if (evidence.length) {
           nodes.push(el('p', { class: 'small muted', text: '本回答参考的纪录片片段：' }));
           for (const ev of evidence.slice(0, 2)) {
@@ -447,7 +580,8 @@ async function answer(query) {
           }
         }
         appendKnowledgeHits(nodes, craft, modelResult.knowledge || knowledgeHits, '本次回答的统一知识库依据：');
-        nodes.push(el('p', { class: 'small muted', text: '以上由模型依据待审核资料草稿生成，请以正式审核结果为准。' }));
+        appendExplorationGuidance(nodes, query, craft);
+        nodes.push(el('p', { class: 'small muted', text: '以上由模型综合项目资料生成；未由项目资料直接支持的段落标注为“AI生成”，请结合来源判断。' }));
         addMsg('agent', nodes, '小蕉');
         return;
       } catch {
@@ -462,7 +596,7 @@ async function answer(query) {
       }
     }
     if (!requestIsCurrent(generation, controller)) return;
-    retrievalAnswer(craft, claims, evidence, externalFacts, knowledgeHits);
+    retrievalAnswer(query, craft, claims, evidence, externalFacts, knowledgeHits);
   } finally {
     panel.requests.delete(controller);
   }
@@ -509,6 +643,7 @@ function render() {
   const noticeEl = el('div', { class: 'ap-notice' });
   const voiceNote = el('p', { class: 'ap-voice-note', text: '唤醒默认关闭。主动开启后，本页会把麦克风音频发送到本项目服务器的 FunASR，仅识别“小蕉小蕉”和随后一个问题；不会保存原始音频，切到后台会暂停。' });
   const voiceStatus = el('div', { class: 'ap-voice-status', role: 'status', 'aria-live': 'polite' });
+  const voiceFeedback = el('div', { class: 'ap-voice-feedback', role: 'status', 'aria-live': 'polite', hidden: true });
   const voiceTranscript = el('div', { class: 'ap-voice-transcript', role: 'status', 'aria-live': 'polite' });
   const wakeButton = el('button', {
     class: 'ap-voice-button', type: 'button', text: '开启语音唤醒',
@@ -521,7 +656,7 @@ function render() {
           await voice.start({ wake: true });
         }
       } catch (error) {
-        addMsg('agent', [el('p', { text: error.name === 'NotAllowedError' || error.message === 'NotAllowedError' ? '麦克风权限被拒绝。请在浏览器地址栏的权限设置中允许麦克风，再点击恢复；语音未开启期间仍可使用文字输入。' : '麦克风暂时不可用。请检查设备、浏览器权限或改用文字输入。' })], '小蕉');
+        showVoiceFeedback(voiceFailureText(error), 'error');
       }
       updateVoiceStatus();
     },
@@ -531,7 +666,7 @@ function render() {
     onclick: async () => {
       const voice = ensureVoice();
       if ([VOICE_STATES.LISTENING, VOICE_STATES.TRANSCRIBING].includes(voice.state())) { await voice.stopListening(); return; }
-      try { await voice.start({ wake: false }); } catch (error) { addMsg('agent', [el('p', { text: error.message || '麦克风不可用，请改用文字输入。' })], '小蕉'); }
+      try { await voice.start({ wake: false }); } catch (error) { showVoiceFeedback(voiceFailureText(error), 'error'); }
     },
   });
   const stopButton = el('button', { class: 'ap-voice-button ap-stop-button', type: 'button', text: '停止朗读', onclick: () => ensureVoice().stopSpeaking() });
@@ -542,7 +677,7 @@ function render() {
       el('button', { class: 'ap-close', text: '×', 'aria-label': '收起小蕉', onclick: () => api.close() }),
     ]),
     noticeEl,
-    el('div', { class: 'ap-voice-controls' }, [voiceNote, voiceStatus, voiceTranscript, wakeButton, micButton, stopButton]),
+    el('div', { class: 'ap-voice-controls' }, [voiceNote, voiceStatus, voiceFeedback, voiceTranscript, wakeButton, micButton, stopButton]),
     ctxLine,
     el('div', { class: 'ap-quick' }, ['它用什么材料？', '有哪些动作？', '有哪几道工序？'].map((q) =>
       el('button', { text: q, onclick: () => answer(q) }))),
@@ -556,7 +691,7 @@ function render() {
     ]),
   ]);
   document.body.append(fab, panelEl);
-  panel.nodes = { fab, panel: panelEl, log, ctxLine, notice: noticeEl, voiceStatus, voiceTranscript, wakeButton, micButton };
+  panel.nodes = { fab, panel: panelEl, log, ctxLine, input, notice: noticeEl, voiceStatus, voiceFeedback, voiceTranscript, wakeButton, micButton };
   refreshNotice();
   updateVoiceStatus();
 }

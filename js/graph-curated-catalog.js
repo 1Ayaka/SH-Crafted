@@ -49,7 +49,7 @@ const SOURCES = Object.freeze({
   },
   projectKb: {
     source_id: 'src_shcrafted_project_kb',
-    source_title: 'SH-Crafted 项目纪录片与工序知识包',
+    source_title: '探物志项目纪录片与工序知识包',
     source_url: '',
   },
 });

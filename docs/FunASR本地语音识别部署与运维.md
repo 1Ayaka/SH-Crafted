@@ -9,7 +9,7 @@
 ```mermaid
 flowchart LR
   Browser[点击说话 / 主动开启小蕉小蕉] --> Worklet[AudioWorklet\n16kHz mono PCM]
-  Worklet --> Gateway[SH-Crafted 同源 WSS 网关]
+  Worklet --> Gateway[探物志同源 WSS 网关]
   Gateway --> FunASR[FunASR 2pass\n127.0.0.1:10095]
   FunASR --> Gateway
   Gateway --> Gate[唤醒短语门控\n一次唤醒一个问题]
@@ -123,4 +123,4 @@ FUNASR_INTEGRATION_TEST=1 npm run voice:test-integration
 VOICE_STT_PROVIDER=browser npm run start
 ```
 
-或在 `.env` 中修改后重启 SH-Crafted。停止 FunASR 容器不会影响图谱、详情页、文字智能体和管理员功能。
+或在 `.env` 中修改后重启探物志。停止 FunASR 容器不会影响图谱、详情页、文字智能体和管理员功能。

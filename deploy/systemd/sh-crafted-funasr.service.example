@@ -1,5 +1,5 @@
 [Unit]
-Description=SH-Crafted local FunASR service
+Description=探物志 local FunASR service
 After=docker.service
 Requires=docker.service
 

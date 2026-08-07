@@ -7,6 +7,13 @@ import { GRAPH_SEED_EDGES, GRAPH_SEED_NODES } from '../graph-seed.js';
 import { CURATED_GRAPH_EDGES, CURATED_GRAPH_NODES } from '../graph-curated-catalog.js';
 
 const ALL_GRAPH_EDGES = [...GRAPH_SEED_EDGES, ...CURATED_GRAPH_EDGES];
+const SEARCH_EQUIVALENTS = Object.freeze([
+  ['竹子', '竹材', '竹'],
+  ['纸张', '纸板', '纸', '宣纸'],
+  ['棉纤维', '棉布', '棉花', '棉'],
+  ['兽皮', '皮革', '皮'],
+  ['象牙', '牙材'],
+]);
 
 const RELATIONS = Object.freeze([
   'LOCATED_IN',
@@ -106,13 +113,21 @@ export function searchGraph(query, { types = [...TYPE_SET], limit = 8 } = {}) {
   const clean = String(query || '').trim().toLowerCase();
   if (!clean) return [];
   const allowed = new Set(types.filter((type) => TYPE_SET.has(type)));
-  const terms = clean.split(/[\s，。！？、；：()（）《》“”‘’]+/).filter(Boolean);
+  const terms = new Set(clean.split(/[\s，。！？、；：()（）《》“”‘’]+/).filter(Boolean));
+  for (const group of SEARCH_EQUIVALENTS) {
+    if (group.some((term) => clean.includes(term))) group.forEach((term) => terms.add(term));
+  }
   return graphNodes()
     .filter((node) => allowed.has(node.type))
     .map((node) => {
       const names = [node.title, ...(node.aliases || [])].join(' ').toLowerCase();
       const haystack = `${names} ${node.summary}`.toLowerCase();
       let score = names.includes(clean) ? 2 : haystack.includes(clean) ? 0.35 : 0;
+      if (clean.includes(String(node.title || '').toLowerCase())) score += 1.4;
+      for (const alias of (node.aliases || [])) {
+        const normalizedAlias = String(alias || '').toLowerCase();
+        if (normalizedAlias.length > 1 && clean.includes(normalizedAlias)) score += 0.7;
+      }
       for (const term of terms) if (names.includes(term)) score += term.length > 1 ? 0.25 : 0.04;
       else if (haystack.includes(term)) score += term.length > 1 ? 0.06 : 0.01;
       if (node.title.toLowerCase() === clean) score += 2;

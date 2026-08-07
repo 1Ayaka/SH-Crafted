@@ -17,8 +17,8 @@ export function topNav(active) {
   const editing = isAdmin();
   return el('header', { class: 'topnav' }, [
     el('a', { class: 'brand', href: '#/', 'aria-label': '返回初始页', style: { display: 'flex', alignItems: 'center', gap: '14px' } }, [
-      el('span', { class: 'seal', text: '上海非遗' }),
-      el('span', { class: 'name', text: '上海非物质文化遗产交互系统' }),
+      el('span', { class: 'seal', text: '探物' }),
+      el('span', { class: 'name', text: '上海非遗交互数字平台' }),
     ]),
     el('nav', {}, [
       el('a', { href: '#/explore', class: active === 'explore' ? 'active' : '', text: '地图探索' }),

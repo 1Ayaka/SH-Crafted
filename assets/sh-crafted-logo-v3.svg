@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">探物志 logo, round seal</title>
+  <desc id="desc">A solid moss-green round seal with a continuous terracotta craft thread.</desc>
+  <circle cx="256" cy="256" r="190" fill="#606C38"/>
+  <path
+    d="M256 256c-35-64-65-96-103-96-76 0-76 96-19 96-57 0-57 96 19 96 38 0 68-32 103-96Zm0 0c35-64 65-96 103-96 76 0 76 96 19 96 57 0 57 96-19 96-38 0-68-32-103-96Z"
+    fill="none"
+    stroke="#C66B3D"
+    stroke-width="32"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>
