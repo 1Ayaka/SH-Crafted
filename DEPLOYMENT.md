@@ -146,6 +146,8 @@ bash scripts/deploy.sh
 sudo journalctl -u sh-crafted -n 100 --no-pager
 ```
 
+部署脚本不会覆盖 `/etc/nginx`。仓库中的 `deploy/nginx.conf.example` 有更新时，需要人工合并系统 Nginx 配置并执行 `sudo nginx -t && sudo systemctl reload nginx`。前端源码应返回 `Cache-Control: no-cache, must-revalidate`，否则浏览器可能在代码更新后继续使用旧版 JavaScript 和 CSS。
+
 ## 6. 推送后自动部署（可选）
 
 仓库包含 `.github/workflows/deploy.yml`。在 GitHub 仓库的 `Settings → Secrets and variables → Actions` 中配置：
@@ -168,4 +170,4 @@ ubuntu ALL=NOPASSWD: /usr/bin/systemctl restart sh-crafted, /usr/bin/systemctl i
 
 ## 7. 站内管理
 
-管理员通过 `https://avonana.site/#/admin/login` 登录，在用户页面原位编辑文字，并在工序管理页调整材料与操作。编辑内容保存在 `/var/lib/sh-crafted/content.json`；点击统计、传承人序号和社区投稿保存在 `/var/lib/sh-crafted/community.json`，均不随 Git 更新覆盖。完整使用、协作与备份说明见 [`docs/内容后台使用与部署.md`](docs/内容后台使用与部署.md)。
+管理员通过 `https://avonana.site/#/admin/login` 登录，在用户页面原位编辑文字，并在工序管理页调整材料与操作。正式内容、点击统计、传承人序号和社区投稿统一保存在 `/var/lib/sh-crafted/content.db`，不随 Git 更新覆盖；旧 JSON 只作为首次迁移兼容输入。完整使用、协作与备份说明见 [`docs/内容后台使用与部署.md`](docs/内容后台使用与部署.md)。

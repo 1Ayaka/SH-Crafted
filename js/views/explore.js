@@ -11,7 +11,7 @@ import { agent } from '../agent.js';
 import { createMap3D } from '../map3d.js';
 import { createLayerBG } from '../layerbg.js';
 import { registerPage, unregisterPage, consumeEnter, transitionTo } from '../transitions.js';
-import { saveCraft, saveDistrict } from '../admin.js';
+import { saveCraft, saveDistrict, saveSiteTexts } from '../admin.js';
 import { mountEditableModule } from '../editable.js';
 import { claimInheritor, engagementFor, inheritorButtonText, recordCraftView } from '../community.js';
 import { graphId, parseGraphId } from '../agent/graph-adapter.js';
@@ -27,7 +27,7 @@ const NODE_TO_DISTRICTS = {
   '松江区': ['songjiang'], '浦东新区': ['pudong'], '金山区': ['jinshan'],
   '闵行区': ['minhang'], '青浦区': ['qingpu'],
 };
-const displayNodeName = (nodeName) => nodeName === '上海市核心区' ? '上海中心城区' : nodeName;
+const displayNodeName = (nodeName) => nodeName === '上海市核心区' ? siteText('map.center.name', '上海中心城区') : nodeName;
 
 export async function exploreView(root) {
   const craftRecords = allCrafts();
@@ -289,10 +289,10 @@ export async function exploreView(root) {
     const aggregate = ids.length > 1;
     const baseProfile = DISTRICT_PROFILES[ids[0]] || {};
     const profile = aggregate ? {
-      name: '上海中心城区',
-      origin: '地图模型将黄浦、徐汇、长宁、静安、普陀五区聚合为中心城区节点；项目仍分别维护各自的现行行政区 ID。',
-      features: '黄浦的老城厢与外滩、徐汇的衡复风貌与龙华、长宁的多元社区、静安的苏州河两岸、普陀的工业水岸，共同构成上海中心城区的多层城市文化。',
-      heritageOverview: '这里汇集五区已审核和后续新增的非遗内容，覆盖传统美术、服饰工艺、饮食、戏曲、民俗与城市生活技艺。',
+      name: siteText('map.center.name', '上海中心城区'),
+      origin: siteText('map.center.origin', '地图模型将黄浦、徐汇、长宁、静安、普陀五区聚合为中心城区节点；项目仍分别维护各自的现行行政区 ID。'),
+      features: siteText('map.center.features', '黄浦的老城厢与外滩、徐汇的衡复风貌与龙华、长宁的多元社区、静安的苏州河两岸、普陀的工业水岸，共同构成上海中心城区的多层城市文化。'),
+      heritageOverview: siteText('map.center.heritage_overview', '这里汇集五区已审核和后续新增的非遗内容，覆盖传统美术、服饰工艺、饮食、戏曲、民俗与城市生活技艺。'),
     } : baseProfile;
     const name = profile.name || displayNodeName(fallbackName);
     const nameText = el('h2', { text: name });
@@ -300,13 +300,26 @@ export async function exploreView(root) {
       el('p', { class: 'district-story-kicker', text: '地区探索' }),
       nameText,
     ]);
-    if (!aggregate) mountEditableModule(districtHeading, [{ key: 'name', element: nameText }], (values) => saveDistrict(ids[0], values));
+    if (aggregate) {
+      mountEditableModule(districtHeading, [{ key: 'map.center.name', element: nameText }], (values) => saveSiteTexts(
+        Object.entries(values).map(([key, content]) => ({ key, content })),
+      ));
+    } else {
+      mountEditableModule(districtHeading, [{ key: 'name', element: nameText }], (values) => saveDistrict(ids[0], values));
+    }
     const collapsible = (label, key, value) => {
       const text = value
         ? el('p', { text: value })
         : el('p', { class: 'district-story-pending', text: '内容待补充' });
       const section = el('details', { class: 'district-story-section' }, [el('summary', { text: label }), text]);
-      if (!aggregate) mountEditableModule(section, [{ key, element: text }], (values) => saveDistrict(ids[0], values));
+      if (aggregate) {
+        const siteKey = `map.center.${key}`;
+        mountEditableModule(section, [{ key: siteKey, element: text }], (values) => saveSiteTexts(
+          Object.entries(values).map(([updateKey, content]) => ({ key: updateKey, content })),
+        ));
+      } else {
+        mountEditableModule(section, [{ key, element: text }], (values) => saveDistrict(ids[0], values));
+      }
       return section;
     };
     const recommendations = crafts.slice(0, 3);

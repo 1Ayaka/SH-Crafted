@@ -11,8 +11,8 @@ server {
 
     # Let Nginx stream public assets directly. This avoids routing every large
     # GLB through Node, supports byte ranges/resume, and keeps repeat visits in
-    # the browser cache. Source code/data keep a short cache so Git deployments
-    # become visible quickly; heavyweight media use the server's versioned URL.
+    # the browser cache. Source code/data are always revalidated so a Git
+    # deployment cannot leave an hour-old interface in the browser.
     location ^~ /assets/ {
         root /var/www/sh-crafted;
         try_files $uri =404;
@@ -27,7 +27,7 @@ server {
         root /var/www/sh-crafted;
         try_files $uri =404;
         sendfile on;
-        add_header Cache-Control "public, max-age=3600, must-revalidate" always;
+        add_header Cache-Control "no-cache, must-revalidate" always;
         add_header X-Content-Type-Options nosniff always;
     }
 

@@ -15,6 +15,7 @@
     "kb:test-api": "node scripts/smoke-knowledge-api.mjs",
     "ui:test": "node scripts/smoke-ui.mjs",
     "map:test-ui": "node scripts/smoke-map-navigation-ui.mjs",
+    "map:test-center-edit": "node scripts/test-map-center-edit.mjs",
     "content:seed": "node scripts/content-seed.mjs",
     "admin:test-ui": "node scripts/smoke-admin-ui.mjs",
     "community:test": "node scripts/smoke-community-api.mjs",

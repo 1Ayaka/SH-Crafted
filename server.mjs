@@ -685,6 +685,19 @@ function mergeMissingDistrictSeed(stored) {
   return changed;
 }
 
+function mergeMissingSiteTextSeed(stored) {
+  if (!Array.isArray(stored.site_texts)) stored.site_texts = [];
+  const existingKeys = new Set(stored.site_texts.map((item) => cleanText(item?.key, 100)).filter(Boolean));
+  let changed = false;
+  for (const seed of CONTENT_SEED.site_texts || []) {
+    if (existingKeys.has(seed.key)) continue;
+    stored.site_texts.push(structuredClone(seed));
+    existingKeys.add(seed.key);
+    changed = true;
+  }
+  return changed;
+}
+
 async function loadContentStore() {
   try {
     const stored = JSON.parse(await readFile(CONTENT_STORE_PATH, 'utf8'));
@@ -693,7 +706,9 @@ async function loadContentStore() {
     stored.site_texts = Array.isArray(stored.site_texts) ? stored.site_texts : [];
     const graphChanged = syncGraphFromContent(stored, { includeSeed: true });
     stored.revision ||= makeRevision();
-    if (mergeMissingDistrictSeed(stored) || graphChanged) {
+    const districtChanged = mergeMissingDistrictSeed(stored);
+    const siteTextChanged = mergeMissingSiteTextSeed(stored);
+    if (districtChanged || siteTextChanged || graphChanged) {
       stored.updated_at = new Date().toISOString();
       stored.revision = makeRevision();
       await writeContentStore(stored);
@@ -1568,6 +1583,9 @@ async function handleAdminApi(req, res, urlPath) {
     if (urlPath === '/api/admin/site-texts') {
       const updates = new Map((Array.isArray(body.updates) ? body.updates : []).map((item) => [cleanText(item.key, 100), cleanText(item.content, 5000)]));
       updated = await saveContent(expected, (next) => {
+        const allowed = new Set((CONTENT_SEED.site_texts || []).map((item) => item.key));
+        for (const key of updates.keys()) if (!allowed.has(key)) throw new Error('invalid_site_text_key');
+        mergeMissingSiteTextSeed(next);
         next.site_texts = next.site_texts.map((item) => updates.has(item.key) ? { ...item, content: updates.get(item.key) } : item);
       });
     } else {

@@ -107,6 +107,10 @@ export async function buildContentSeed() {
     { key: 'home.source_button', group_name: '首页', label: '资料来源按钮', content: '资料来源' },
     { key: 'home.stats_note', group_name: '首页', label: '数据统计说明', content: '统计来自已加载的真实数据包，其余地区资料待接入' },
     { key: 'craft.inherit_button', group_name: '非遗项目', label: '进入体验按钮', content: '成为传承人' },
+    { key: 'map.center.name', group_name: '地图', label: '中心城区名称', content: '上海中心城区' },
+    { key: 'map.center.origin', group_name: '地图', label: '中心城区区域关系', content: '地图模型将黄浦、徐汇、长宁、静安、普陀五区聚合为中心城区节点；项目仍分别维护各自的现行行政区 ID。' },
+    { key: 'map.center.features', group_name: '地图', label: '中心城区地域特色', content: '黄浦的老城厢与外滩、徐汇的衡复风貌与龙华、长宁的多元社区、静安的苏州河两岸、普陀的工业水岸，共同构成上海中心城区的多层城市文化。' },
+    { key: 'map.center.heritage_overview', group_name: '地图', label: '中心城区非遗概览', content: '这里汇集五区已审核和后续新增的非遗内容，覆盖传统美术、服饰工艺、饮食、戏曲、民俗与城市生活技艺。' },
     { key: 'footer.icp', group_name: '页脚', label: 'ICP备案号', content: '滇ICP备2026003342号' },
   ];
 
