@@ -33,9 +33,32 @@ function nodePosition(node, index, total, minRadius = 2.72, maxRadius = 4.72, he
   const radius = stableRange(id, 'line-length', minRadius, maxRadius);
   return new THREE.Vector3(
     Math.cos(angle) * radius,
-    height + stableRange(id, 'height', -0.34, 0.34),
-    Math.sin(angle) * radius,
+    height + stableRange(id, 'height', -1.15, 1.15),
+    Math.sin(angle) * radius + stableRange(id, 'depth', -1.2, 1.2),
   );
+}
+
+function makeStarField() {
+  const group = new THREE.Group();
+  const layer = (count, zMin, zMax, opacity, size, seed) => {
+    const positions = new Float32Array(count * 3);
+    for (let index = 0; index < count; index += 1) {
+      const id = `${seed}:${index}`;
+      positions[index * 3] = stableRange(id, 'x', -10, 10);
+      positions[index * 3 + 1] = stableRange(id, 'y', -5.5, 6.5);
+      positions[index * 3 + 2] = stableRange(id, 'z', zMin, zMax);
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const material = new THREE.PointsMaterial({ color: 0xf5f0dd, size, transparent: true, opacity, depthWrite: false, sizeAttenuation: true });
+    const points = new THREE.Points(geometry, material);
+    points.userData.basePositions = positions.slice();
+    return points;
+  };
+  group.add(layer(130, -8, -2.5, 0.28, 0.085, 'far'));
+  group.add(layer(95, 1.5, 7, 0.10, 0.16, 'near'));
+  group.userData.isStarField = true;
+  return group;
 }
 
 function portalPosition(portal, index) {
@@ -150,6 +173,8 @@ export function mountHeritageGraph(container, state, { onSelect, onChange } = {}
   container.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
+  const starField = makeStarField();
+  scene.add(starField);
   const camera = new THREE.PerspectiveCamera(39, width / height, 0.1, 120);
   camera.position.set(0, 4.1, 10.2);
   const controls = new OrbitControls(camera, renderer.domElement);
@@ -261,6 +286,8 @@ export function mountHeritageGraph(container, state, { onSelect, onChange } = {}
       });
       renderer.domElement.dataset.nodeCount = String(interactiveGroups.size);
       renderer.domElement.dataset.graphMode = 'overview';
+      renderer.domElement.dataset.pagination = 'disabled';
+      renderer.domElement.dataset.starField = 'interactive-depth';
       setCameraView('overview');
       return;
     }
@@ -306,6 +333,8 @@ export function mountHeritageGraph(container, state, { onSelect, onChange } = {}
     }
     renderer.domElement.dataset.ringCount = String((state.mode === 'root' ? ROOT_RINGS : BRANCH_RINGS).length);
     renderer.domElement.dataset.nodeCount = String(interactiveGroups.size);
+    renderer.domElement.dataset.pagination = 'disabled';
+    renderer.domElement.dataset.starField = 'interactive-depth';
     setCameraView(state.mode);
   };
 
@@ -374,7 +403,14 @@ export function mountHeritageGraph(container, state, { onSelect, onChange } = {}
     if (!pointerDown || Math.hypot(event.clientX - pointerDown.x, event.clientY - pointerDown.y) > 7) { pointerDown = null; return; }
     pointerDown = null;
     const current = hoveredGroup;
-    if (!current) return;
+    if (!current) {
+      if (state.mode === 'branch') {
+        returnGraphRoot(state);
+        drawState();
+        onChange?.(state, graphStateContext(state));
+      }
+      return;
+    }
     const portal = current.userData.portal;
     if (portal) {
       if (!portal.available) { onSelect?.({ unavailable: true, portal }); return; }
@@ -417,6 +453,11 @@ export function mountHeritageGraph(container, state, { onSelect, onChange } = {}
       const hit = raycaster.intersectObjects(raycastTargets, false)[0];
       applyHover(hit?.object?.userData?.graphGroup || null);
     }
+    const targetX = pointer.x > 1 ? 0 : pointer.x * 0.22;
+    const targetY = pointer.y > 1 ? 0 : pointer.y * 0.16;
+    starField.position.x = damp(starField.position.x, targetX, 2.8, dt);
+    starField.position.y = damp(starField.position.y, targetY, 2.8, dt);
+    starField.rotation.y = damp(starField.rotation.y, targetX * 0.06, 1.8, dt);
     if (cameraTween) {
       const progress = cameraTween.duration ? Math.min(1, (performance.now() - cameraTween.startedAt) / cameraTween.duration) : 1;
       const eased = easeInOutCubic(progress);
@@ -455,7 +496,14 @@ export function mountHeritageGraph(container, state, { onSelect, onChange } = {}
     onHover(group) { applyHover(group); },
     onHoverClear() { applyHover(null); },
     onClick(group) {
-      if (!group) return;
+      if (!group) {
+        if (state.mode === 'branch') {
+          returnGraphRoot(state);
+          drawState();
+          onChange?.(state, graphStateContext(state));
+        }
+        return;
+      }
       const portal = group.userData?.portal;
       if (portal) {
         if (!portal.available) { onSelect?.({ unavailable: true, portal }); return; }

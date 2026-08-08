@@ -1,12 +1,42 @@
 // 三维非遗图谱兼容层。
 // 当前正式内容仍以 SHIH_* 工艺包与 districts 配置为准；这里提供稳定的
 // heritage:/region: 命名空间，后续接入 nodes/edges.jsonl 时只替换本模块。
-import { allCrafts } from '../data.js';
+import { allCrafts, graphContent, graphDataVersion } from '../data.js';
 import { DISTRICTS, DISTRICT_PROFILES, CRAFT_CONFIG } from '../config.js';
 import { GRAPH_SEED_EDGES, GRAPH_SEED_NODES } from '../graph-seed.js';
 import { CURATED_GRAPH_EDGES, CURATED_GRAPH_NODES } from '../graph-curated-catalog.js';
 
-const ALL_GRAPH_EDGES = [...GRAPH_SEED_EDGES, ...CURATED_GRAPH_EDGES];
+let cachedEdgeVersion = '';
+let cachedEdges = [];
+let cachedNodeVersion = '';
+let cachedNodes = [];
+let cachedNodeById = new Map();
+let cachedSearchRecords = [];
+let cachedSearchTokenIndex = new Map();
+let nodeIndexBuilds = 0;
+
+function searchTokens(value) {
+  const clean = String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const tokens = new Set(clean.match(/[a-z0-9_-]{2,}/g) || []);
+  const compact = clean.replace(/[\s，。！？、；：()（）《》“”‘’]+/g, '');
+  for (let index = 0; index + 1 < compact.length; index += 1) tokens.add(compact.slice(index, index + 2));
+  return tokens;
+}
+
+function allGraphEdges() {
+  const version = graphDataVersion();
+  if (cachedEdgeVersion === version) return cachedEdges;
+  const content = graphContent();
+  const seen = new Set();
+  cachedEdges = [...(content.edges || []), ...CURATED_GRAPH_EDGES, ...GRAPH_SEED_EDGES].filter((edge) => {
+    const id = edge.id || `${edge.from}|${edge.relation}|${edge.to}`;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+  cachedEdgeVersion = version;
+  return cachedEdges;
+}
 const SEARCH_EQUIVALENTS = Object.freeze([
   ['竹子', '竹材', '竹'],
   ['纸张', '纸板', '纸', '宣纸'],
@@ -70,6 +100,8 @@ function districtNode(district) {
 }
 
 export function graphNodes() {
+  const version = graphDataVersion();
+  if (cachedNodeVersion === version) return cachedNodes;
   // 工艺包是按需异步加载的；配置中的轻量节点保证图谱入口、搜索和
   // 智能体在首屏或离线测试时仍能识别稳定 ID。真实工艺包加载后优先覆盖它。
   const configuredCrafts = Object.entries(CRAFT_CONFIG).map(([craftId, config]) => ({
@@ -81,6 +113,7 @@ export function graphNodes() {
   }));
   const crafts = [...allCrafts(), ...configuredCrafts].map(craftNode);
   const districts = DISTRICTS.map(districtNode);
+  const persisted = graphContent().nodes || [];
   const seen = new Set();
   const seenHeritageTitles = new Set();
   const graphRelations = crafts.flatMap((craft) => (craft.graph_data?.relations || []).map((relation, index) => ({
@@ -93,7 +126,7 @@ export function graphNodes() {
     images: relation.images || [],
     public: true,
   })));
-  return [...crafts, ...districts, ...graphRelations, ...GRAPH_SEED_NODES, ...CURATED_GRAPH_NODES].filter((node) => {
+  cachedNodes = [...persisted, ...crafts, ...districts, ...graphRelations, ...GRAPH_SEED_NODES, ...CURATED_GRAPH_NODES].filter((node) => {
     if (seen.has(node.id)) return false;
     const titleKey = node.type === 'heritage' ? String(node.title || '').trim() : '';
     if (titleKey && seenHeritageTitles.has(titleKey)) return false;
@@ -101,12 +134,32 @@ export function graphNodes() {
     if (titleKey) seenHeritageTitles.add(titleKey);
     return true;
   });
+  cachedNodeById = new Map(cachedNodes.map((node) => [node.id, node]));
+  cachedSearchTokenIndex = new Map();
+  cachedSearchRecords = cachedNodes.map((node, index) => {
+    const names = [node.title, ...(node.aliases || [])].join(' ').toLowerCase();
+    const haystack = `${names} ${node.summary || ''}`.toLowerCase();
+    for (const token of searchTokens(haystack)) {
+      if (!cachedSearchTokenIndex.has(token)) cachedSearchTokenIndex.set(token, new Set());
+      cachedSearchTokenIndex.get(token).add(index);
+    }
+    return { node, names, haystack, title: String(node.title || '').toLowerCase() };
+  });
+  cachedNodeVersion = version;
+  nodeIndexBuilds += 1;
+  return cachedNodes;
 }
 
 export function getGraphNode(id) {
   const parsed = parseGraphId(id);
   if (!parsed) return null;
-  return graphNodes().find((node) => node.id === id) || null;
+  graphNodes();
+  return cachedNodeById.get(id) || null;
+}
+
+export function graphIndexStats() {
+  graphNodes();
+  return { version: cachedNodeVersion, node_count: cachedNodes.length, edge_count: allGraphEdges().length, builds: nodeIndexBuilds };
 }
 
 export function searchGraph(query, { types = [...TYPE_SET], limit = 8 } = {}) {
@@ -117,11 +170,17 @@ export function searchGraph(query, { types = [...TYPE_SET], limit = 8 } = {}) {
   for (const group of SEARCH_EQUIVALENTS) {
     if (group.some((term) => clean.includes(term))) group.forEach((term) => terms.add(term));
   }
-  return graphNodes()
-    .filter((node) => allowed.has(node.type))
-    .map((node) => {
-      const names = [node.title, ...(node.aliases || [])].join(' ').toLowerCase();
-      const haystack = `${names} ${node.summary}`.toLowerCase();
+  graphNodes();
+  const candidateIndexes = new Set();
+  for (const token of [...searchTokens(clean), ...[...terms].flatMap((term) => [...searchTokens(term)])]) {
+    cachedSearchTokenIndex.get(token)?.forEach((index) => candidateIndexes.add(index));
+  }
+  const records = candidateIndexes.size
+    ? [...candidateIndexes].map((index) => cachedSearchRecords[index])
+    : cachedSearchRecords;
+  return records
+    .filter(({ node }) => allowed.has(node.type))
+    .map(({ node, names, haystack, title }) => {
       let score = names.includes(clean) ? 2 : haystack.includes(clean) ? 0.35 : 0;
       if (clean.includes(String(node.title || '').toLowerCase())) score += 1.4;
       for (const alias of (node.aliases || [])) {
@@ -130,7 +189,7 @@ export function searchGraph(query, { types = [...TYPE_SET], limit = 8 } = {}) {
       }
       for (const term of terms) if (names.includes(term)) score += term.length > 1 ? 0.25 : 0.04;
       else if (haystack.includes(term)) score += term.length > 1 ? 0.06 : 0.01;
-      if (node.title.toLowerCase() === clean) score += 2;
+      if (title === clean) score += 2;
       return { node, score };
     })
     .filter((item) => item.score > 0)
@@ -178,7 +237,7 @@ export function relationsForNode(id) {
   return [
     ...edges,
     ...customRelations,
-    ...ALL_GRAPH_EDGES
+    ...allGraphEdges()
       .filter((edge) => edge.from === node.id)
       .map((edge) => ({
         relation: edge.relation,
@@ -195,7 +254,7 @@ export function relatedHeritageForRelation(targetId, relation, { excludeId = nul
   const target = getGraphNode(targetId);
   if (!target) return [];
   const ids = new Set(
-    ALL_GRAPH_EDGES
+    allGraphEdges()
       .filter((edge) => edge.relation === relation && edge.to === targetId)
       .map((edge) => edge.from),
   );

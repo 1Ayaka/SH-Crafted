@@ -39,6 +39,8 @@ export function createHeritageGraphOverviewState() {
     portals: [],
     path: [],
     rootHistory: [],
+    previousNode: null,
+    activeEdge: null,
   };
 }
 
@@ -57,6 +59,8 @@ export function createHeritageGraphState(rootId) {
     portals: root ? graphPortals(root.id) : [],
     path: root ? [root] : [],
     rootHistory: root ? [root] : [],
+    previousNode: null,
+    activeEdge: null,
   };
 }
 
@@ -70,13 +74,16 @@ export function openGraphBranch(state, relation) {
   state.selected = portal.target;
   state.branchAllNodes = branchNodes;
   state.branchPage = 0;
-  state.branchNodes = branchNodes.slice(0, 10);
+  state.branchNodes = branchNodes;
+  state.previousNode = state.root;
+  state.activeEdge = { relation, target: portal.target };
   state.path = [...state.rootHistory, portal.target];
   return { ok: true, target: portal.target, nodes: state.branchNodes };
 }
 
 export function selectGraphNode(state, node) {
   if (!node) return { ok: false, reason: 'missing_node' };
+  if (state.selected?.id !== node.id) state.previousNode = state.selected;
   state.selected = node;
   return { ok: true, node };
 }
@@ -91,6 +98,8 @@ export function setGraphRoot(state, node) {
   state.branchAllNodes = [];
   state.branchNodes = [];
   state.branchPage = 0;
+  state.previousNode = null;
+  state.activeEdge = null;
   state.portals = graphPortals(node.id);
   if (state.rootHistory.at(-1)?.id !== node.id) state.rootHistory.push(node);
   state.path = [...state.rootHistory];
@@ -106,6 +115,8 @@ export function returnGraphRoot(state) {
   state.branchAllNodes = [];
   state.branchNodes = [];
   state.branchPage = 0;
+  state.previousNode = null;
+  state.activeEdge = null;
   state.portals = graphPortals(state.root.id);
   state.path = [...state.rootHistory];
   return { ok: true, node: state.root };
@@ -113,12 +124,9 @@ export function returnGraphRoot(state) {
 
 export function setGraphBranchPage(state, page) {
   if (state.mode !== 'branch') return { ok: false, reason: 'not_in_branch' };
-  const pageCount = Math.max(1, Math.ceil(state.branchAllNodes.length / 10));
-  const nextPage = Math.min(Math.max(Number(page) || 0, 0), pageCount - 1);
-  state.branchPage = nextPage;
-  state.branchNodes = state.branchAllNodes.slice(nextPage * 10, nextPage * 10 + 10);
-  state.selected = state.branchTarget;
-  return { ok: true, page: nextPage, page_count: pageCount, nodes: state.branchNodes };
+  state.branchPage = 0;
+  state.branchNodes = state.branchAllNodes;
+  return { ok: true, page: 0, page_count: 1, nodes: state.branchNodes };
 }
 
 export function goBackGraphRoot(state) {
@@ -133,6 +141,8 @@ export function goBackGraphRoot(state) {
   state.branchAllNodes = [];
   state.branchNodes = [];
   state.branchPage = 0;
+  state.previousNode = null;
+  state.activeEdge = null;
   state.portals = graphPortals(previous.id);
   state.path = [...state.rootHistory];
   return { ok: true, node: previous };
@@ -149,6 +159,8 @@ export function returnInitialGraphRoot(state) {
   state.branchAllNodes = [];
   state.branchNodes = [];
   state.branchPage = 0;
+  state.previousNode = null;
+  state.activeEdge = null;
   state.portals = graphPortals(state.initialRoot.id);
   state.path = [state.initialRoot];
   return { ok: true, node: state.initialRoot };
@@ -156,7 +168,7 @@ export function returnInitialGraphRoot(state) {
 
 export function graphStateContext(state) {
   const branchTotal = state.branchAllNodes?.length || state.branchNodes.length;
-  const branchPageCount = Math.max(1, Math.ceil(branchTotal / 10));
+  const branchPageCount = 1;
   return {
     mode: state.mode,
     current_root: state.root,
@@ -167,13 +179,19 @@ export function graphStateContext(state) {
     branch_total: branchTotal,
     branch_page: state.branchPage || 0,
     branch_page_count: branchPageCount,
-    can_previous_page: state.mode === 'branch' && state.branchPage > 0,
-    can_next_page: state.mode === 'branch' && state.branchPage + 1 < branchPageCount,
+    can_previous_page: false,
+    can_next_page: false,
     breadcrumbs: state.path.map((node) => node.id),
     breadcrumb_nodes: state.path,
     initial_root: state.initialRoot,
     can_go_back: state.mode === 'branch' || state.rootHistory.length > 1,
     available_actions: ['get_current_context', 'search_graph', 'open_node', 'expand_branch', 'open_heritage_detail', 'go_back', 'return_to_root', 'read_summary'],
     relation_label: state.branch ? relationLabel(state.branch) : null,
+    previous_node: state.previousNode || null,
+    active_edge: state.activeEdge || null,
+    relationship_summary: state.activeEdge?.target?.summary || '',
+    comparison_summary: state.previousNode && state.selected && state.previousNode.id !== state.selected.id
+      ? `当前节点“${state.selected.title}”与上一节点“${state.previousNode.title}”通过${state.branch ? relationLabel(state.branch) : '图谱关系'}相连；相同之处与差异仍需结合资料核对。`
+      : '',
   };
 }

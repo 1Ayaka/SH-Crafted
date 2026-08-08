@@ -11,6 +11,10 @@ const store = {
   siteTexts: new Map(),
   editorialSource: 'git-fallback',
   revision: '',
+  contentReviewed: false,
+  graphNodes: [],
+  graphEdges: [],
+  graphVersion: 0,
   craftLoads: new Map(),
   craftLoaders: new Map(),
 };
@@ -124,6 +128,9 @@ export async function loadAll(onProgress) {
   store.authorityPolicy = sourceDoc.authority_policy || {};
   store.editorialSource = editorial?.source || 'git-fallback';
   store.revision = editorial?.revision || '';
+  store.contentReviewed = Boolean(editorial?.content_reviewed);
+  store.graphNodes = Array.isArray(editorial?.graph_nodes) ? editorial.graph_nodes : [];
+  store.graphEdges = Array.isArray(editorial?.graph_edges) ? editorial.graph_edges : [];
   store.siteTexts = new Map((editorial?.site_texts || []).map((item) => [item.key, item.content]));
 
   for (const profile of editorial?.districts || []) {
@@ -302,6 +309,7 @@ export async function loadAll(onProgress) {
       evidenceCount: evidence.length,
       hydrated: true,
     });
+    store.graphVersion += 1;
     onProgress?.(pkg.title);
     return record;
     })().catch((error) => {
@@ -394,6 +402,7 @@ export async function loadAll(onProgress) {
         community: true,
         contentSource: managedCraft.source || 'community',
         heritageLevel: managedCraft.source === 'admin-import' ? 'primary' : 'secondary',
+        protected: Boolean(managedCraft.protected),
         graphData: managedCraft.graph_data || details.star_data || {},
       },
       allMaterials: [...new Set(managedCraftSteps.flatMap((step) => step.materials || []))],
@@ -410,6 +419,7 @@ export async function loadAll(onProgress) {
     });
     onProgress?.(managedCraft.title);
   }
+  store.graphVersion += 1;
   return store;
 }
 
@@ -486,6 +496,22 @@ export function siteText(key, fallback = '') {
 
 export function contentRevision() {
   return store.revision;
+}
+
+export function graphContent() {
+  return { nodes: store.graphNodes || [], edges: store.graphEdges || [], revision: store.revision };
+}
+
+export function graphDataVersion() {
+  return `${store.revision || 'local'}:${store.graphVersion}`;
+}
+
+export function isContentReviewed() {
+  return Boolean(store.contentReviewed);
+}
+
+export function setContentReviewedLocal(value) {
+  store.contentReviewed = Boolean(value);
 }
 
 export function craftAssetUrl(craft, path) {

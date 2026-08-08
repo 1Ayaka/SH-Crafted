@@ -14,6 +14,7 @@
     "kb:links": "node scripts/check-knowledge-links.mjs",
     "kb:test-api": "node scripts/smoke-knowledge-api.mjs",
     "ui:test": "node scripts/smoke-ui.mjs",
+    "map:test-ui": "node scripts/smoke-map-navigation-ui.mjs",
     "content:seed": "node scripts/content-seed.mjs",
     "admin:test-ui": "node scripts/smoke-admin-ui.mjs",
     "community:test": "node scripts/smoke-community-api.mjs",
@@ -27,7 +28,11 @@
     "voice:test": "node scripts/test-voice-state-machine.mjs",
     "voice:test-protocol": "node scripts/test-funasr-protocol.mjs",
     "voice:test-api": "node scripts/smoke-voice-api.mjs",
-    "voice:test-integration": "node scripts/smoke-funasr-service.mjs"
+    "voice:test-integration": "node scripts/smoke-funasr-service.mjs",
+    "audit:production-config": "node scripts/audit-production-config.mjs",
+    "performance:test": "node scripts/test-performance.mjs",
+    "heritage:validate-batch": "node scripts/validate-shanghai-heritage-batch.mjs",
+    "admin:test-import-update": "node scripts/test-admin-import-update.mjs"
   },
   "engines": {
     "node": ">=22.0.0"

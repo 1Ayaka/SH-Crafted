@@ -170,6 +170,11 @@ try {
   if (!finalStats || finalStats.inheritor_count !== 2 || finalStats.visitor_ordinal !== 1) throw new Error('engagement did not persist after restart');
   const persistedContent = await json('/api/content');
   if (!persistedContent.payload.crafts.some((craft) => craft.id === craftId)) throw new Error('published content did not persist after restart');
+  const cachedContent = await fetch(`${base}/api/content`);
+  const etag = cachedContent.headers.get('etag');
+  await cachedContent.arrayBuffer();
+  const notModified = await fetch(`${base}/api/content`, { headers: { 'If-None-Match': etag || '' } });
+  if (!etag || notModified.status !== 304) throw new Error('content response cache did not return ETag/304');
   console.log(`社区 API 冒烟测试通过：${craftId}`);
 } finally {
   if (server && !server.killed) {

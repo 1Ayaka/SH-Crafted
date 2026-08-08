@@ -119,6 +119,9 @@ const REGION_SETS = [
   ]],
 ];
 
+// 供离线资源整理工具复用；正式内容仍须经过管理员审核后导入。
+export const CURATED_REGION_SETS = REGION_SETS;
+
 const TRADITION_SETS = [
   ['tradition:paper_art', '纸艺传统', SOURCES.national, [
     ['yangzhou_paper_cutting', '扬州剪纸'], ['yuxian_paper_cutting', '蔚县剪纸'],

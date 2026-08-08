@@ -1,5 +1,5 @@
 // UI 基础工具：DOM 创建、证据浮窗、通用弹窗
-import { evidenceTimecode } from './data.js';
+import { evidenceTimecode, isContentReviewed } from './data.js';
 
 export function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -20,6 +20,7 @@ export function el(tag, attrs = {}, children = []) {
 }
 
 export function reviewTag(text = '待审核') {
+  if (isContentReviewed()) return null;
   return el('span', { class: 'tag tag-review', text, title: '该内容由 AI 自动抽取，人工审核尚未完成' });
 }
 
@@ -54,7 +55,7 @@ export function openEvidenceModal(craft, evidenceIds, { title = '纪录片证据
   const body = el('div', {});
   body.appendChild(el('p', {
     class: 'small muted',
-    text: '视频片段待接入，当前为关键帧证据；转写为 AI 自动生成，内容待审核。',
+    text: isContentReviewed() ? '当前展示纪录片关键帧与转写摘录。' : '视频片段待接入，当前为关键帧证据；转写内容待审核。',
     style: { marginBottom: '6px' },
   }));
   let found = 0;

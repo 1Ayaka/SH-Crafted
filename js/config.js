@@ -24,6 +24,34 @@ export const DISTRICTS = [
 
 // 地区介绍内容。依据上海市人民政府、上海市民政局公开资料压缩整理。
 export const DISTRICT_PROFILES = {
+  huangpu: {
+    name: '黄浦区',
+    origin: '黄浦区因黄浦江得名，是上海老城厢与近代城市核心空间的重要组成部分。',
+    features: '外滩、老城厢、人民广场与豫园共同呈现传统江南城市、开埠历史和现代都市文化的叠合。',
+    heritageOverview: '海派剪纸、老字号饮食技艺、传统医药与城市节俗等内容，体现上海城市生活传统的延续与更新。',
+    sourceLabel: '上海市人民政府 · 黄浦区', sourceUrl: 'https://www.shanghai.gov.cn/huangpu/index.html',
+  },
+  xuhui: {
+    name: '徐汇区',
+    origin: '徐汇之名与明代科学家徐光启及徐家汇地区相关，行政区名沿用这一地域称谓。',
+    features: '徐家汇、衡复历史文化风貌区、龙华与滨江空间，使科学教育、海派建筑和传统寺庙文化在此交汇。',
+    heritageOverview: '土山湾手工技艺、龙华庙会、海派书画及音乐戏曲传统，连接中西工艺交流与上海城市记忆。',
+    sourceLabel: '上海市人民政府 · 徐汇区', sourceUrl: 'https://www.shanghai.gov.cn/xuhui/index.html',
+  },
+  changning: {
+    name: '长宁区',
+    origin: '长宁区名沿用近代上海的长宁路等地名，寓有长久安宁之意。',
+    features: '虹桥门户、愚园路历史街区与多元社区并存，形成开放、国际化又保留里弄生活质感的城市文化。',
+    heritageOverview: '传统舞蹈、海派工艺、地方曲艺及社区节俗等项目，展现中心城区非遗在日常生活中的传承。',
+    sourceLabel: '上海市人民政府 · 长宁区', sourceUrl: 'https://www.shanghai.gov.cn/changning/index.html',
+  },
+  putuo: {
+    name: '普陀区',
+    origin: '普陀区因境内普陀路而得名，区名也寄托了与佛教文化相关的历史地名记忆。',
+    features: '苏州河工业遗产、真如古镇与近现代工人文化构成普陀鲜明的水岸和城市生产记忆。',
+    heritageOverview: '传统糕点、民间舞蹈、曲艺与手工技艺等内容，连接古镇生活、工业社区和苏州河文化。',
+    sourceLabel: '上海市人民政府 · 普陀区', sourceUrl: 'https://www.shanghai.gov.cn/putuo/index.html',
+  },
   jiading:  {
     name: '嘉定区',
     origin: '南宋嘉定十年（1217年）置县，以当时的年号“嘉定”为名。',

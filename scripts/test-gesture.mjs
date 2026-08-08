@@ -132,6 +132,20 @@ routedDrag.end({ x: 232, y: 168 });
 directThree.dragEnd('map-test');
 assert.deepEqual(directThreeEvents, ['start', ['move', 32, -12], 'end'], '张掌拖拽必须完整贯通 Three 场景适配器');
 
+// A scene drag remains routed after the pointer leaves the original mesh.
+const lockedScene = createThreeTargetAdapter();
+const lockedEvents = [];
+lockedScene.registerContext('locked-map', {
+  onDragStart: () => lockedEvents.push('start'),
+  onDragMove: (dx, dy) => lockedEvents.push(['move', dx, dy]),
+  onDragEnd: () => lockedEvents.push('end'),
+});
+lockedScene.dragStart('locked-map', null, null);
+lockedScene.dragMove('locked-map', 18, 0);
+lockedScene.dragMove('locked-map', -7, 4);
+lockedScene.dragEnd('locked-map');
+assert.deepEqual(lockedEvents, ['start', ['move', 18, 0], ['move', -7, 4], 'end'], '场景拖拽离开原节点后仍应持续旋转当前场景');
+
 const poseEvents = [];
 const poseClassifier = createGestureClassifier({ onGesture: (event) => poseEvents.push(event) });
 const poseHand = (pose) => Array.from({ length: 21 }, (_, index) => {

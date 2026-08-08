@@ -97,11 +97,19 @@ JSONL 每行一个 JSON 对象。用户投稿页面一次导入一条记录；�
 - `model_path`：模型 URL 或站点内路径，例如 `assets/models/crafts/example.glb`。
 - `graph_data`：正式星图摘要、关键词和关联节点。
 
-管理员导入只新增项目，不覆盖已有 ID；后续修改仍通过管理员编辑界面和内容 revision 保存。
+管理员默认只新增项目。修复旧的管理员导入条目时，可使用相同稳定 `id` 并设置 `update_existing: true`。更新受以下保护：
+
+- `SHIH_0001` 至 `SHIH_0008` 原始主非遗永远不能通过 JSON 覆盖。
+- 社区投稿或其他来源项目不能通过管理员 JSON 覆盖。
+- 旧版批次只有在仍保留原脚本特征、没有工序且未被人工编辑时才允许更新。
+- 新版管理员导入项目一旦在编辑页修改标题、简介、星图或工序，后续 JSON 更新会被拒绝。
+- 更新仍携带当前内容 `revision`；协作者刚保存了新内容时，旧页面的导入会返回冲突，不会覆盖新版本。
 
 ```json
 {
   "schema": "sh-crafted.heritage-submission/v1",
+  "id": "new-primary-heritage",
+  "update_existing": true,
   "title": "新主非遗项目",
   "district_id": "jiading",
   "category": "传统技艺",

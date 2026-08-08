@@ -4,6 +4,7 @@ import { agent } from '../agent.js';
 import { transitionTo } from '../transitions.js';
 import { createHeritageGraphOverviewState, createHeritageGraphState, openGraphBranch, selectGraphNode } from '../heritage-graph.js';
 import { mountHeritageGraph } from '../heritage-graph-3d.js';
+import { isContentReviewed } from '../data.js';
 import {
   getGraphNode,
   graphId,
@@ -97,13 +98,15 @@ export async function graphView(root, params = {}) {
       selected.images?.length ? el('div', { class: 'heritage-graph-image-gallery', 'aria-label': `${selected.title}图片` }, selected.images.slice(0, 8).map((image) => el('figure', { class: 'heritage-graph-image-card' }, [el('img', { src: image.image_url || image.url, alt: image.title || selected.title, loading: 'lazy' }), image.title || image.description ? el('figcaption', { text: image.title || image.description }) : null]))) : null,
       el('p', { class: selected.summary ? '' : 'is-muted', text: selected.summary || '该节点的详细摘要与来源正在整理中。' }),
     );
+    if (context.previous_node && context.previous_node.id !== selected.id) {
+      info.appendChild(el('div', { class: 'heritage-graph-relationship-note' }, [
+        el('strong', { text: `与上一节点“${context.previous_node.title}”的联系` }),
+        el('p', { text: context.comparison_summary || context.relationship_summary || (isContentReviewed() ? '当前关系说明正在整理。' : '当前关系的内容正在整理，待审核。') }),
+        !context.relationship_summary && !isContentReviewed() ? el('small', { class: 'is-muted', text: '待审核' }) : null,
+      ]));
+    }
     if (context.mode === 'branch' && selected.type === 'heritage' && selected.id !== context.current_root?.id) {
       info.appendChild(el('button', { class: 'btn btn-primary heritage-graph-root-button', type: 'button', text: '以此项目继续探索', onclick: () => { explorer.setRoot(selected); renderUI(); } }));
-    }
-    if (context.mode === 'branch') {
-      if (context.can_previous_page) info.appendChild(el('button', { class: 'btn-ghost heritage-graph-back-button', type: 'button', text: '上一组节点', onclick: () => { explorer.previousPage(); renderUI(); } }));
-      if (context.can_next_page) info.appendChild(el('button', { class: 'btn-ghost heritage-graph-back-button', type: 'button', text: `下一组节点（共 ${context.branch_total} 项）`, onclick: () => { explorer.nextPage(); renderUI(); } }));
-      info.appendChild(el('button', { class: 'btn-ghost heritage-graph-back-button', type: 'button', text: '回到当前根节点', onclick: () => { explorer.returnRoot(); renderUI(); } }));
     }
     if (selected.type === 'heritage') info.appendChild(el('a', {
       class: 'btn-ghost heritage-graph-back-button',
@@ -132,7 +135,7 @@ export async function graphView(root, params = {}) {
     const context = explorer.context();
     heading.textContent = state.mode === 'overview' ? '上海非遗星图' : (context.current_root?.title || state.root.title);
     subtitle.textContent = context.mode === 'branch'
-      ? `${context.relation_label} · 第 ${context.branch_page + 1}/${context.branch_page_count} 组`
+      ? `${context.relation_label} · 当前关系下共 ${context.branch_total} 个节点`
       : state.mode === 'overview' ? '选择一个非遗项目，进入它的关系网络' : '选择一条关系继续探索';
     renderTrail(context);
     renderInfo(context);
@@ -161,7 +164,10 @@ export async function graphView(root, params = {}) {
   }
 
   const agentHost = {
-    context: () => ({ route: location.hash.replace(/^#/, ''), page_type: 'heritage_graph', ...explorer?.context?.(), context_revision: 'graph-local-v1' }),
+    context: () => {
+      const graph = explorer?.context?.() || {};
+      return { route: location.hash.replace(/^#/, ''), page_type: 'heritage_graph', ...graph, context_revision: `graph:${graph.mode || 'overview'}:${graph.selected_node?.id || ''}:${graph.branch || ''}:${graph.breadcrumbs?.join('|') || ''}` };
+    },
     async openNode({ node_id }) { location.hash = `#/graph/${encodeURIComponent(node_id)}`; return { ok: true, node_id }; },
     async setRootNode({ node_id }) { const node = getGraphNode(node_id); const result = explorer.setRoot(node); renderUI(); return { ok: result.ok, node_id }; },
     async expandBranch({ relation }) { const result = explorer.branch(relation); renderUI(); return result.ok ? { ok: true } : { ok: true, message: '当前资料中没有找到这条关系。' }; },

@@ -101,7 +101,11 @@ try {
   const dashboard = await evaluate(`({
     cards: document.querySelectorAll('.admin-craft-card').length,
     title: document.querySelector('.admin-dashboard h1')?.textContent,
-    loggedIn: document.documentElement.classList.contains('admin-authenticated')
+    loggedIn: document.documentElement.classList.contains('admin-authenticated'),
+    bulkToolbar: Boolean(document.querySelector('.admin-bulk-toolbar')),
+    protectedChecks: document.querySelectorAll('.admin-craft-select input:disabled').length,
+    deletableChecks: document.querySelectorAll('.admin-craft-select input:not(:disabled)').length,
+    deleteDisabled: Boolean(document.querySelector('.admin-danger-button')?.disabled)
   })`);
   await screenshot(screenshots.dashboard);
 
@@ -193,12 +197,13 @@ try {
 
   const errors = [];
   if (!dashboard.loggedIn || dashboard.cards !== 8) errors.push('管理员首页未显示 8 个项目');
+  if (!dashboard.bulkToolbar || dashboard.protectedChecks < 8 || !dashboard.deleteDisabled) errors.push('批量删除工具条或原始 8 项删除保护未显示');
   if (!process.tabs || !process.addStep || !process.materialInputs || !process.materialOutputInputs || !process.operationInputs || !process.saveButton) errors.push('工序编辑器控件不完整或缺少逐材料升级映射');
   if (!materialFlow.inheritedRows || !materialFlow.flowHelp || !materialFlow.removeButton || !materialFlow.heldOrUsable) errors.push('继承材料缺少本步使用/移出暂存控制');
   if (verifyWrite && !savePersisted) errors.push('逐材料升级映射点击保存后没有从服务器持久化读回');
   if (verifyWrite && !autoSavePersisted) errors.push('逐材料升级映射停止输入后没有自动保存并重新显示');
   if (verifyWrite && !returnSavePersisted) errors.push('点击返回项目列表时没有先保存逐材料升级映射');
-  if (inline.editButtons < 2 || !inline.managementLink || !inline.editActivated) errors.push('用户页面未进入原位编辑模式');
+  if (inline.editButtons < 2 || inline.managementLink || !inline.editActivated) errors.push('主界面管理入口隐藏或管理员原位编辑状态不符合要求');
   console.log(JSON.stringify({ dashboard, process, materialFlow, savePersisted, autoSavePersisted, returnSavePersisted, inline, screenshots, errors }, null, 2));
   if (errors.length) process.exitCode = 1;
 } finally {

@@ -125,35 +125,61 @@ function publicSource(source) {
   };
 }
 
+let editableKnowledgeCacheRevision = '';
+let editableKnowledgeCache = [];
+let editableKnowledgeByCraft = new Map();
+
 function editableKnowledgeChunks(craftId = null) {
+  const revision = editableContent?.revision || 'seed';
+  if (editableKnowledgeCacheRevision === revision) {
+    return craftId ? (editableKnowledgeByCraft.get(craftId) || []) : editableKnowledgeCache;
+  }
   const crafts = editableContent?.crafts || [];
   const steps = editableContent?.craft_steps || [];
-  const selected = crafts.filter((craft) => !craftId || craft.id === craftId);
+  const stepsByCraft = new Map();
+  for (const step of steps) {
+    if (!stepsByCraft.has(step.craft_id)) stepsByCraft.set(step.craft_id, []);
+    stepsByCraft.get(step.craft_id).push(step);
+  }
   const chunks = [];
-  for (const craft of selected) {
+  const byCraft = new Map();
+  for (const craft of crafts) {
+    const craftChunks = [];
     const graph = craft.graph_data || {};
     const relations = Array.isArray(graph.relations)
       ? graph.relations.map((item) => `${item.title || item}${item.summary ? `：${item.summary}` : ''}`).join('；')
       : '';
-    const text = [craft.summary, craft.history, craft.features, graph.summary, relations].filter(Boolean).join('\n');
-    if (text) chunks.push({
+    const details = craft.community_details || {};
+    const text = [
+      craft.summary,
+      craft.history || details.history,
+      craft.features || details.features,
+      graph.summary,
+      relations,
+    ].filter(Boolean).join('\n');
+    if (text) craftChunks.push({
       chunk_id: `content_${craft.id}_overview`, kind: 'published_content', title: craft.title, text,
       craft_ids: [craft.id], evidence_ids: [], source_ids: [], authority_tier: null, review_status: 'edited_by_admin',
     });
-    for (const [index, step] of steps.filter((item) => item.craft_id === craft.id).entries()) {
+    for (const [index, step] of (stepsByCraft.get(craft.id) || []).entries()) {
       const stepText = [step.name, step.action, step.guide_text, step.result,
         ...(Array.isArray(step.materials) ? step.materials : []), ...(Array.isArray(step.tools) ? step.tools : [])]
         .filter(Boolean).join('；');
       if (!stepText) continue;
-      chunks.push({
+      craftChunks.push({
         chunk_id: `content_${craft.id}_step_${step.id || index + 1}`, kind: 'published_process_step',
         title: `${craft.title}：${step.name || `工序 ${index + 1}`}`, text: stepText,
         craft_ids: [craft.id], evidence_ids: step.evidence_ids || [], source_ids: [], authority_tier: null,
         review_status: step.review_status || 'edited_by_admin',
       });
     }
+    byCraft.set(craft.id, craftChunks);
+    chunks.push(...craftChunks);
   }
-  return chunks;
+  editableKnowledgeCacheRevision = revision;
+  editableKnowledgeCache = chunks;
+  editableKnowledgeByCraft = byCraft;
+  return craftId ? (byCraft.get(craftId) || []) : chunks;
 }
 
 function searchKnowledge(query, craftId = null, limit = 8) {
@@ -198,12 +224,22 @@ function searchKnowledge(query, craftId = null, limit = 8) {
 // 第一阶段只暴露已有内容中可核验的 heritage 与 region 节点；传统/材料关系
 // 没有正式 nodes/edges 数据时返回空结果，不根据类别或文本臆造关系。
 const graphId = (type, rawId) => `${type}:${String(rawId || '').replace(/[^A-Za-z0-9_-]/g, '')}`;
-const graphNodes = () => [
+let serverGraphCacheRevision = '';
+let serverGraphNodes = [];
+let serverGraphNodeById = new Map();
+const graphNodes = () => {
+  const revision = editableContent?.revision || 'seed';
+  if (serverGraphCacheRevision === revision) return serverGraphNodes;
+  const galleryByCraft = new Map();
+  for (const item of editableContent?.craft_gallery || []) {
+    if (!galleryByCraft.has(item.craft_id)) galleryByCraft.set(item.craft_id, item.image_url || '');
+  }
+  serverGraphNodes = [
   ...(editableContent?.crafts || CONTENT_SEED.crafts).map((craft) => ({
     id: graphId('heritage', craft.id), raw_id: craft.id, type: 'heritage', title: craft.title,
     aliases: [craft.title], summary: String(craft.summary || '').slice(0, 180),
     district_id: craft.district_id || null,
-    overview_image: (editableContent?.craft_gallery || []).find((item) => item.craft_id === craft.id)?.image_url || craft.cover_path || '',
+    overview_image: galleryByCraft.get(craft.id) || craft.cover_path || '',
     public: true,
   })),
   ...(editableContent?.districts || CONTENT_SEED.districts).map((district) => ({
@@ -211,8 +247,12 @@ const graphNodes = () => [
     aliases: [district.name, String(district.name || '').replace(/区$/, '')],
     summary: String(district.heritage_overview || '').slice(0, 180), public: true,
   })),
-];
-function getGraphNodeServer(id) { return graphNodes().find((node) => node.id === id) || null; }
+  ];
+  serverGraphNodeById = new Map(serverGraphNodes.map((node) => [node.id, node]));
+  serverGraphCacheRevision = revision;
+  return serverGraphNodes;
+};
+function getGraphNodeServer(id) { graphNodes(); return serverGraphNodeById.get(id) || null; }
 function searchGraphServer(query, types = ['heritage', 'region'], limit = 8) {
   const clean = String(query || '').trim().toLowerCase();
   if (!clean) return [];
@@ -268,19 +308,21 @@ console.log(`DeepSeek 代理：${DEEPSEEK_KEY ? '已配置密钥（/api/agent �
 // 由前端上下文组装系统提示：小蕉人设 + 资料约束 + 证据引用规则
 function buildSystemPrompt(ctx = {}) {
   const craft = ctx.craft || {};
+  const contentReviewed = Boolean(ctx.content_reviewed || ctx.ui_context?.content_reviewed);
   const lines = [
     '你是「小蕉」，一只正在收集上海非物质文化遗产资料的小猫助手，说话带一点猫的气质但克制。',
     '规则：',
-    '1. 项目资料优先：先使用下面提供的纪录片、知识库和图谱资料。资料不足时可以补充合理的通识解释或探索性推测，但每个没有项目资料直接支持的段落必须以「【AI生成】」开头。',
+    `1. 项目资料优先：先使用下面提供的纪录片、知识库和图谱资料。当前内容${contentReviewed ? '已由内容审核专家统一确认' : '仍有部分资料待审核'}。`,
     '2. 引用证据时附上时间码，格式【mm:ss–mm:ss】。',
-    '3. 所有资料均为 AI 自动抽取的草稿（待人工审核），涉及事实表述时自然地带出「待审核」意识。',
+    contentReviewed ? '3. 当前内容已完成专家审核，不要在回答中添加“待审核”“AI生成”或内部审核状态。' : '3. 未确认的资料用“待审核”说明，不要输出“AI生成”字样。',
     '4. 你不是传承人，不冒充传承人，不提供真实工艺教学级指导。',
-    '5. 回答应当饱满但易读，一般为 300—500 个汉字。优先组织为：直接回答、关系与背景、两条延伸知识、下一步探索；不要为了凑长度重复。',
-    '6. 主动推测用户下一步可能想了解的方向，例如相关材料、地区、工艺或项目，但只能推荐下方提供的站内候选；链接和跳转由前端生成，不要编造 URL。',
-    '7. 解释某项技艺为何在某地发展时，可以从气候、原料、交通、市场和生活方式提出综合判断。项目资料没有直接支持的部分必须标注「【AI生成】」，并使用“可能、通常、可从……理解”等措辞。',
+    '5. 回答应当饱满但易读，一般为 220—380 个汉字。优先组织为：直接回答、关系与背景、一个纪录片故事或证据、下一步探索；不要为了凑长度重复。',
+    '6. 只有用户明确表达“想看、打开、还有哪些、带我探索”等跳转意图时，才推荐一至两个站内入口；否则把入口收进“继续探索”折叠区或不显示。链接和跳转由前端生成，不要编造 URL。',
+    '7. 解释某项技艺为何在某地发展时，可以从气候、原料、交通、市场和生活方式提出综合判断；资料不足时标注“待审核”，并使用“可能、通常、可从……理解”等措辞。',
     '8. 即使使用 AI 通识补充，也不得编造具体传承人、精确年份、名录等级、机构结论、引文或来源链接。',
     '',
     `当前项目：${craft.title || '未知'}（${craft.id || ''}）`,
+    '输出格式：只输出自然语言，不要输出 JSON、代码块、HTML、工具调用、内部 ID 或“ext_...”编号；可使用 Markdown **加粗**，每次回答最多加粗三处短语。',
   ];
   if (ctx.current_step) lines.push(`用户当前工序：${ctx.current_step}`);
   const ui = ctx.ui_context || {};
@@ -319,7 +361,7 @@ function buildSystemPrompt(ctx = {}) {
       const refs = (fact.sources || []).map((source) => `${source.publisher}〔${source.authority_tier}〕 ${source.url}`).join('；');
       lines.push(`- [${fact.fact_id}] ${fact.statement}（状态：${fact.review_status}；来源：${refs}）`);
     });
-    lines.push('回答使用外部资料时，应在相关句末标注事实编号，如[ext_SHIH_0001_001]；不得把needs_review条目表述为定论。');
+    lines.push(contentReviewed ? '引用资料时只写来源名称，不要输出事实 ID 或审核状态。' : '不得把 needs_review 条目表述为定论；不要把内部事实 ID 原样展示给用户。');
   }
   if (ctx.retrieved_knowledge?.length) {
     lines.push('', '统一知识库针对本次问题检索到的片段（按相关度排序）：');
@@ -327,7 +369,7 @@ function buildSystemPrompt(ctx = {}) {
       const refs = (item.sources || []).map((source) => `${source.publisher}〔${source.authority_tier}〕 ${source.url}`).join('；');
       lines.push(`- [${item.chunk_id}] ${item.title || item.kind}：${item.text}${refs ? `（来源：${refs}）` : ''}（状态：${item.review_status || '未知'}）`);
     });
-    lines.push('优先使用高相关且有 A/B 级来源的片段。使用外部来源时标注片段编号；needs_review 与自动抽取内容必须明确为待审核。');
+    lines.push(contentReviewed ? '优先使用高相关且有 A/B 级来源的片段，并自然提及来源名称。' : '优先使用高相关且有 A/B 级来源的片段；未确认内容统一标注待审核。');
   }
   return lines.join('\n');
 }
@@ -382,6 +424,150 @@ function normalizeGraphImages(value) {
     description: cleanText(item?.description, 1000),
     source_url: cleanPublicUrl(item?.source_url || item?.source || ''),
   })).filter((item) => item.image_url);
+}
+
+const GRAPH_NODE_TYPES = new Set(['heritage', 'region', 'tradition', 'material']);
+const GRAPH_RELATIONS = new Set(['LOCATED_IN', 'BELONGS_TO_TRADITION', 'USES_MATERIAL']);
+const PRIMARY_HERITAGE_IDS = new Set(Array.from({ length: 8 }, (_, index) => `SHIH_${String(index + 1).padStart(4, '0')}`));
+
+function stableGraphRelationNodeId(type, title) {
+  const normalizedType = GRAPH_NODE_TYPES.has(type) && type !== 'heritage' ? type : 'tradition';
+  const normalizedTitle = cleanText(title, 160).normalize('NFKC').trim().toLowerCase();
+  const digest = createHash('sha256').update(`${normalizedType}:${normalizedTitle}`).digest('hex').slice(0, 16);
+  return `${normalizedType}:shared_${digest}`;
+}
+
+function graphEdgeId(from, relation, to) {
+  return createHash('sha256').update(`${from}|${relation}|${to}`).digest('hex').slice(0, 24);
+}
+
+function graphRelationType(type) {
+  return type === 'material' ? 'USES_MATERIAL' : type === 'region' ? 'LOCATED_IN' : 'BELONGS_TO_TRADITION';
+}
+
+function syncGraphFromContent(content, { includeSeed = false } = {}) {
+  content.graph_nodes = Array.isArray(content.graph_nodes) ? content.graph_nodes : [];
+  content.graph_edges = Array.isArray(content.graph_edges) ? content.graph_edges : [];
+  const nodes = new Map(content.graph_nodes.filter((node) => node?.id).map((node) => [node.id, node]));
+  const edges = new Map(content.graph_edges.filter((edge) => edge?.from && edge?.to && edge?.relation).map((edge) => [edge.id || graphEdgeId(edge.from, edge.relation, edge.to), edge]));
+  let changed = false;
+
+  const mergeMissingNode = (incoming) => {
+    const current = nodes.get(incoming.id);
+    if (!current) { nodes.set(incoming.id, incoming); changed = true; return; }
+    for (const [key, value] of Object.entries(incoming)) {
+      if ((current[key] == null || current[key] === '') && value != null && value !== '') { current[key] = value; changed = true; }
+    }
+  };
+  const upsertGeneratedEdge = (incoming) => {
+    const id = incoming.id || graphEdgeId(incoming.from, incoming.relation, incoming.to);
+    const current = edges.get(id);
+    if (!current) { edges.set(id, { ...incoming, id }); changed = true; return; }
+    for (const [key, value] of Object.entries(incoming)) {
+      if ((current[key] == null || current[key] === '') && value != null && value !== '') { current[key] = value; changed = true; }
+    }
+  };
+
+  if (includeSeed) {
+    for (const node of CONTENT_SEED.graph_nodes || []) mergeMissingNode(structuredClone(node));
+    for (const edge of CONTENT_SEED.graph_edges || []) upsertGeneratedEdge(structuredClone(edge));
+  }
+  for (const district of content.districts || []) {
+    mergeMissingNode({
+      id: `region:${district.id}`, raw_id: district.id, type: 'region', title: district.name,
+      aliases: [district.name, String(district.name || '').replace(/区$/, '')].filter(Boolean),
+      summary: district.heritage_overview || '', source_title: district.source_label || '', source_url: district.source_url || '',
+      published: true, review_status: district.source_url ? 'published' : 'needs_review',
+    });
+  }
+  for (const craft of content.crafts || []) {
+    const isPrimary = PRIMARY_HERITAGE_IDS.has(craft.id);
+    const heritageId = `heritage:${craft.id}`;
+    const current = nodes.get(heritageId);
+    const generated = {
+      id: heritageId, raw_id: craft.id, type: 'heritage', title: craft.title, aliases: [craft.title].filter(Boolean),
+      summary: craft.graph_data?.summary || craft.summary || '', district_id: craft.district_id || '',
+      overview_image: craft.graph_data?.images?.[0]?.image_url || craft.graph_data?.overview_images?.[0]?.image_url || craft.cover_path || '',
+      images: normalizeGraphImages(craft.graph_data?.images || craft.graph_data?.overview_images),
+      heritage_level: isPrimary ? 'primary' : 'secondary', protected: isPrimary,
+      published: true, review_status: craft.source === 'community' ? 'approved_community' : 'edited_by_admin',
+    };
+    if (!current) { nodes.set(heritageId, generated); changed = true; }
+    else {
+      mergeMissingNode(generated);
+      if (current.heritage_level !== generated.heritage_level) { current.heritage_level = generated.heritage_level; changed = true; }
+      if (Boolean(current.protected) !== isPrimary) { current.protected = isPrimary; changed = true; }
+    }
+    if (craft.district_id) upsertGeneratedEdge({
+      id: graphEdgeId(heritageId, 'LOCATED_IN', `region:${craft.district_id}`), from: heritageId,
+      relation: 'LOCATED_IN', to: `region:${craft.district_id}`, origin: 'craft_district', published: true,
+      relationship_summary: `${craft.title}的传承与展示资料归属于${nodes.get(`region:${craft.district_id}`)?.title || craft.district_id}。`,
+    });
+    for (const relation of craft.graph_data?.relations || []) {
+      const type = ['tradition', 'material', 'region'].includes(relation?.type) ? relation.type : 'tradition';
+      const targetId = type === 'region' && relation.id ? `region:${relation.id}` : stableGraphRelationNodeId(type, relation.title);
+      mergeMissingNode({
+        id: targetId, type, title: cleanText(relation.title, 160), aliases: [cleanText(relation.title, 160)].filter(Boolean),
+        summary: cleanText(relation.summary, 2000), images: normalizeGraphImages(relation.images), published: true,
+        review_status: relation.source_url ? 'published' : 'needs_review', source_url: cleanPublicUrl(relation.source_url || ''),
+      });
+      const relationType = graphRelationType(type);
+      upsertGeneratedEdge({
+        id: graphEdgeId(heritageId, relationType, targetId), from: heritageId, relation: relationType, to: targetId,
+        origin: 'craft_relation', published: true, review_status: relation.source_url ? 'published' : 'needs_review',
+        relationship_summary: cleanText(relation.summary, 2000) || `${craft.title}与${relation.title}存在${relationType === 'USES_MATERIAL' ? '材料使用' : relationType === 'LOCATED_IN' ? '地域' : '传统脉络'}联系，具体依据待审核。`,
+      });
+    }
+  }
+  content.graph_nodes = [...nodes.values()];
+  content.graph_edges = [...edges.values()];
+  return changed;
+}
+
+function normalizeGraphPatch(body) {
+  if (body?.schema !== 'tanwuzhi.graph-patch/v1') throw new Error('invalid_graph_patch_schema');
+  const nodes = (Array.isArray(body.nodes) ? body.nodes : []).slice(0, 5000).map((node) => {
+    const type = cleanText(node?.type, 30);
+    const id = cleanText(node?.id, 180);
+    const title = cleanText(node?.title, 160);
+    if (!GRAPH_NODE_TYPES.has(type) || !id.startsWith(`${type}:`) || !title) throw new Error('invalid_graph_node');
+    return {
+      ...node, id, type, title, summary: cleanText(node.summary, 5000), aliases: cleanList(node.aliases, 30),
+      images: normalizeGraphImages(node.images), source_title: cleanText(node.source_title, 300), source_url: cleanPublicUrl(node.source_url || ''),
+      review_status: node.source_url ? (cleanText(node.review_status, 40) || 'published') : 'needs_review', published: node.published !== false,
+    };
+  });
+  const edges = (Array.isArray(body.edges) ? body.edges : []).slice(0, 10000).map((edge) => {
+    const from = cleanText(edge?.from, 180); const to = cleanText(edge?.to, 180); const relation = cleanText(edge?.relation, 50);
+    if (!from || !to || !GRAPH_RELATIONS.has(relation)) throw new Error('invalid_graph_edge');
+    return {
+      ...edge, id: cleanText(edge.id, 180) || graphEdgeId(from, relation, to), from, to, relation,
+      relationship_summary: cleanText(edge.relationship_summary, 3000), comparison_summary: cleanText(edge.comparison_summary, 3000),
+      source_title: cleanText(edge.source_title, 300), source_url: cleanPublicUrl(edge.source_url || ''),
+      review_status: edge.source_url ? (cleanText(edge.review_status, 40) || 'published') : 'needs_review', published: edge.published !== false,
+    };
+  });
+  return { schema: body.schema, base_revision: cleanText(body.base_revision, 100), nodes, edges };
+}
+
+function graphPatchPreview(patch) {
+  const nodeMap = new Map((editableContent.graph_nodes || []).map((node) => [node.id, node]));
+  const edgeMap = new Map((editableContent.graph_edges || []).map((edge) => [edge.id || graphEdgeId(edge.from, edge.relation, edge.to), edge]));
+  const conflicts = [];
+  for (const node of patch.nodes) {
+    const current = nodeMap.get(node.id);
+    if (current?.protected) {
+      const protectedKeys = ['title', 'summary', 'aliases', 'images', 'overview_image', 'district_id', 'source_title', 'source_url', 'review_status', 'published'];
+      const changed = protectedKeys.some((key) => key in node && JSON.stringify(node[key]) !== JSON.stringify(current[key]));
+      if (changed || node.heritage_level && node.heritage_level !== 'primary' || node.protected === false) conflicts.push({ kind: 'protected_node', id: node.id });
+    }
+  }
+  for (const edge of patch.edges) if (!nodeMap.has(edge.from) && !patch.nodes.some((node) => node.id === edge.from) || !nodeMap.has(edge.to) && !patch.nodes.some((node) => node.id === edge.to)) conflicts.push({ kind: 'missing_endpoint', id: edge.id });
+  return {
+    base_revision: patch.base_revision, current_revision: editableContent.revision,
+    revision_conflict: Boolean(patch.base_revision && patch.base_revision !== editableContent.revision), conflicts,
+    counts: { nodes_create: patch.nodes.filter((node) => !nodeMap.has(node.id)).length, nodes_update: patch.nodes.filter((node) => nodeMap.has(node.id)).length, edges_create: patch.edges.filter((edge) => !edgeMap.has(edge.id)).length, edges_update: patch.edges.filter((edge) => edgeMap.has(edge.id)).length },
+  };
 }
 
 function normalizeDocumentaryClips(value) {
@@ -505,8 +691,9 @@ async function loadContentStore() {
     if (!Array.isArray(stored.crafts) || !Array.isArray(stored.craft_steps)) throw new Error('invalid_content_store');
     stored.craft_gallery = Array.isArray(stored.craft_gallery) ? stored.craft_gallery : [];
     stored.site_texts = Array.isArray(stored.site_texts) ? stored.site_texts : [];
+    const graphChanged = syncGraphFromContent(stored, { includeSeed: true });
     stored.revision ||= makeRevision();
-    if (mergeMissingDistrictSeed(stored)) {
+    if (mergeMissingDistrictSeed(stored) || graphChanged) {
       stored.updated_at = new Date().toISOString();
       stored.revision = makeRevision();
       await writeContentStore(stored);
@@ -545,6 +732,7 @@ function saveContent(expectedRevision, mutate) {
     }
     const next = structuredClone(editableContent);
     mutate(next);
+    syncGraphFromContent(next);
     next.updated_at = new Date().toISOString();
     next.revision = makeRevision();
     await writeContentStore(next);
@@ -609,7 +797,18 @@ function saveCommunity(expectedRevision, mutate) {
 }
 
 function publicContent() {
-  return { ...editableContent, source: 'site-admin' };
+  return { ...editableContent, content_reviewed: Boolean(editableContent.content_reviewed), source: 'site-admin' };
+}
+
+let publicContentJsonRevision = '';
+let publicContentJsonCache = '';
+function serializedPublicContent() {
+  const revision = editableContent?.revision || 'seed';
+  if (publicContentJsonRevision !== revision) {
+    publicContentJsonCache = JSON.stringify(publicContent());
+    publicContentJsonRevision = revision;
+  }
+  return { revision, body: publicContentJsonCache };
 }
 
 function safeEqual(left, right) {
@@ -851,6 +1050,18 @@ function normalizeSteps(craftId, incoming, previous) {
   });
 }
 
+function legacyGeneratedImportIsUntouched(craft, steps, incomingTitle) {
+  const keywords = Array.isArray(craft?.graph_data?.keywords) ? craft.graph_data.keywords : [];
+  return craft?.source === 'admin-import'
+    && String(craft.id || '').startsWith('LOCAL_')
+    && craft.title === incomingTitle
+    && craft.category === '传统技艺（候选）'
+    && /非遗资源补充候选。现有公开资料提示/.test(craft.summary || '')
+    && keywords.includes('待核验')
+    && steps.length === 0
+    && /wikimedia\.org\//i.test(craft.cover_path || '');
+}
+
 const unifiedStore = await createUnifiedContentStore({
   dbPath: CONTENT_DB_PATH,
   legacyContentPath: CONTENT_STORE_PATH,
@@ -866,17 +1077,30 @@ const unifiedStore = await createUnifiedContentStore({
 });
 editableContent = unifiedStore.content;
 communityState = unifiedStore.community;
+if (syncGraphFromContent(editableContent, { includeSeed: true })) {
+  editableContent.updated_at = new Date().toISOString();
+  editableContent.revision = makeRevision();
+  editableContent = await writeContentStore(editableContent);
+}
 
 async function handleContentApi(req, res) {
   if (req.method !== 'GET') {
     res.writeHead(405, { 'Content-Type': 'application/json; charset=utf-8' }).end(JSON.stringify({ error: 'method_not_allowed' }));
     return;
   }
+  const payload = serializedPublicContent();
+  const etag = `"${payload.revision}"`;
+  if (req.headers['if-none-match'] === etag) {
+    res.writeHead(304, { ETag: etag, 'Cache-Control': 'no-cache' }).end();
+    return;
+  }
   res.writeHead(200, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-cache',
+    ETag: etag,
+    'Content-Length': Buffer.byteLength(payload.body),
   });
-  res.end(JSON.stringify(publicContent()));
+  res.end(payload.body);
 }
 
 async function handleCommunityApi(req, res, urlPath) {
@@ -1071,7 +1295,7 @@ async function handleAdminApi(req, res, urlPath) {
       loginAttempts.delete(ip);
       const token = randomBytes(32).toString('base64url');
       sessions.set(token, { username: ADMIN_USERNAME, expiresAt: Date.now() + 12 * 60 * 60 * 1000 });
-      jsonResponse(res, 200, { authenticated: true, username: ADMIN_USERNAME, revision: editableContent.revision }, { 'Set-Cookie': sessionCookie(req, token) });
+      jsonResponse(res, 200, { authenticated: true, username: ADMIN_USERNAME, revision: editableContent.revision, content_reviewed: Boolean(editableContent.content_reviewed) }, { 'Set-Cookie': sessionCookie(req, token) });
     } catch (error) {
       jsonResponse(res, error?.message === 'body_too_large' ? 413 : 400, { error: error?.message || 'bad_request' });
     }
@@ -1080,13 +1304,135 @@ async function handleAdminApi(req, res, urlPath) {
 
   const session = currentSession(req);
   if (urlPath === '/api/admin/session' && req.method === 'GET') {
-    jsonResponse(res, 200, { authenticated: Boolean(session), username: session?.username || null, revision: editableContent.revision });
+    jsonResponse(res, 200, { authenticated: Boolean(session), username: session?.username || null, revision: editableContent.revision, content_reviewed: Boolean(editableContent.content_reviewed) });
     return;
   }
   if (!session) { jsonResponse(res, 401, { error: 'authentication_required' }); return; }
   if (urlPath === '/api/admin/logout' && req.method === 'POST') {
     sessions.delete(session.token);
     jsonResponse(res, 200, { authenticated: false }, { 'Set-Cookie': sessionCookie(req, '', 0) });
+    return;
+  }
+
+  if (urlPath === '/api/admin/content-review' && req.method === 'PUT') {
+    try {
+      const body = await readJsonBody(req, 16 * 1024);
+      const expected = cleanText(body.revision, 100);
+      const reviewed = Boolean(body.reviewed);
+      const updated = await saveContent(expected, (next) => {
+        next.content_reviewed = reviewed;
+        next.content_reviewed_at = reviewed ? new Date().toISOString() : null;
+        next.content_reviewed_by = reviewed ? session.username : null;
+      });
+      jsonResponse(res, 200, { ok: true, revision: updated.revision, content_reviewed: Boolean(updated.content_reviewed) });
+    } catch (error) {
+      jsonResponse(res, error?.code === 'content_conflict' ? 409 : 400, { error: error?.code || error?.message || 'review_update_failed', revision: editableContent.revision });
+    }
+    return;
+  }
+
+  if (urlPath === '/api/admin/graph/export' && req.method === 'GET') {
+    jsonResponse(res, 200, {
+      schema: 'tanwuzhi.graph-patch/v1', base_revision: editableContent.revision,
+      exported_at: new Date().toISOString(), nodes: editableContent.graph_nodes || [], edges: editableContent.graph_edges || [],
+    });
+    return;
+  }
+
+  if ((urlPath === '/api/admin/graph/patch/preview' || urlPath === '/api/admin/graph/patch/apply') && req.method === 'POST') {
+    try {
+      const patch = normalizeGraphPatch(await readJsonBody(req, 12 * 1024 * 1024));
+      const preview = graphPatchPreview(patch);
+      if (urlPath.endsWith('/preview')) { jsonResponse(res, 200, { ok: true, ...preview }); return; }
+      if (preview.revision_conflict) { jsonResponse(res, 409, { error: 'graph_revision_conflict', ...preview }); return; }
+      if (preview.conflicts.length) { jsonResponse(res, 409, { error: 'graph_patch_conflict', ...preview }); return; }
+      const updated = await saveContent('', (next) => {
+        const nodeMap = new Map((next.graph_nodes || []).map((node) => [node.id, node]));
+        const edgeMap = new Map((next.graph_edges || []).map((edge) => [edge.id || graphEdgeId(edge.from, edge.relation, edge.to), edge]));
+        for (const node of patch.nodes) {
+          const current = nodeMap.get(node.id);
+          if (current?.protected) {
+            node.heritage_level = 'primary'; node.protected = true;
+          }
+          nodeMap.set(node.id, { ...current, ...node });
+        }
+        for (const edge of patch.edges) edgeMap.set(edge.id, { ...edgeMap.get(edge.id), ...edge });
+        next.graph_nodes = [...nodeMap.values()]; next.graph_edges = [...edgeMap.values()];
+      });
+      jsonResponse(res, 200, { ok: true, applied: true, revision: updated.revision, counts: preview.counts });
+    } catch (error) {
+      const code = error?.code === 'content_conflict' ? 409 : error?.message === 'body_too_large' ? 413 : 400;
+      jsonResponse(res, code, { error: error?.message || 'graph_patch_failed', revision: editableContent.revision });
+    }
+    return;
+  }
+
+  if (urlPath === '/api/admin/crafts/bulk-delete' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req, 64 * 1024);
+      const requestedIds = [...new Set((Array.isArray(body.ids) ? body.ids : [])
+        .slice(0, 200)
+        .map((id) => cleanText(id, 80))
+        .filter((id) => /^[A-Za-z0-9_-]+$/.test(id)))];
+      if (!requestedIds.length) throw new Error('craft_ids_required');
+      const requested = new Set(requestedIds);
+      const existingCrafts = editableContent.crafts.filter((craft) => requested.has(craft.id));
+      const missingIds = requestedIds.filter((id) => !existingCrafts.some((craft) => craft.id === id));
+      if (missingIds.length) {
+        const error = new Error('craft_not_found');
+        error.missingIds = missingIds;
+        throw error;
+      }
+      const protectedIds = existingCrafts
+        .filter((craft) => PRIMARY_HERITAGE_IDS.has(craft.id) || craft.protected === true)
+        .map((craft) => craft.id);
+      if (protectedIds.length) {
+        const error = new Error('protected_craft_delete');
+        error.protectedIds = protectedIds;
+        throw error;
+      }
+      const deletedSubmissionIds = existingCrafts.map((craft) => craft.submission_id).filter(Boolean);
+      const graphIds = new Set(requestedIds.flatMap((id) => [id, `heritage:${id}`]));
+      const updated = await saveContent(cleanText(body.revision, 100), (next) => {
+        next.crafts = next.crafts.filter((craft) => !requested.has(craft.id));
+        next.craft_steps = next.craft_steps.filter((step) => !requested.has(step.craft_id));
+        next.craft_gallery = next.craft_gallery.filter((item) => !requested.has(item.craft_id));
+        next.graph_nodes = (next.graph_nodes || []).filter((node) => !graphIds.has(node.id) && !requested.has(node.raw_id));
+        next.graph_edges = (next.graph_edges || []).filter((edge) => !graphIds.has(edge.from) && !graphIds.has(edge.to));
+      });
+      let communityCleanup = true;
+      try {
+        await saveCommunity('', (next) => {
+          for (const id of requestedIds) delete next.engagement?.[id];
+          for (const submission of next.submissions || []) {
+            if (!deletedSubmissionIds.includes(submission.id) && !requested.has(submission.published_craft_id)) continue;
+            submission.publication_removed_at = new Date().toISOString();
+            submission.publication_removed_by = session.username;
+          }
+        });
+      } catch (cleanupError) {
+        communityCleanup = false;
+        console.warn(`批量删除后的社区审计清理未完成：${cleanupError?.message || 'unknown error'}`);
+      }
+      jsonResponse(res, 200, {
+        ok: true,
+        deleted_count: requestedIds.length,
+        deleted_ids: requestedIds,
+        community_cleanup: communityCleanup,
+        revision: updated.revision,
+      });
+    } catch (error) {
+      const isConflict = error?.code === 'content_conflict';
+      const isProtected = error?.message === 'protected_craft_delete';
+      const isMissing = error?.message === 'craft_not_found';
+      const code = isConflict || isProtected ? 409 : isMissing ? 404 : error?.message === 'body_too_large' ? 413 : 400;
+      jsonResponse(res, code, {
+        error: error?.code || error?.message || 'bulk_delete_failed',
+        revision: editableContent.revision,
+        ...(error?.protectedIds ? { protected_ids: error.protectedIds } : {}),
+        ...(error?.missingIds ? { missing_ids: error.missingIds } : {}),
+      });
+    }
     return;
   }
 
@@ -1098,43 +1444,69 @@ async function handleAdminApi(req, res, urlPath) {
       if (title.length < 2) throw new Error('title_required');
       if (summary.length < 10) throw new Error('summary_required');
       const requestedId = cleanText(body.id, 80).replace(/[^A-Za-z0-9_-]/g, '_');
-      const craftId = requestedId && !editableContent.crafts.some((craft) => craft.id === requestedId)
-        ? requestedId
-        : `ADMIN_${Date.now().toString(36)}_${randomBytes(3).toString('hex')}`;
+      const existing = requestedId ? editableContent.crafts.find((craft) => craft.id === requestedId) : null;
+      const wantsUpdate = body.update_existing === true;
+      if (existing && !wantsUpdate) throw new Error('duplicate_craft_id');
+      if (existing && (PRIMARY_HERITAGE_IDS.has(existing.id) || existing.protected || existing.source !== 'admin-import')) throw new Error('protected_existing_craft');
+      const existingSteps = existing ? editableContent.craft_steps.filter((step) => step.craft_id === existing.id) : [];
+      const canReplaceExisting = existing && !existing.editor_touched && (
+        existing.import_managed === true || legacyGeneratedImportIsUntouched(existing, existingSteps, title)
+      );
+      if (existing && !canReplaceExisting) throw new Error('existing_content_modified');
+      const craftId = existing?.id || requestedId || `ADMIN_${Date.now().toString(36)}_${randomBytes(3).toString('hex')}`;
       const graph = body.graph_data || body.star_data || {};
       const overviewImages = (Array.isArray(body.overview_images) ? body.overview_images : []).slice(0, 8).map((item, index) => ({
         title: cleanText(item?.title, 160) || `概览图 ${index + 1}`,
         description: cleanText(item?.description, 1000),
         image_url: cleanImageSource(item?.image_url || item?.url),
+        source_url: cleanPublicUrl(item?.source_url || item?.source || ''),
+        image_status: cleanText(item?.image_status, 80),
       })).filter((item) => item.image_url && item.description);
       if (!overviewImages.length) throw new Error('overview_image_required');
+      const importedSteps = Array.isArray(body.steps) ? body.steps.slice(0, 24).map((step, index) => ({
+        id: `${craftId}_step_${String(index + 1).padStart(2, '0')}`,
+        source_step_id: `${craftId}_step_${String(index + 1).padStart(2, '0')}`,
+        name: cleanText(step?.name, 200), action: cleanText(step?.description || step?.action, 5000),
+        result: cleanText(step?.result, 1000), materials: cleanList(step?.materials, 30), tools: cleanList(step?.tools, 20),
+        actions: cleanList(step?.actions, 15).map((label, actionIndex) => ({ id: `${craftId}_step_${String(index + 1).padStart(2, '0')}_action_${actionIndex + 1}`, label })),
+        documentary_clips: normalizeDocumentaryClips(step?.documentary_clips),
+      })) : [];
       const imported = await saveContent(cleanText(body.revision, 100), (next) => {
-        const sort = Math.max(0, ...next.crafts.map((craft) => Number(craft.sort) || 0)) + 1;
-        next.crafts.push({
-          id: craftId, sort, title, district_id: cleanText(body.district_id, 80),
+        const current = next.crafts.find((craft) => craft.id === craftId);
+        const sort = current?.sort || Math.max(0, ...next.crafts.map((craft) => Number(craft.sort) || 0)) + 1;
+        const importedCraft = {
+          ...current, id: craftId, sort, title, district_id: cleanText(body.district_id, 80),
           category: cleanText(body.category, 100) || '类别待审核', summary,
           cover_path: cleanImageSource(body.cover_url || body.cover_path),
-          model_path: cleanText(body.model_path || body.model_url, 1200),
+          model_path: cleanText(body.model_path || body.model_url, 1200) || current?.model_path || '',
           source_directory: '', source: 'admin-import',
+          editor_touched: false, import_managed: true, imported_at: new Date().toISOString(),
+          community_details: {
+            ...(current?.community_details || {}),
+            history: cleanText(body.history, 5000), features: cleanText(body.features, 5000),
+            source_url: cleanPublicUrl(body.source_url), overview_images: overviewImages,
+          },
           graph_data: {
             summary: cleanText(graph.summary, 2000),
             relations: Array.isArray(graph.relations) ? graph.relations.slice(0, 24).map((relation) => ({ type: ['tradition', 'material', 'region'].includes(relation?.type) ? relation.type : 'tradition', title: cleanText(relation?.title || relation, 160), summary: cleanText(relation?.summary, 1000), images: normalizeGraphImages(relation?.images) })).filter((relation) => relation.title) : [],
             keywords: cleanList(graph.keywords, 30), overview_images: overviewImages, images: normalizeGraphImages(graph.images),
           },
-        });
-        const importedSteps = Array.isArray(body.steps) ? body.steps.slice(0, 24).map((step, index) => ({
-          id: `${craftId}_step_${String(index + 1).padStart(2, '0')}`,
-          source_step_id: `${craftId}_step_${String(index + 1).padStart(2, '0')}`,
-          name: cleanText(step?.name, 200), action: cleanText(step?.description || step?.action, 5000),
-          result: cleanText(step?.result, 1000), materials: cleanList(step?.materials, 30), tools: cleanList(step?.tools, 20),
-          actions: cleanList(step?.actions, 15).map((label, actionIndex) => ({ id: `${craftId}_step_${String(index + 1).padStart(2, '0')}_action_${actionIndex + 1}`, label })),
-          documentary_clips: normalizeDocumentaryClips(step?.documentary_clips),
-        })) : [];
-        if (importedSteps.length) next.craft_steps.push(...normalizeSteps(craftId, importedSteps, []));
+        };
+        if (current) Object.assign(current, importedCraft);
+        else next.crafts.push(importedCraft);
+        next.craft_steps = next.craft_steps.filter((step) => step.craft_id !== craftId);
+        if (importedSteps.length) next.craft_steps.push(...normalizeSteps(craftId, importedSteps, existingSteps));
+        next.craft_gallery = next.craft_gallery.filter((item) => item.craft_id !== craftId);
+        overviewImages.forEach((image, index) => next.craft_gallery.push({
+          id: `${craftId}_work_${String(index + 1).padStart(2, '0')}`, sort: index + 1, craft_id: craftId,
+          title: image.title, description: image.description, image_url: image.image_url,
+          source_url: image.source_url, image_status: image.image_status, source_path: '', evidence_id: '',
+        }));
       });
-      jsonResponse(res, 201, { ok: true, craft_id: craftId, revision: imported.revision });
+      jsonResponse(res, existing ? 200 : 201, { ok: true, craft_id: craftId, updated: Boolean(existing), revision: imported.revision });
     } catch (error) {
-      const code = error?.code === 'content_conflict' ? 409 : error?.message === 'body_too_large' ? 413 : 400;
+      const conflictErrors = new Set(['duplicate_craft_id', 'protected_existing_craft', 'existing_content_modified']);
+      const code = error?.code === 'content_conflict' || conflictErrors.has(error?.message) ? 409 : error?.message === 'body_too_large' ? 413 : 400;
       jsonResponse(res, code, { error: error?.message || 'import_failed', revision: editableContent.revision });
     }
     return;
@@ -1213,6 +1585,8 @@ async function handleAdminApi(req, res, urlPath) {
           const old = next.craft_steps.filter((step) => step.craft_id === stepsMatch[1]);
           const replacement = normalizeSteps(stepsMatch[1], body.steps, old);
           next.craft_steps = next.craft_steps.filter((step) => step.craft_id !== stepsMatch[1]).concat(replacement);
+          const craft = next.crafts.find((entry) => entry.id === stepsMatch[1]);
+          if (craft?.source === 'admin-import') craft.editor_touched = true;
         });
       } else if (craftMatch) {
         updated = await saveContent(expected, (next) => {
@@ -1236,6 +1610,7 @@ async function handleAdminApi(req, res, urlPath) {
               images: normalizeGraphImages(graph.images),
             };
           }
+          if (item.source === 'admin-import') item.editor_touched = true;
         });
       } else {
         jsonResponse(res, 404, { error: 'not_found' });

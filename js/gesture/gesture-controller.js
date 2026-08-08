@@ -540,5 +540,13 @@ export function createGestureController({
       };
     },
     metrics: () => metrics?.summary() || null,
+    // Deterministic input hook used by smoke tests and diagnostics. It feeds
+    // the same classifier event path as camera inference without touching the
+    // production camera or synthesizing DOM clicks by itself.
+    simulate(event) {
+      if (!event || typeof event !== 'object') throw new TypeError('gesture_event_required');
+      handleGesture(event);
+      return { state: machine.state(), lastGesture: lastGestureType };
+    },
   };
 }

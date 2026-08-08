@@ -1100,6 +1100,19 @@ export async function createMap3D(container, hooks) {
     setFilter(activeFilter);
   }
 
+  function resetView() {
+    focused = null;
+    tween = null;
+    applyHover(null, true);
+    for (const d of districts.values()) {
+      d.riseTarget = 0;
+      d.settling = true;
+      if (d.points) d.points.forEach((p) => { p.visible = true; });
+    }
+    setFilter(activeFilter);
+    tweenCamera(overview.pos, overview.target, 820, 0.18);
+  }
+
   // ---- 投影：世界坐标 → 容器内像素 ----
   const tmpV = new THREE.Vector3();
   function project(worldPos) {
@@ -1306,6 +1319,8 @@ export async function createMap3D(container, hooks) {
       spherical.theta -= Number(dx || 0) * 0.004;
       spherical.phi = THREE.MathUtils.clamp(spherical.phi + Number(dy || 0) * 0.004, 0.24, controls.maxPolarAngle);
       camera.position.copy(controls.target).add(new THREE.Vector3().setFromSpherical(spherical));
+      renderer.domElement.dataset.gestureDrag = 'true';
+      renderer.domElement.dataset.mapRotation = `${spherical.theta.toFixed(5)},${spherical.phi.toFixed(5)}`;
       controls.update();
     },
     zoomBy(factor = 1) {
@@ -1315,7 +1330,7 @@ export async function createMap3D(container, hooks) {
       camera.position.copy(controls.target).add(offset.normalize().multiplyScalar(distance));
       controls.update();
     },
-    resetView() { exitFocus(); },
+    resetView,
     getHoveredDistrict() { return hovered || null; },
     getDistrictNames: () => [...districts.keys()],
   };

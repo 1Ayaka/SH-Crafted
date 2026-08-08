@@ -2,7 +2,7 @@
 // 慢路径（非材料/动作/工序直读）优先走 server.mjs 的 /api/agent 代理（密钥只在服务器侧）；
 // 代理不可用（无密钥/超时/5xx）时静默降级为基于资料库的检索式占位应答，并提示降级状态
 import { el, catSVG, openEvidenceModal } from './ui.js';
-import { evidenceTimecode } from './data.js';
+import { evidenceTimecode, isContentReviewed } from './data.js';
 import { buildAgentContext as buildUIAgentContext } from './agent/context-builder.js';
 import { createToolRegistry } from './agent/tool-registry.js';
 import { resolveIntent } from './agent/intent-resolver.js';
@@ -12,6 +12,7 @@ import { VOICE_STATES } from './voice/voice-state-machine.js';
 
 // 用户提供小蕉头像后，只需把这里改成站内图片路径；空值时保留微信式头像位且不显示破图。
 const JIAO_AVATAR_URL = '';
+const reviewVisible = () => !isContentReviewed();
 
 const panel = {
   open: false,
@@ -29,7 +30,21 @@ const panel = {
   voiceStatus: 'DISABLED',
   global: false,
   defaultHost: {},
+  contextSignature: '',
 };
+
+function contextSignature(value = {}) {
+  const compactList = (items, limit) => (Array.isArray(items) ? items.slice(-limit) : [])
+    .map((item) => typeof item === 'string' ? item : `${item?.id || item?.name || ''}:${item?.state || item?.status || ''}`)
+    .join('|');
+  return [
+    value.route, value.page, value.page_type, value.current_step_id, value.failure_count,
+    value.context_revision, value.revision, value.current_root?.id, value.selected_node?.id,
+    value.active_branch?.relation || value.active_branch,
+    compactList(value.inventory_states, 12), compactList(value.visible_nodes, 12),
+    compactList(value.breadcrumbs, 8), compactList(value.recent_actions, 8),
+  ].join('~');
+}
 
 function ensureVoice() {
   if (panel.voice) return panel.voice;
@@ -175,12 +190,16 @@ function retrieve(query, craft) {
     .sort((a, b) => b.s - a.s)
     .slice(0, 2)
     .map((x) => x.c);
-  const evidence = craft.evidence
+  let evidence = craft.evidence
     .map((e) => ({ e, s: score((e.transcript_raw || '') + (e.visual_description_raw || '')) }))
     .filter((x) => x.s >= 3)
     .sort((a, b) => b.s - a.s)
     .slice(0, 2)
     .map((x) => x.e);
+  if (craft.evidence?.length && evidence.length < 2 && /纪录片|片段|故事|背景|历史|起源|为什么|怎么形成/.test(String(query || ''))) {
+    const seen = new Set(evidence.map((item) => item.evidence_id));
+    evidence = [...evidence, ...craft.evidence.filter((item) => !seen.has(item.evidence_id)).slice(0, 2 - evidence.length)];
+  }
   const externalFacts = (craft.externalFacts || [])
     .map((f) => ({ f, s: score(`${f.topic || ''}${f.statement || ''}${(f.sources || []).map((source) => source.title).join('')}`) }))
     .filter((x) => x.s >= 2)
@@ -356,7 +375,9 @@ function followupQuestions(query, craft, plan) {
 function appendExplorationGuidance(nodes, query, craft) {
   const plan = explorationPlan(query, craft);
   if (plan.links.length) {
-    const linkNodes = plan.links.map((link) => el('button', {
+    const explicit = /打开|进入|跳转|带我|探索|还有哪些|相关非遗|链接|看看/.test(String(query || ''));
+    const visibleLinks = plan.links.slice(0, explicit ? 2 : 2);
+    const linkNodes = visibleLinks.map((link) => el('button', {
       class: 'ap-explore-link', type: 'button',
       onclick: async () => {
         const args = link.action === 'open_heritage_detail' ? { heritage_id: link.id } : { node_id: link.id };
@@ -364,11 +385,10 @@ function appendExplorationGuidance(nodes, query, craft) {
         if (!result.ok) addMsg('agent', [el('p', { text: result.error?.message || '暂时无法打开这个探索入口。' })], '小蕉');
       },
     }, [el('strong', { text: link.title }), el('span', { text: link.label })]));
-    nodes.push(el('section', { class: 'ap-exploration' }, [
-      el('strong', { class: 'ap-exploration-title', text: '沿着这个话题继续探索' }),
-      el('p', { class: 'small muted', text: '这些入口来自当前站内图谱中已有的关系。' }),
-      el('div', { class: 'ap-explore-links' }, linkNodes),
-    ]));
+    const body = [el('p', { class: 'small muted', text: '这些入口来自当前站内图谱中已有的关系。' }), el('div', { class: 'ap-explore-links' }, linkNodes)];
+    nodes.push(explicit
+      ? el('section', { class: 'ap-exploration' }, [el('strong', { class: 'ap-exploration-title', text: '沿着这个话题继续探索' }), ...body])
+      : el('details', { class: 'ap-exploration ap-exploration-collapsed' }, [el('summary', { text: '继续探索相关内容' }), ...body]));
   }
   const prompts = followupQuestions(query, craft, plan);
   nodes.push(el('div', { class: 'ap-followups' }, [
@@ -392,9 +412,9 @@ function appendKnowledgeHits(nodes, craft, hits, title = '统一知识库命中�
   for (const hit of hits.slice(0, 3)) {
     hitNodes.push(el('p', {}, [
       el('span', { text: `${String(hit.text || '').slice(0, 240)}${String(hit.text || '').length > 240 ? '…' : ''} ` }),
-      hit.authority_tier
+      reviewVisible() ? (hit.authority_tier
         ? el('span', { class: hit.review_status === 'verified_external' ? 'tag tag-verified' : 'tag tag-review', text: `${hit.authority_tier}级·${hit.review_status === 'verified_external' ? '已核验' : '待审核'}` })
-        : el('span', { class: 'tag tag-review', text: '待审核' }),
+        : el('span', { class: 'tag tag-review', text: '待审核' })) : null,
     ]));
     for (const source of (hit.sources || []).slice(0, 2)) {
       hitNodes.push(el('div', { class: 'refs' }, [el('a', {
@@ -416,22 +436,46 @@ function appendKnowledgeHits(nodes, craft, hits, title = '统一知识库命中�
 }
 
 function modelAnswerNode(line) {
-  const text = String(line || '').trim();
-  if (!text.startsWith('【AI生成】')) return el('p', { text });
-  return el('p', {}, [
-    el('span', { class: 'tag tag-ai', text: 'AI生成' }),
-    document.createTextNode(` ${text.replace(/^【AI生成】\s*/, '')}`),
-  ]);
+  let text = String(line || '').trim()
+    .replace(/^```(?:markdown|md|text)?\s*/i, '')
+    .replace(/```$/g, '')
+    .replace(/【(?:ext|fact|chunk)_[^】]+】/gi, '（资料）')
+    .replace(/\[(?:ext|fact|chunk)_[^\]]+\]/gi, '（资料）')
+    .replace(/^【AI生成】\s*/i, '');
+  if (isContentReviewed()) text = text.replace(/【?待审核】?/g, '').replace(/AI生成/g, '').replace(/\s{2,}/g, ' ').trim();
+  if (!text) return null;
+  const parts = [];
+  let cursor = 0;
+  const bold = /\*\*([^*\n]{1,40})\*\*/g;
+  let match;
+  while ((match = bold.exec(text))) {
+    if (match.index > cursor) parts.push(document.createTextNode(text.slice(cursor, match.index)));
+    parts.push(el('strong', { class: 'ap-answer-emphasis', text: match[1].trim() }));
+    cursor = match.index + match[0].length;
+  }
+  if (cursor < text.length) parts.push(document.createTextNode(text.slice(cursor)));
+  return el('p', { class: 'ap-answer-line' }, parts.length ? parts : [document.createTextNode(text)]);
+}
+
+function cleanModelContent(value) {
+  let text = String(value || '').replace(/```(?:json|markdown|md|text)?/gi, '').replace(/```/g, '').trim();
+  if (/^\s*[{"[]/.test(text)) {
+    try {
+      const parsed = JSON.parse(text);
+      text = typeof parsed === 'string' ? parsed : (parsed.answer || parsed.content || parsed.message || '');
+    } catch { /* 模型偶尔只返回半截 JSON，按普通文本继续清洗 */ }
+  }
+  return text;
 }
 
 function refreshNotice() {
   const n = panel.nodes.notice;
   if (!n) return;
   n.textContent = panel.modelStatus === 'ok'
-    ? '已接入模型应答：优先使用项目资料；通识补充会标注“AI生成”，引用项目证据时附时间码。'
+    ? `已接入模型应答：优先使用项目资料${reviewVisible() ? '，未确认内容标注待审核' : ''}；相关纪录片片段会在合适时出现。`
     : panel.modelStatus === 'down'
-      ? '模型不可用，已切换检索式应答：回答仅来自本项目的纪录片转写与知识草稿（AI 自动抽取，待审核）。'
-      : '优先模型应答，不可用时自动降级为检索式应答；模型的资料外补充会明确标注“AI生成”。';
+      ? `模型不可用，已切换检索式应答${reviewVisible() ? '，未确认内容标注待审核' : ''}。`
+      : `优先模型应答，不可用时自动降级为检索式应答${reviewVisible() ? '，未确认内容标注待审核' : ''}。`;
 }
 
 // 检索式占位应答（降级路径）
@@ -458,7 +502,7 @@ function retrievalAnswer(query, craft, claims, evidence, externalFacts, knowledg
   for (const c of claims) {
     nodes.push(el('p', {}, [
       el('span', { text: c.statement + ' ' }),
-      el('span', { class: 'tag tag-review', text: '待审核' }),
+      reviewVisible() ? el('span', { class: 'tag tag-review', text: '待审核' }) : null,
     ]));
     if (c.evidence_ids?.length) {
       nodes.push(el('div', { class: 'refs' }, [
@@ -483,7 +527,7 @@ function retrievalAnswer(query, craft, claims, evidence, externalFacts, knowledg
   }
   appendKnowledgeHits(nodes, craft, knowledgeHits);
   appendExplorationGuidance(nodes, query, craft);
-  nodes.push(el('p', { class: 'small muted', text: '以上为检索式占位应答，内容来自未经人工审核的草稿，请以正式审核结果为准。' }));
+  if (reviewVisible()) nodes.push(el('p', { class: 'small muted', text: '部分内容仍待审核，请结合来源判断。' }));
   addMsg('agent', nodes, '小蕉');
 }
 
@@ -501,7 +545,7 @@ async function answer(query) {
       addGuidedAnswer([
         el('p', {}, [
           el('span', { text: `「${craft.title}」当前记录的材料与物件有：${craft.allResources.join('、') || '（资料待补充）'}。 ` }),
-          el('span', { class: 'tag tag-review', text: '待审核' }),
+          reviewVisible() ? el('span', { class: 'tag tag-review', text: '待审核' }) : null,
         ]),
         el('p', { class: 'small muted', text: '工具已作为可复用物件并入资源集合；每一步的组合规则仍需人工审核。' }),
       ], query, craft);
@@ -511,7 +555,7 @@ async function answer(query) {
       addGuidedAnswer([
         el('p', {}, [
           el('span', { text: craft.allTools.length ? `记录的工具类物件有：${craft.allTools.join('、')}。它们与材料在同一列表中选择。 ` : '现有步骤资料中没有记录工具类物件。' }),
-          craft.allTools.length ? el('span', { class: 'tag tag-review', text: '待审核' }) : null,
+          craft.allTools.length && reviewVisible() ? el('span', { class: 'tag tag-review', text: '待审核' }) : null,
         ]),
         el('p', { class: 'small muted', text: '“材料/工具”分类只用于说明来源，工作台统一按资源处理。' }),
       ], query, craft);
@@ -521,7 +565,7 @@ async function answer(query) {
       addGuidedAnswer([
         el('p', {}, [
           el('span', { text: `当前可选动作包括：${craft.actions.map((action) => action.label).join('、')}。 ` }),
-          el('span', { class: 'tag tag-review', text: '待审核' }),
+          reviewVisible() ? el('span', { class: 'tag tag-review', text: '待审核' }) : null,
         ]),
         el('p', { class: 'small muted', text: '动作来自人工覆盖规则或旧工序名称的兼容映射。' }),
       ], query, craft);
@@ -531,7 +575,7 @@ async function answer(query) {
       addGuidedAnswer([
         el('p', {}, [
           el('span', { text: `纪录片资料整理的候选工序共 ${craft.steps.length} 道：${craft.steps.map((s, i) => `${i + 1}. ${s.displayName}`).join(' → ')}。 ` }),
-          el('span', { class: 'tag tag-review', text: '待审核' }),
+          reviewVisible() ? el('span', { class: 'tag tag-review', text: '待审核' }) : null,
         ]),
         el('p', { class: 'small muted', text: '顺序为 order_candidate 候选顺序，未经人工核定。' }),
       ], query, craft);
@@ -555,7 +599,7 @@ async function answer(query) {
         thinking?.remove();
         panel.modelStatus = 'ok';
         refreshNotice();
-        const nodes = modelResult.content.split(/\n+/).filter((line) => line.trim()).map(modelAnswerNode);
+        const nodes = cleanModelContent(modelResult.content).split(/\n+/).filter((line) => line.trim()).map(modelAnswerNode).filter(Boolean);
         if (evidence.length) {
           nodes.push(el('p', { class: 'small muted', text: '本回答参考的纪录片片段：' }));
           for (const ev of evidence.slice(0, 2)) {
@@ -581,7 +625,7 @@ async function answer(query) {
         }
         appendKnowledgeHits(nodes, craft, modelResult.knowledge || knowledgeHits, '本次回答的统一知识库依据：');
         appendExplorationGuidance(nodes, query, craft);
-        nodes.push(el('p', { class: 'small muted', text: '以上由模型综合项目资料生成；未由项目资料直接支持的段落标注为“AI生成”，请结合来源判断。' }));
+        if (reviewVisible()) nodes.push(el('p', { class: 'small muted', text: '部分内容仍待审核，请结合来源判断。' }));
         addMsg('agent', nodes, '小蕉');
         return;
       } catch {
@@ -607,16 +651,15 @@ function contextBanner() {
   const step = c.current_step_id
     ? (panel.craft?.steps.find((s) => s.step_id === c.current_step_id)?.displayName || c.current_step_id)
     : '未开始';
-  const inv = c.inventory_states.length
-    ? c.inventory_states.map((i) => `${i.name}(${i.state})`).join('、')
+  const inventory = Array.isArray(c.inventory_states) ? c.inventory_states : [];
+  const inv = inventory.length
+    ? `${inventory.slice(-6).map((i) => `${i.name}(${i.state})`).join('、')}${inventory.length > 6 ? `等 ${inventory.length} 项` : ''}`
     : '空';
   return `当前：${panel.craft ? panel.craft.title : '非工艺页'} · 步骤：${step} · 背包：${inv} · 连续失败：${c.failure_count} 次`;
 }
 
 function render() {
   invalidateRequests();
-  ensureVoice();
-  ensureRegistry();
   const root = document.createElement('div');
   root.innerHTML = '';
   document.querySelector('.agent-fab')?.remove();
@@ -732,6 +775,7 @@ const api = {
   },
   open() {
     if (!panel.nodes.panel) render();
+    const openedAt = performance.now();
     panel.open = true;
     panel.nodes.panel.classList.add('open');
     document.body.classList.add('agent-open');   // 停靠布局：内容区整体左挤
@@ -744,6 +788,11 @@ const api = {
       ], '小蕉');
     }
     panel.onToggle?.(true);
+    requestAnimationFrame(() => {
+      const latency = performance.now() - openedAt;
+      panel.nodes.panel.dataset.openLatencyMs = latency.toFixed(1);
+      window.__agentPerformance = { open_latency_ms: latency, measured_at: Date.now() };
+    });
   },
   close() {
     panel.open = false;
@@ -758,7 +807,10 @@ const api = {
     panel.craft = craft;
   },
   setContext(ctx) {
+    const previous = panel.contextSignature || contextSignature(panel.context);
     Object.assign(panel.context, ctx);
+    panel.contextSignature = contextSignature(panel.context);
+    if (previous !== panel.contextSignature) invalidateRequests();
     if (panel.open) {
       panel.nodes.ctxLine.innerHTML = '';
       panel.nodes.ctxLine.appendChild(el('b', { text: '会话上下文 ' }));
@@ -766,8 +818,10 @@ const api = {
     }
   },
   setHost(host = {}) {
+    const previous = panel.host;
     panel.host = host;
     panel.registry = null;
+    if (previous !== host) invalidateRequests();
     if (panel.open) {
       panel.nodes.ctxLine.innerHTML = '';
       panel.nodes.ctxLine.appendChild(el('b', { text: '会话上下文 ' }));

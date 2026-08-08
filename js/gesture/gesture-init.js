@@ -85,6 +85,35 @@ export function initGesture({ onVoiceStateChange } = {}) {
       || '';
   }
 
+  // A drag belongs to the active Three scene for its whole lifetime. The
+  // pressed mesh is only used for the optional click; it must not decide
+  // whether subsequent frames reach the scene (the pointer may leave it).
+  function beginSceneDrag(target) {
+    if (target?.layer === 'three_scene') {
+      const context = target.context || target.name;
+      currentDragTarget = { ...target, context, name: context };
+      threeAdapter.dragStart(context, target.group, target.mesh);
+      return true;
+    }
+    // Never let a palm press on a modal, agent panel or regular DOM control
+    // rotate a scene behind it. Only an empty canvas hit may use the active
+    // scene fallback.
+    if (target?.layer && target.layer !== 'empty' && !target.layer.startsWith('three_canvas')) return false;
+    const context = threeAdapter.getActiveContext?.();
+    if (!context) return false;
+    currentDragTarget = { layer: 'three_canvas_fallback', context, name: context };
+    threeAdapter.dragStartActive();
+    return true;
+  }
+
+  function endSceneDrag() {
+    if (!currentDragTarget) return;
+    const context = currentDragTarget.context || currentDragTarget.name;
+    if (currentDragTarget.layer === 'three_canvas_fallback') threeAdapter.dragEndActive();
+    else threeAdapter.dragEnd(context);
+    currentDragTarget = null;
+  }
+
   // ---- 手势事件 → 输入协调 → 目标解析 → 动作执行 ----
 
   const controller = createGestureController({
@@ -180,10 +209,7 @@ export function initGesture({ onVoiceStateChange } = {}) {
           pendingClickTarget = null;
           longPressActive = false;
           virtualPointer.down(resolved, event.screenX, event.screenY);
-          if (resolved?.layer === 'three_scene') {
-            currentDragTarget = resolved;
-            threeAdapter.dragStart(resolved.context || resolved.name, resolved.group, resolved.mesh);
-          }
+          beginSceneDrag(resolved);
           cursor.setPinching(true);
           handOverlay.setAction('pinching');
           break;
@@ -199,12 +225,7 @@ export function initGesture({ onVoiceStateChange } = {}) {
         case 'pinch-end': {
           pendingClickTarget = event.wasClick ? currentPressTarget : null;
           virtualPointer.up(currentPressTarget, event.screenX, event.screenY);
-          if (currentDragTarget) {
-            if (currentDragTarget.layer === 'three_scene') {
-              threeAdapter.dragEnd(currentDragTarget.context || currentDragTarget.name);
-            }
-            currentDragTarget = null;
-          }
+          endSceneDrag();
           cursor.setPinching(false);
           if (!longPressActive) {
             handOverlay.setAction('tracking');
@@ -219,10 +240,7 @@ export function initGesture({ onVoiceStateChange } = {}) {
           handOverlay.setAction('longpress');
           // 长按是“抓住”的确认点。若目标是 Three 场景且此前尚未建立
           // 拖拽上下文，在这里补一次 dragStart，保证长按本身可接管旋转。
-          if (currentPressTarget?.layer === 'three_scene' && !currentDragTarget) {
-            currentDragTarget = currentPressTarget;
-            threeAdapter.dragStart(currentDragTarget.context || currentDragTarget.name, currentDragTarget.group, currentDragTarget.mesh);
-          }
+          if (!currentDragTarget) beginSceneDrag(currentPressTarget);
           const longPressElement = interactiveElement(currentPressTarget);
           longPressElement?.classList?.add('is-gesture-longpress');
           longPressElement?.dispatchEvent?.(new CustomEvent('gesturelongpress', { bubbles: true, detail: { source: 'gesture' } }));
@@ -242,22 +260,16 @@ export function initGesture({ onVoiceStateChange } = {}) {
         }
 
         case 'air-drag': {
-          if (currentDragTarget?.layer === 'three_scene') {
+          if (currentDragTarget) {
             handOverlay.setAction('dragging');
             threeAdapter.dragMove(currentDragTarget.context || currentDragTarget.name, event.dx, event.dy);
-          } else if (currentDragTarget?.layer === 'three_canvas_fallback') {
-            handOverlay.setAction('dragging');
-            threeAdapter.dragMoveActive(event.dx, event.dy);
           }
           break;
         }
 
         case 'air-drag-start': {
           if (currentPressTarget?.layer === 'three_scene') {
-            if (!currentDragTarget) {
-              currentDragTarget = currentPressTarget;
-              threeAdapter.dragStart(currentDragTarget.context || currentDragTarget.name, currentDragTarget.group, currentDragTarget.mesh);
-            }
+            if (!currentDragTarget) beginSceneDrag(currentPressTarget);
             handOverlay.setAction('dragging');
           } else if (!currentDragTarget && threeAdapter.getActiveContext?.()) {
             currentDragTarget = {
@@ -272,13 +284,7 @@ export function initGesture({ onVoiceStateChange } = {}) {
         }
 
         case 'air-drag-end': {
-          if (currentDragTarget?.layer === 'three_scene') {
-            threeAdapter.dragEnd(currentDragTarget.context || currentDragTarget.name);
-            currentDragTarget = null;
-          } else if (currentDragTarget?.layer === 'three_canvas_fallback') {
-            threeAdapter.dragEndActive();
-            currentDragTarget = null;
-          }
+          endSceneDrag();
           handOverlay.setAction('tracking');
           break;
         }
@@ -289,17 +295,7 @@ export function initGesture({ onVoiceStateChange } = {}) {
           pendingClickTarget = null;
           longPressActive = false;
           virtualPointer.down(resolved, event.screenX, event.screenY);
-          if (resolved?.layer === 'three_scene') {
-            currentDragTarget = resolved;
-            threeAdapter.dragStart(resolved.context || resolved.name, resolved.group, resolved.mesh);
-          } else if (threeAdapter.getActiveContext?.() && !resolved?.layer?.includes('dom')) {
-            currentDragTarget = {
-              layer: 'three_canvas_fallback',
-              context: threeAdapter.getActiveContext(),
-              name: threeAdapter.getActiveContext(),
-            };
-            threeAdapter.dragStartActive();
-          }
+          beginSceneDrag(resolved);
           cursor.setPinching(true);
           handOverlay.setAction('palmpress');
           break;
@@ -313,12 +309,7 @@ export function initGesture({ onVoiceStateChange } = {}) {
           pendingClickTarget = event.wasClick ? currentPressTarget : null;
           virtualPointer.up(currentPressTarget, event.screenX, event.screenY);
           if (currentDragTarget) {
-            if (currentDragTarget.layer === 'three_scene') {
-              threeAdapter.dragEnd(currentDragTarget.context || currentDragTarget.name);
-            } else if (currentDragTarget.layer === 'three_canvas_fallback') {
-              threeAdapter.dragEndActive();
-            }
-            currentDragTarget = null;
+            endSceneDrag();
           }
           cursor.setPinching(false);
           if (!longPressActive) {
@@ -354,10 +345,7 @@ export function initGesture({ onVoiceStateChange } = {}) {
           cursor.setLongPress(false);
           currentPressTarget = null;
           pendingClickTarget = null;
-          if (currentDragTarget) {
-            threeAdapter.dragEnd(currentDragTarget.context || currentDragTarget.name);
-            currentDragTarget = null;
-          }
+          endSceneDrag();
           break;
         }
 

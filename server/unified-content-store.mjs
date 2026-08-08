@@ -2,7 +2,7 @@ import { copyFile, mkdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-const CONTENT_COLLECTIONS = ['districts', 'crafts', 'craft_steps', 'craft_gallery', 'site_texts'];
+const CONTENT_COLLECTIONS = ['districts', 'crafts', 'craft_steps', 'craft_gallery', 'site_texts', 'graph_nodes', 'graph_edges'];
 const COMMUNITY_COLLECTIONS = ['submissions'];
 
 function revision() {

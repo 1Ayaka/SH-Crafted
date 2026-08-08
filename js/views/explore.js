@@ -18,14 +18,16 @@ import { graphId, parseGraphId } from '../agent/graph-adapter.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
-// GLB 节点名（历史行政区划）→ 数据包地区 ID
-// 注：象牙篾丝编织绑定到「上海市核心区」节点，归属仍为“地区待核对”（见 config.js）
-const NODE_TO_DISTRICT = {
-  '上海市核心区': 'jingan', '南汇区': 'nanhui', '嘉定区': 'jiading',
-  '奉贤区': 'fengxian', '宝山区': 'baoshan', '崇明县': 'chongming',
-  '松江区': 'songjiang', '浦东新区': 'pudong', '金山区': 'jinshan',
-  '闵行区': 'minhang', '青浦区': 'qingpu',
+// GLB 仍使用历史节点名；中心节点在展示层聚合五个现行行政区，
+// 数据库中的 district_id 始终保留现行区 ID，导入和审核无需迁移。
+const CENTER_DISTRICT_IDS = ['huangpu', 'xuhui', 'changning', 'jingan', 'putuo'];
+const NODE_TO_DISTRICTS = {
+  '上海市核心区': CENTER_DISTRICT_IDS, '南汇区': ['nanhui'], '嘉定区': ['jiading'],
+  '奉贤区': ['fengxian'], '宝山区': ['baoshan'], '崇明县': ['chongming'],
+  '松江区': ['songjiang'], '浦东新区': ['pudong'], '金山区': ['jinshan'],
+  '闵行区': ['minhang'], '青浦区': ['qingpu'],
 };
+const displayNodeName = (nodeName) => nodeName === '上海市核心区' ? '上海中心城区' : nodeName;
 
 export async function exploreView(root) {
   const craftRecords = allCrafts();
@@ -36,7 +38,8 @@ export async function exploreView(root) {
     craftsByDistrict.get(districtId).push(craft);
   }
   const districtCrafts = (districtId) => craftsByDistrict.get(districtId) || [];
-  const nodeCrafts = (nodeName) => districtCrafts(NODE_TO_DISTRICT[nodeName]);
+  const nodeDistrictIds = (nodeName) => NODE_TO_DISTRICTS[nodeName] || [];
+  const nodeCrafts = (nodeName) => nodeDistrictIds(nodeName).flatMap(districtCrafts);
   let mode = 'map';
   let map3d = null;
   let mapViewEl = null;      // 地图视图容器（三维或平面，只构建一次）
@@ -49,6 +52,7 @@ export async function exploreView(root) {
   let category = '';
   let activeDistrictId = null;
   let selectedCraft = null;
+  let activeDistrictIds = [];
   const explorationHistory = [];
   const cleanups = [];
   let viewDisposed = false;
@@ -120,13 +124,23 @@ export async function exploreView(root) {
   // ---------- 工具栏 ----------
   const search = el('input', {
     type: 'search', placeholder: '搜索工艺或地区…', 'aria-label': '搜索工艺或地区',
-    oninput: () => { query = search.value.trim(); listRenderLimit = LIST_PAGE_SIZE; applyFilter(); if (mode === 'list') renderListView(); },
+    oninput: () => {
+      query = search.value.trim();
+      listRenderLimit = LIST_PAGE_SIZE;
+      applyFilter();
+      if (mode === 'list') renderListView();
+      renderMapSearchResults();
+    },
+    onkeydown: (event) => {
+      if (event.key !== 'Enter' || mode !== 'map' || !query) return;
+      mapSearchResults.querySelector('.map-search-result')?.click();
+    },
   });
   const segMap = el('button', { class: 'on', text: '地图', onclick: () => setMode('map') });
   const segList = el('button', { text: '列表', onclick: () => setMode('list') });
   const mapZoom = el('span', { class: 'map-zoom-controls', role: 'group', 'aria-label': '地图缩放' }, [
     el('button', { type: 'button', text: '缩小', onclick: () => map3d?.gestureAdapter?.().zoomBy(1.18) }),
-    el('button', { type: 'button', text: '还原', onclick: () => map3d?.gestureAdapter?.().resetView() }),
+    el('button', { type: 'button', text: '还原', onclick: () => resetMapView() }),
     el('button', { type: 'button', text: '放大', onclick: () => map3d?.gestureAdapter?.().zoomBy(0.84) }),
   ]);
   let contributionDistrictId = '';
@@ -148,6 +162,9 @@ export async function exploreView(root) {
   ]);
   stageWrap.appendChild(toolbar);
 
+  const mapSearchResults = el('div', { class: 'map-search-results', hidden: true, 'aria-live': 'polite' });
+  stageWrap.appendChild(mapSearchResults);
+
   const mapHolder = el('div', { class: 'map-holder' });
   stageWrap.appendChild(mapHolder);
 
@@ -156,6 +173,7 @@ export async function exploreView(root) {
     wrap.classList.toggle('is-map-mode', m === 'map');
     segMap.classList.toggle('on', m === 'map');
     segList.classList.toggle('on', m === 'list');
+    renderMapSearchResults();
     render();
   }
 
@@ -171,7 +189,8 @@ export async function exploreView(root) {
       if (!query && !category) { map3d.setFilter(null); return; }
       map3d.setFilter((nodeName) => {
         const crafts = nodeCrafts(nodeName);
-        if (query && nodeName.includes(query)) return true;
+        const districtNames = nodeDistrictIds(nodeName).map((id) => DISTRICT_PROFILES[id]?.name || '').join('');
+        if (query && `${nodeName}${displayNodeName(nodeName)}${districtNames}`.includes(query)) return true;
         return crafts.some(matches);
       });
     } else if (mapViewEl) {
@@ -183,6 +202,39 @@ export async function exploreView(root) {
         g.style.opacity = hit ? '' : '0.18';
       });
     }
+  }
+
+  function renderMapSearchResults() {
+    mapSearchResults.innerHTML = '';
+    if (mode !== 'map' || !query) {
+      mapSearchResults.hidden = true;
+      return;
+    }
+    const matchingNodes = Object.keys(NODE_TO_DISTRICTS).filter((nodeName) => {
+      const districtNames = nodeDistrictIds(nodeName).map((id) => DISTRICT_PROFILES[id]?.name || '').join('');
+      return `${nodeName}${displayNodeName(nodeName)}${districtNames}`.includes(query);
+    }).slice(0, 3);
+    const matchingCrafts = craftRecords.filter(matches).slice(0, 6);
+    const resultButtons = [
+      ...matchingNodes.map((nodeName) => el('button', {
+        class: 'map-search-result', type: 'button',
+        onclick: async () => {
+          mapSearchResults.hidden = true;
+          await ensureMapBuilt();
+          if (map3d) enterFocus3D(nodeName);
+        },
+      }, [el('span', { text: displayNodeName(nodeName) }), el('small', { text: `${nodeCrafts(nodeName).length} 项非遗` })])),
+      ...matchingCrafts.map((craft) => el('button', {
+        class: 'map-search-result', type: 'button',
+        onclick: () => { mapSearchResults.hidden = true; transitionTo(`#/craft/${encodeURIComponent(craft.craftId)}`); },
+      }, [el('span', { text: craft.title }), el('small', { text: craft.config.districtLabel || '地区待核对' })])),
+    ];
+    mapSearchResults.appendChild(el('div', { class: 'map-search-result-head' }, [
+      el('strong', { text: resultButtons.length ? `找到 ${matchingNodes.length + craftRecords.filter(matches).length} 个相关结果` : '没有找到相关内容' }),
+      el('button', { type: 'button', text: '关闭', 'aria-label': '关闭搜索结果', onclick: () => { mapSearchResults.hidden = true; } }),
+    ]));
+    resultButtons.forEach((button) => mapSearchResults.appendChild(button));
+    mapSearchResults.hidden = false;
   }
 
   // ---------- 共享：竹简浮层 ----------
@@ -232,42 +284,53 @@ export async function exploreView(root) {
   }
   function hideSlip() { scheduleSlipRemove(); }
 
-  function makeDistrictPanel(districtId, fallbackName, crafts, onBack) {
-    const profile = DISTRICT_PROFILES[districtId] || {};
-    const name = fallbackName === '上海市核心区'
-      ? `上海市核心区（${(profile.name || '静安区').replace(/区$/, '')}项目）`
-      : (profile.name || fallbackName);
+  function makeDistrictPanel(districtIds, fallbackName, crafts, onBack) {
+    const ids = Array.isArray(districtIds) ? districtIds : [districtIds].filter(Boolean);
+    const aggregate = ids.length > 1;
+    const baseProfile = DISTRICT_PROFILES[ids[0]] || {};
+    const profile = aggregate ? {
+      name: '上海中心城区',
+      origin: '地图模型将黄浦、徐汇、长宁、静安、普陀五区聚合为中心城区节点；项目仍分别维护各自的现行行政区 ID。',
+      features: '黄浦的老城厢与外滩、徐汇的衡复风貌与龙华、长宁的多元社区、静安的苏州河两岸、普陀的工业水岸，共同构成上海中心城区的多层城市文化。',
+      heritageOverview: '这里汇集五区已审核和后续新增的非遗内容，覆盖传统美术、服饰工艺、饮食、戏曲、民俗与城市生活技艺。',
+    } : baseProfile;
+    const name = profile.name || displayNodeName(fallbackName);
     const nameText = el('h2', { text: name });
     const districtHeading = el('div', { class: 'district-story-heading' }, [
       el('p', { class: 'district-story-kicker', text: '地区探索' }),
       nameText,
     ]);
-    mountEditableModule(districtHeading, [{ key: 'name', element: nameText }], (values) => saveDistrict(districtId, values));
-    const pending = (label, key, value) => {
+    if (!aggregate) mountEditableModule(districtHeading, [{ key: 'name', element: nameText }], (values) => saveDistrict(ids[0], values));
+    const collapsible = (label, key, value) => {
       const text = value
         ? el('p', { text: value })
         : el('p', { class: 'district-story-pending', text: '内容待补充' });
-      const section = el('section', { class: 'district-story-section' }, [el('h3', { text: label }), text]);
-      mountEditableModule(section, [{ key, element: text }], (values) => saveDistrict(districtId, values));
+      const section = el('details', { class: 'district-story-section' }, [el('summary', { text: label }), text]);
+      if (!aggregate) mountEditableModule(section, [{ key, element: text }], (values) => saveDistrict(ids[0], values));
       return section;
     };
+    const recommendations = crafts.slice(0, 3);
     const panel = el('aside', { class: 'district-story', 'aria-label': `${name}地区介绍` }, [
-      el('button', { class: 'back-btn', onclick: onBack }, ['← 返回上海全景']),
       districtHeading,
+      el('button', { class: 'back-btn district-story-back', onclick: onBack }, ['← 返回上海全景']),
+      aggregate ? el('p', { class: 'district-story-scope', text: '黄浦区 · 徐汇区 · 长宁区 · 静安区 · 普陀区' }) : null,
       el('p', { class: 'district-story-count', text: `当前接入 ${crafts.length} 项非遗内容` }),
-      pending('区名由来', 'origin', profile.origin),
-      pending('地区特色', 'features', profile.features),
-      pending('非遗概览', 'heritage_overview', profile.heritageOverview),
+      collapsible(aggregate ? '区域关系' : '区名由来', 'origin', profile.origin),
+      collapsible('地域特色', 'features', profile.features),
+      collapsible('非遗概览', 'heritage_overview', profile.heritageOverview),
       profile.sourceUrl ? el('a', {
         class: 'district-story-source', href: profile.sourceUrl, target: '_blank', rel: 'noopener noreferrer',
         text: `资料来源：${profile.sourceLabel || '公开资料'}`,
       }) : null,
-      el('p', {
-        class: 'district-story-tip',
-        text: crafts.length
-          ? '点击地图上漂浮的非遗项目，在右侧查看项目介绍'
-          : '当前暂无接入项目，可先浏览本区介绍。',
-      }),
+      el('section', { class: 'district-story-discovery' }, [
+        el('h3', { text: '探索小知识' }),
+        el('p', { text: crafts.length
+          ? `${name}的非遗并不只保存在展柜里，它们也延续在街区、节庆、饮食与日常手作中。可以从下面的项目继续探索。`
+          : `${name}的地域资料已经接入，非遗项目仍可由协作者继续补充。` }),
+        recommendations.length ? el('div', { class: 'district-story-links' }, recommendations.map((craft) => el('button', {
+          type: 'button', onclick: () => transitionTo(`#/craft/${encodeURIComponent(craft.craftId)}`),
+        }, [el('span', { text: craft.title }), el('small', { text: '查看非遗' })]))) : null,
+      ]),
     ]);
     return panel;
   }
@@ -393,6 +456,8 @@ export async function exploreView(root) {
   let focusPanel = null;
 
   function exitFocus3D(silent, immediate = false) {
+    activeDistrictId = null;
+    activeDistrictIds = [];
     setContributionDistrict();
     clearProjectPanel({ immediate });
     if (focusOverlay) {
@@ -409,15 +474,16 @@ export async function exploreView(root) {
 
   function enterFocus3D(nodeName) {
     const crafts = nodeCrafts(nodeName);
-    activeDistrictId = NODE_TO_DISTRICT[nodeName] || null;
-    explorationHistory.push(graphId('region', activeDistrictId || nodeName));
+    const districtIds = nodeDistrictIds(nodeName);
     exitFocus3D(true, true);
+    activeDistrictIds = districtIds;
+    activeDistrictId = districtIds[0] || null;
+    explorationHistory.push(graphId('region', activeDistrictId || nodeName));
     hideSlip(); slip?.remove(); slip = null; slipFor = null;
     map3d.focusDistrict(nodeName);
-    const districtId = NODE_TO_DISTRICT[nodeName];
-    setContributionDistrict(districtId);
+    setContributionDistrict(districtIds.length === 1 ? districtIds[0] : '');
     mapViewEl.classList.add('is-district-focus');
-    focusPanel = makeDistrictPanel(districtId, nodeName, crafts, () => exitFocus3D());
+    focusPanel = makeDistrictPanel(districtIds, nodeName, crafts, () => exitFocus3D());
     mapViewEl.appendChild(focusPanel);
 
     const wrap3d = mapViewEl.querySelector('.map3d-wrap');
@@ -464,7 +530,7 @@ export async function exploreView(root) {
         onHover(name, pos) {
           if (!name || !pos) { hideSlip(); return; }
           const crafts = nodeCrafts(name);
-          showSlip(wrap3d, name, crafts, pos);
+          showSlip(wrap3d, displayNodeName(name), crafts, pos);
         },
         onSelect(name) { enterFocus3D(name); },
         onBlank() { exitFocus3D(); },
@@ -490,7 +556,7 @@ export async function exploreView(root) {
       if (mode !== 'map') map3d.setActive(false);
       registerGestureMap3D();
       wrap3d.querySelector('.map3d-loading')?.remove();
-      container.appendChild(el('p', { class: 'map-caption', text: '三维模型为项目提供的行政区块模型，节点沿用模型中的历史名称（上海市核心区、南汇区、崇明县等）· 所有上海区块均可点击查看地区介绍' }));
+      container.appendChild(el('p', { class: 'map-caption', text: '地图按现行行政区数据展示；中心节点聚合黄浦、徐汇、长宁、静安、普陀五区 · 所有上海区块均可点击查看地区介绍' }));
       container.appendChild(el('div', { class: 'map-legend', role: 'note' }, [
         el('span', { class: 'li' }, [el('i', { class: 'swatch live' }), '已有项目']),
         el('span', { class: 'li' }, [el('i', { class: 'swatch empty' }), '暂无项目（仍可查看地区）']),
@@ -608,9 +674,10 @@ export async function exploreView(root) {
   }
 
   function enterFlatFocus(d, stage) {
-    activeDistrictId = d.id;
-    explorationHistory.push(graphId('region', d.id));
     exitFlatFocus(true);
+    activeDistrictId = d.id;
+    activeDistrictIds = [d.id];
+    explorationHistory.push(graphId('region', d.id));
     stage.classList.add('focusing');
     stage.querySelectorAll('.district').forEach((g) => g.classList.toggle('focused', g.dataset.district === d.id));
     slip?.remove(); slip = null; slipFor = null;
@@ -639,7 +706,7 @@ export async function exploreView(root) {
       else exitFlatFocus();
     });
     flatFocusEl = el('div', { class: 'district-focus' }, [
-      makeDistrictPanel(d.id, d.name, crafts, () => exitFlatFocus()),
+      makeDistrictPanel([d.id], d.name, crafts, () => exitFlatFocus()),
       el('div', { class: 'flat-focus-map' }, [platform]),
     ]);
     stageWrap.appendChild(flatFocusEl);
@@ -647,6 +714,8 @@ export async function exploreView(root) {
 
   function exitFlatFocus(immediate = false) {
     if (!flatFocusEl) return;
+    activeDistrictId = null;
+    activeDistrictIds = [];
     setContributionDistrict();
     clearProjectPanel({ immediate });
     const closingFlatFocus = flatFocusEl;
@@ -656,6 +725,13 @@ export async function exploreView(root) {
     flatFocusFields = [];
     mapViewEl?.querySelector('.map-stage')?.classList.remove('focusing');
     mapViewEl?.querySelectorAll('.district').forEach((g) => g.classList.remove('focused'));
+  }
+
+  function resetMapView() {
+    exitFocus3D(true, true);
+    exitFlatFocus(true);
+    map3d?.gestureAdapter?.().resetView();
+    applyFilter();
   }
 
   // ---------- 列表模式 ----------
@@ -814,7 +890,7 @@ export async function exploreView(root) {
   render();
 
   function contextForAgent() {
-    const districtCraftsForContext = activeDistrictId ? districtCrafts(activeDistrictId) : craftRecords;
+    const districtCraftsForContext = activeDistrictIds.length ? activeDistrictIds.flatMap(districtCrafts) : craftRecords;
     return {
       route: '/explore', page_type: 'heritage_explore',
       current_root: selectedCraft ? { id: graphId('heritage', selectedCraft.craftId), type: 'heritage', title: selectedCraft.title } : null,
@@ -829,7 +905,7 @@ export async function exploreView(root) {
   }
 
   function districtNodeName(districtId) {
-    return Object.entries(NODE_TO_DISTRICT).find(([, id]) => id === districtId)?.[0] || null;
+    return Object.entries(NODE_TO_DISTRICTS).find(([, ids]) => ids.includes(districtId))?.[0] || null;
   }
 
   const agentHost = {
@@ -871,7 +947,7 @@ export async function exploreView(root) {
     },
     async returnToRoot() {
       if (selectedCraft) { transitionTo(`#/craft/${encodeURIComponent(selectedCraft.craftId)}`); return { ok: true }; }
-      selectedCraft = null; activeDistrictId = null; await this.goBack(); return { ok: true };
+      selectedCraft = null; activeDistrictId = null; activeDistrictIds = []; await this.goBack(); return { ok: true };
     },
     async focusModel() { return { ok: true }; },
     async readSummary({ target_id }) {

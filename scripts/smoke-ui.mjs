@@ -127,6 +127,8 @@ try {
   }
   const chat = await evaluate(`(() => ({
     panelOpen: document.querySelector('.agent-panel')?.classList.contains('open') || false,
+    openLatencyMs: Number(document.querySelector('.agent-panel')?.dataset.openLatencyMs || 0),
+    appPaddingRight: getComputedStyle(document.querySelector('#app')).paddingRight,
     avatars: document.querySelectorAll('.ap-msg.agent .ap-avatar').length,
     agentMessages: document.querySelectorAll('.ap-msg.agent').length,
     knowledgeDrawers: document.querySelectorAll('.ap-kb-details').length,
@@ -206,7 +208,66 @@ try {
     restoreHandleRemoved: !document.querySelector('.restore-handle') && !document.body.textContent.includes('展开资料'),
     pointerActionDrag: [...document.querySelectorAll('.action-card')].every((node) => node.dataset.dragMode === 'pointer'),
     verticalActions: getComputedStyle(document.querySelector('.action-palette')).flexDirection === 'column',
+    materialPointerDrag: [...document.querySelectorAll('.bp-item:not(:disabled)')].every((node) => node.dataset.dragMode === 'pointer'),
+    actionArrowInsideCard: (() => {
+      const card = document.querySelector('.action-card');
+      if (!card) return false;
+      card.classList.add('selected');
+      const left = Number.parseFloat(getComputedStyle(card, '::before').left);
+      card.classList.remove('selected');
+      return Number.isFinite(left) && left >= 0 && left < card.clientWidth;
+    })(),
   }))()`));
+  const backpackScrollBefore = await evaluate(`(() => {
+    const style = document.createElement('style');
+    style.id = 'workbench-scroll-regression-style';
+    style.textContent = '.wb-play-physics .backpack{height:64px!important;max-height:64px!important;overflow-y:auto!important}';
+    document.head.appendChild(style);
+    const backpack = document.querySelector('.backpack');
+    const item = [...document.querySelectorAll('.bp-item:not(:disabled)')].at(-1);
+    if (!backpack || !item) { style.remove(); return 0; }
+    backpack.scrollTop = backpack.scrollHeight;
+    const before = backpack.scrollTop;
+    item.click();
+    return before;
+  })()`);
+  await wait(80);
+  const backpackScrollAfter = await evaluate(`(() => {
+    const after = document.querySelector('.backpack')?.scrollTop || 0;
+    document.querySelector('#workbench-scroll-regression-style')?.remove();
+    return after;
+  })()`);
+  workbench.backpackScrollStable = backpackScrollBefore > 0 && Math.abs(backpackScrollAfter - backpackScrollBefore) <= 2;
+  const draggedResource = await evaluate(`(() => {
+    let card = [...document.querySelectorAll('.bp-item:not(:disabled)')].find((node) => !node.classList.contains('selected'));
+    if (!card) {
+      card = document.querySelector('.bp-item:not(:disabled)');
+      const name = card?.dataset.resource;
+      card?.click();
+      card = [...document.querySelectorAll('.bp-item:not(:disabled)')].find((node) => node.dataset.resource === name);
+    }
+    const table = document.querySelector('.wb-table-surface');
+    if (!card || !table) return '';
+    const name = card.dataset.resource;
+    const a = card.getBoundingClientRect();
+    const b = table.getBoundingClientRect();
+    const pointerId = 18;
+    const startX = a.left + a.width / 2;
+    const startY = a.top + a.height / 2;
+    const endX = b.left + b.width * .42;
+    const endY = b.top + b.height * .68;
+    card.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId, pointerType: 'mouse', button: 0, buttons: 1, clientX: startX, clientY: startY }));
+    window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, cancelable: true, pointerId, pointerType: 'mouse', button: 0, buttons: 1, clientX: (startX + endX) / 2, clientY: (startY + endY) / 2 }));
+    window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, cancelable: true, pointerId, pointerType: 'mouse', button: 0, buttons: 1, clientX: endX, clientY: endY }));
+    window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId, pointerType: 'mouse', button: 0, buttons: 0, clientX: endX, clientY: endY }));
+    return name;
+  })()`);
+  await wait(160);
+  const draggedResourceLiteral = JSON.stringify(draggedResource);
+  workbench.materialDragAdded = draggedResource ? await evaluate(`(() => {
+    const name = ${draggedResourceLiteral};
+    return [...document.querySelectorAll('.bp-item')].some((node) => node.dataset.resource === name && node.classList.contains('selected'));
+  })()`) : false;
   await screenshot(screenshots.workbench);
   await evaluate("document.querySelector('.bp-item.selected')?.click()");
   let firstMaterialUpgradeDetected = false;
@@ -496,6 +557,8 @@ try {
 
   const errors = [];
   if (!chat.panelOpen) errors.push('小蕉面板未打开');
+  if (!chat.openLatencyMs || chat.openLatencyMs > 120) errors.push(`小蕉面板唤起耗时异常：${chat.openLatencyMs}ms`);
+  if (parseFloat(chat.appPaddingRight) > 0) errors.push('小蕉面板唤起仍触发主应用重排');
   if (!chat.agentMessages || chat.avatars !== chat.agentMessages) errors.push('小蕉消息头像数量不一致');
   if (!chat.knowledgeDrawers || !chat.knowledgeCollapsed) errors.push('知识库折叠状态异常');
   if (!chat.explorationLinks) errors.push('智能体未生成可点击的图谱探索入口');
@@ -549,6 +612,9 @@ try {
   if (!workbench.stepGuide || workbench.stepGuideStrongCount < 2) errors.push('桌面上方没有显示带重点加粗的当前工序说明');
   if (!workbench.restoreHandleRemoved) errors.push('工作台左侧仍显示“展开资料”按钮');
   if (!workbench.pointerActionDrag) errors.push('工作台动作未启用可靠的指针拖拽模式');
+  if (!workbench.backpackScrollStable) errors.push('点击左侧靠下材料后，背包滚动位置发生跳动');
+  if (!workbench.materialPointerDrag || !workbench.materialDragAdded) errors.push('左侧材料无法通过指针拖入桌面工作区');
+  if (!workbench.actionArrowInsideCard) errors.push('右侧动作箭头仍可能被工作区或滚动容器遮挡');
   if (!firstMaterialUpgradeDetected) errors.push('完成工序后，材料没有原位升级并作为继承材料自动带入下一步');
   if (!firstRippleDetected) errors.push('正确动作落到工作台后没有触发粒子水波扩散');
   if (idlePreview.deferredButton || !idlePreview.canvas || !idlePreview.finishedAssetLoaded) errors.push('三维预览没有在进入工艺页后自动加载');

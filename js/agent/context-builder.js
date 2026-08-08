@@ -1,4 +1,5 @@
 import { adminState } from '../admin.js';
+import { isContentReviewed } from '../data.js';
 
 const ACTIONS = Object.freeze([
   'get_current_context', 'search_graph', 'open_node', 'expand_branch',
@@ -51,6 +52,7 @@ export function buildAgentContext(hostContext = {}, voiceState = 'DISABLED') {
     voice_state: voiceState,
     gesture: resolveGestureContext(),
     user_role: adminState().authenticated ? 'admin' : 'visitor',
+    content_reviewed: isContentReviewed(),
     locale: document.documentElement.lang || 'zh-CN',
     context_revision: String(hostContext.context_revision || hostContext.revision || 'local'),
   };

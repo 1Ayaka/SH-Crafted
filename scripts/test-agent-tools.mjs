@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createToolRegistry } from '../js/agent/tool-registry.js';
 import { createVoiceStateMachine, VOICE_STATES } from '../js/voice/voice-state-machine.js';
 import { resolveIntent } from '../js/agent/intent-resolver.js';
-import { heritageForGraphTarget, searchGraph } from '../js/agent/graph-adapter.js';
+import { graphIndexStats, heritageForGraphTarget, searchGraph } from '../js/agent/graph-adapter.js';
 
 globalThis.document = { documentElement: { lang: 'zh-CN' } };
 globalThis.location = { hash: '#/explore' };
@@ -16,6 +16,10 @@ assert.equal((await registry.execute('open_node', { node_id: 'heritage:missing' 
 assert.equal((await registry.execute('get_current_context')).ok, true);
 const bambooResults = searchGraph('竹子', { limit: 8 });
 assert.equal(bambooResults.some((node) => node.id === 'material:bamboo'), true);
+const initialGraphIndex = graphIndexStats();
+for (let index = 0; index < 100; index += 1) searchGraph(index % 2 ? '竹子' : '牙雕', { limit: 8 });
+const repeatedGraphIndex = graphIndexStats();
+assert.equal(repeatedGraphIndex.builds, initialGraphIndex.builds, '重复检索不应重建图谱索引');
 for (const title of ['嘉定竹刻', '南桥撕纸', '药斑布', '象牙篾丝编织', '崇明土布', '月份牌年画', '七宝皮影戏', '毛氏风筝']) {
   assert.equal(searchGraph(title, { types: ['heritage'], limit: 4 }).some((node) => node.type === 'heritage'), true, `${title} 未命中非遗节点`);
 }

@@ -1,6 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { GRAPH_SEED_EDGES, GRAPH_SEED_NODES } from '../js/graph-seed.js';
+import { CURATED_GRAPH_EDGES, CURATED_GRAPH_NODES } from '../js/graph-curated-catalog.js';
 
 const ROOT = join(import.meta.dirname, '..');
 
@@ -108,6 +110,31 @@ export async function buildContentSeed() {
     { key: 'footer.icp', group_name: '页脚', label: 'ICP备案号', content: '滇ICP备2026003342号' },
   ];
 
+  const graphNodes = new Map();
+  const addNode = (node) => { if (node?.id && !graphNodes.has(node.id)) graphNodes.set(node.id, structuredClone(node)); };
+  [...GRAPH_SEED_NODES, ...CURATED_GRAPH_NODES].forEach(addNode);
+  districts.forEach((district) => addNode({
+    id: `region:${district.id}`, type: 'region', title: district.name, aliases: [district.name, district.name.replace(/区$/, '')],
+    summary: district.heritage_overview || '', source_ids: district.source_url ? [`region_source:${district.id}`] : [],
+    source_title: district.source_label || '', source_url: district.source_url || '', review_status: 'published', published: true,
+  }));
+  crafts.forEach((craft) => addNode({
+    id: `heritage:${craft.id}`, type: 'heritage', title: craft.title, aliases: [craft.title], summary: craft.summary,
+    district_id: craft.district_id, heritage_level: /^SHIH_000[1-8]$/.test(craft.id) ? 'primary' : 'secondary',
+    protected: /^SHIH_000[1-8]$/.test(craft.id), published: true, review_status: 'published',
+  }));
+  const graphEdges = new Map();
+  const addEdge = (edge) => {
+    if (!edge?.from || !edge?.to || !edge?.relation) return;
+    const id = edge.id || `${edge.from}|${edge.relation}|${edge.to}`;
+    if (!graphEdges.has(id)) graphEdges.set(id, { ...structuredClone(edge), id });
+  };
+  [...GRAPH_SEED_EDGES, ...CURATED_GRAPH_EDGES].forEach((edge) => addEdge({ ...edge, origin: edge.origin || 'curated_seed' }));
+  crafts.filter((craft) => craft.district_id).forEach((craft) => addEdge({
+    from: `heritage:${craft.id}`, relation: 'LOCATED_IN', to: `region:${craft.district_id}`,
+    origin: 'craft_district', review_status: 'published', published: true,
+  }));
+
   return {
     version: 1,
     updated_at: new Date().toISOString(),
@@ -116,6 +143,8 @@ export async function buildContentSeed() {
     craft_steps: craftSteps,
     craft_gallery: craftGallery,
     site_texts: siteTexts,
+    graph_nodes: [...graphNodes.values()],
+    graph_edges: [...graphEdges.values()],
   };
 }
 
@@ -126,6 +155,8 @@ if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) 
     crafts: content.crafts.length,
     craft_steps: content.craft_steps.length,
     craft_gallery: content.craft_gallery.length,
+    graph_nodes: content.graph_nodes.length,
+    graph_edges: content.graph_edges.length,
     site_texts: content.site_texts.length,
   }, null, 2));
 }

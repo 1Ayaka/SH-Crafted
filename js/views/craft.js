@@ -6,7 +6,7 @@
 // 模型（config.CRAFT_MODEL_PATHS）：未开始态显示松散细碎的成品预览；完成态用高精度成品揭晓。
 import { el, reviewTag, openEvidenceModal, jiaoToast } from '../ui.js';
 import { InkField, blotTargets, imageTargets, loadImage } from '../particles.js';
-import { craftAssetUrl, ensureCraftLoaded, evidenceTimecode } from '../data.js';
+import { craftAssetUrl, ensureCraftLoaded, evidenceTimecode, isContentReviewed } from '../data.js';
 import { MATERIAL_STATES, CRAFT_MODEL_PATHS } from '../config.js';
 import { topNav } from './home.js';
 import { agent } from '../agent.js';
@@ -141,6 +141,7 @@ export async function craftView(root, { id }) {
     selectedResources: new Set(),
     materialItems: new Map(),
     workbenchPhysics: new Map(),
+    backpackScrollByStep: new Map(),
     actionSlot: null,
     failures: 0,                 // 连续失败
     helpRefusedStep: null,
@@ -287,7 +288,7 @@ export async function craftView(root, { id }) {
     }))));
     frag.appendChild(el('h5', { text: '动作' }));
     frag.appendChild(el('div', { class: 'chip-row' }, craft.actions.map((action) => el('span', { class: 'chip', text: action.label }))));
-    frag.appendChild(el('h5', { text: '工序（顺序为候选顺序，待审核）' }));
+    frag.appendChild(el('h5', { text: isContentReviewed() ? '工序' : '工序（顺序为候选顺序，待审核）' }));
     craft.steps.forEach((s, i) => {
       frag.appendChild(el('div', { class: 'step-item' }, [
         el('p', { class: 'st-title' }, [
@@ -298,7 +299,7 @@ export async function craftView(root, { id }) {
         el('p', { class: 'st-action', text: `为什么这样做：${s.action}` }),
         el('p', { class: 'st-meta', text: `资源：${s.interactionRule.allowed_resources.join('、') || '—'} · 动作：${s.interactionRule.action.label}` }),
         s.interactionRule.source === 'legacy_candidate'
-          ? el('p', { class: 'st-meta', text: '交互规则由旧数据兼容生成，资源组合方式待人工审核。' })
+          ? (isContentReviewed() ? null : el('p', { class: 'st-meta', text: '交互规则由旧数据兼容生成，资源组合方式待人工审核。' }))
           : null,
         el('button', {
           class: 'ev-link', text: '查看纪录片片段',
@@ -324,14 +325,14 @@ export async function craftView(root, { id }) {
     frag.appendChild(craft.people.length
       ? el('div', { class: 'chip-row' }, craft.people.map((p) => el('span', { class: 'chip', text: p })))
       : el('p', { class: 'empty-state', text: '资料待补充' }));
-    frag.appendChild(el('p', { class: 'small muted', text: '人名来自 AI 转写实体识别，存在同音误识别风险，全部待审核。' }));
+    if (!isContentReviewed()) frag.appendChild(el('p', { class: 'small muted', text: '人名来自转写实体识别，存在同音误识别风险，待审核。' }));
     frag.appendChild(el('h5', { text: '代表作品与器物' }));
     frag.appendChild(craft.artifacts.length
       ? el('div', { class: 'chip-row' }, craft.artifacts.map((a) => el('span', { class: 'chip', text: a })))
       : el('p', { class: 'empty-state', text: '资料待补充' }));
     frag.appendChild(el('h5', { text: '资料来源' }));
     frag.appendChild(el('p', { class: 'small', text: `纪录片《${craft.title}》（${craft.manifest.video.source_filename}）· 证据 ${craft.evidence.length} 段 · 全部由火山引擎视频理解自动抽取` }));
-    frag.appendChild(el('p', {}, [reviewTag('全部内容待人工审核')]));
+    if (!isContentReviewed()) frag.appendChild(el('p', {}, [reviewTag('全部内容待人工审核')]));
     return frag;
   }
 
@@ -614,7 +615,7 @@ export async function craftView(root, { id }) {
         }),
       ]),
       el('p', { class: 'small muted', text: step.interactionRule.source === 'legacy_candidate'
-        ? '候选资源来自旧数据兼容规则，组合关系待人工审核。'
+        ? (isContentReviewed() ? '候选资源来自兼容规则。' : '候选资源来自旧数据兼容规则，组合关系待人工审核。')
         : '当前步骤使用人工配置的交互规则。' }),
       el('div', { class: 'bp-legend' }, [
         el('div', {}, [el('i', { style: { background: '#8B9D83' } }), '原料']),
@@ -728,7 +729,7 @@ export async function craftView(root, { id }) {
         }),
       ]),
       el('p', { class: 'small muted', text: rule.source === 'legacy_candidate'
-        ? '候选资源来自旧数据兼容规则，组合关系待人工审核。'
+        ? (isContentReviewed() ? '候选资源来自兼容规则。' : '候选资源来自旧数据兼容规则，组合关系待人工审核。')
         : '当前步骤使用人工配置的交互规则。' }),
       el('div', { class: 'bp-legend' }, [
         el('div', {}, [el('i', { style: { background: '#8B9D83' } }), '原料']),
@@ -853,18 +854,33 @@ export async function craftView(root, { id }) {
     const actions = craft.actions.length ? craft.actions : (rule.actions?.length ? rule.actions : [rule.action]);
     const materialNames = rule.allowed_resources.filter((name) => craft.resourceKinds.get(name) !== 'implement');
     const toolNames = craft.allResources.filter((name) => craft.resourceKinds.get(name) === 'implement');
+    const backpackScrollKey = step.step_id || String(S.stepIndex);
+    let tableSurface;
+
+    const rememberBackpackScroll = (node) => {
+      const panel = node?.closest?.('.backpack');
+      if (panel) S.backpackScrollByStep.set(backpackScrollKey, panel.scrollTop);
+    };
 
     const resourceButton = (name, kind) => {
       const selected = S.selectedResources.has(name);
       const carried = kind === 'material' ? carriedMaterialFor(name) : null;
       const available = allowed.has(name) && !carried;
       const state = MATERIAL_STATES[S.resourceStates.get(name) || 'raw'];
-      return el('button', {
+      let button;
+      button = el('button', {
         class: `bp-item ${kind === 'implement' ? 'resource-implement' : state.cls}${selected || carried ? ' selected' : ''}${available ? '' : ' is-unavailable'}${carried ? ' is-carried' : ''}`,
-        type: 'button', disabled: !available,
-        title: carried ? `${carried.currentName}已从上一步保留在工作台` : (available ? `放置${name}` : '当前工序不使用该工具'),
-        onclick: () => {
+        type: 'button', disabled: !available, 'data-resource': name, 'data-drag-mode': available ? 'pointer' : '',
+        'aria-pressed': String(selected),
+        title: carried ? `${carried.currentName}已从上一步保留在工作台` : (available ? `点击选择，或按住拖到桌面：${name}` : '当前工序不使用该工具'),
+        onpointerdown: (event) => beginPointerResourceDrag(event, name, kind, button),
+        onclick: (event) => {
           if (!available) return;
+          if (button.dataset.suppressClick === 'true') {
+            delete button.dataset.suppressClick;
+            return;
+          }
+          rememberBackpackScroll(event.currentTarget);
           if (selected) S.selectedResources.delete(name);
           else S.selectedResources.add(name);
           renderPlay();
@@ -874,6 +890,7 @@ export async function craftView(root, { id }) {
         el('span', { text: carried?.currentName || name }),
         el('span', { class: 'bp-state', text: carried ? `${carried.level}级 · 已在桌面` : (selected ? '待加工' : (kind === 'implement' ? '工具' : state.label)) }),
       ]);
+      return button;
     };
 
     const activeTransforms = materialTransformMap(step);
@@ -896,7 +913,10 @@ export async function craftView(root, { id }) {
       el('span', { class: 'bp-state', text: `${item.level}级 · 暂存` }),
     ]));
 
-    const backpack = el('aside', { class: 'backpack', 'aria-label': '本步材料、继承材料与工具' }, [
+    const backpack = el('aside', {
+      class: 'backpack', 'aria-label': '本步材料、继承材料与工具',
+      onscroll: (event) => S.backpackScrollByStep.set(backpackScrollKey, event.currentTarget.scrollTop),
+    }, [
       el('h4', { text: '背包' }),
       inheritedButtons.length ? el('div', { class: 'bp-sec bp-inherited' }, [
         el('p', { class: 'sec-label', text: '既有材料 · 本步使用' }),
@@ -945,7 +965,6 @@ export async function craftView(root, { id }) {
 
     let physicsHandle = null;
     const feedback = el('p', { class: 'wb-feedback', role: 'status' });
-    let tableSurface;
     const executeDroppedAction = (actionId, clientX, clientY) => {
       document.body.classList.remove('wb-dragging');
       tableSurface?.classList.remove('drop-target');
@@ -964,6 +983,76 @@ export async function craftView(root, { id }) {
       }
       processStep(feedback, tableSurface, tableSurface);
       return false;
+    };
+
+    const resourceObjectId = (name, kind) => kind === 'implement' ? `tool:${name}` : `material:${S.stepIndex}:${name}`;
+    const seedDroppedResourcePosition = (name, kind, clientX, clientY) => {
+      const rect = tableSurface.getBoundingClientRect();
+      const nx = Math.min(1, Math.max(0, (clientX - rect.left) / Math.max(1, rect.width)));
+      const ny = Math.min(1, Math.max(0, (clientY - rect.top) / Math.max(1, rect.height)));
+      S.workbenchPhysics.set(resourceObjectId(name, kind), {
+        position: [-2.15 + nx * 3.8, 2.4, -0.9 + ny * 1.65],
+        rotation: [0, nx * Math.PI, 0],
+        velocity: [0, -0.12, 0],
+      });
+    };
+
+    const beginPointerResourceDrag = (event, name, kind, card) => {
+      if (event.button !== 0 || card.disabled || tableSurface.dataset.processing === 'true') return;
+      rememberBackpackScroll(card);
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const pointerId = event.pointerId;
+      let dragging = false;
+      let ghost = null;
+      const isOverTable = (clientX, clientY) => {
+        const rect = tableSurface.getBoundingClientRect();
+        return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+      };
+      const cleanupDrag = () => {
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerUp);
+        window.removeEventListener('pointercancel', onPointerCancel);
+        try { card.releasePointerCapture?.(pointerId); } catch (_) {}
+        ghost?.remove();
+        card.classList.remove('is-pointer-dragging');
+        tableSurface.classList.remove('drop-target');
+        document.body.classList.remove('wb-dragging');
+      };
+      const onPointerMove = (moveEvent) => {
+        if (moveEvent.pointerId !== pointerId) return;
+        if (!dragging && Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) >= 5) {
+          dragging = true;
+          card.dataset.suppressClick = 'true';
+          card.classList.add('is-pointer-dragging');
+          document.body.classList.add('wb-dragging');
+          ghost = el('div', { class: 'action-drag-ghost resource-drag-ghost', text: name, 'aria-hidden': 'true' });
+          document.body.appendChild(ghost);
+        }
+        if (!dragging) return;
+        moveEvent.preventDefault();
+        ghost.style.left = `${moveEvent.clientX}px`;
+        ghost.style.top = `${moveEvent.clientY}px`;
+        tableSurface.classList.toggle('drop-target', isOverTable(moveEvent.clientX, moveEvent.clientY));
+      };
+      const onPointerUp = (upEvent) => {
+        if (upEvent.pointerId !== pointerId) return;
+        const shouldDrop = dragging && isOverTable(upEvent.clientX, upEvent.clientY);
+        cleanupDrag();
+        if (shouldDrop) {
+          S.selectedResources.add(name);
+          seedDroppedResourcePosition(name, kind, upEvent.clientX, upEvent.clientY);
+          renderPlay();
+        }
+        setTimeout(() => { delete card.dataset.suppressClick; }, 0);
+      };
+      const onPointerCancel = (cancelEvent) => {
+        if (cancelEvent.pointerId === pointerId) cleanupDrag();
+      };
+      try { card.setPointerCapture?.(pointerId); } catch (_) {}
+      window.addEventListener('pointermove', onPointerMove, { passive: false });
+      window.addEventListener('pointerup', onPointerUp);
+      window.addEventListener('pointercancel', onPointerCancel);
     };
 
     const beginPointerActionDrag = (event, action, card) => {
@@ -1097,7 +1186,10 @@ export async function craftView(root, { id }) {
     ]);
 
     workbench.appendChild(el('div', { class: 'wb-play wb-play-physics' }, [backpack, main]));
+    const savedBackpackScroll = S.backpackScrollByStep.get(backpackScrollKey) || 0;
+    backpack.scrollTop = savedBackpackScroll;
     requestAnimationFrame(() => {
+      backpack.scrollTop = savedBackpackScroll;
       if (!tableSurface.isConnected) return;
       try {
         physicsHandle = createWorkbenchSurface(tableSurface, tableObjects, { stateStore: S.workbenchPhysics });
@@ -1422,17 +1514,8 @@ export async function craftView(root, { id }) {
         }));
       }
       if (context.mode === 'branch') {
-        if (context.can_previous_page) info.appendChild(el('button', {
-          class: 'btn-ghost heritage-graph-back-button', type: 'button', text: '上一组节点',
-          onclick: () => { graphExplorer?.previousPage(); renderGraphUI(); },
-        }));
-        if (context.can_next_page) info.appendChild(el('button', {
-          class: 'btn-ghost heritage-graph-back-button', type: 'button', text: `下一组节点（共 ${context.branch_total} 项）`,
-          onclick: () => { graphExplorer?.nextPage(); renderGraphUI(); },
-        }));
-        info.appendChild(el('button', {
-          class: 'btn-ghost heritage-graph-back-button', type: 'button', text: '回到当前根节点',
-          onclick: () => { graphExplorer?.returnRoot(); renderGraphUI(); },
+        if (context.previous_node && context.previous_node.id !== selected.id) info.appendChild(el('p', {
+          class: 'heritage-graph-info-note', text: context.comparison_summary || (isContentReviewed() ? `与上一节点“${context.previous_node.title}”的关系资料正在整理。` : `与上一节点“${context.previous_node.title}”的关系资料待审核。`),
         }));
       }
       if (context.can_go_back && context.mode !== 'branch') {
@@ -1462,7 +1545,7 @@ export async function craftView(root, { id }) {
       const context = graphExplorer.context();
       graphHeading.textContent = context.mode === 'branch' ? context.selected_node?.title || state.root.title : state.root.title;
       subtitle.textContent = context.mode === 'branch'
-        ? `${context.relation_label || '关联项目'} · 第 ${context.branch_page + 1}/${context.branch_page_count} 组`
+        ? `${context.relation_label || '关联项目'} · 当前关系下共 ${context.branch_total} 个节点`
         : '选择一条关系继续探索';
       renderTrail(context);
       renderInfo(context);
@@ -1655,7 +1738,7 @@ export async function craftView(root, { id }) {
         }),
         history: S.log.slice(-8),
         available_actions: graphContext?.available_actions || ['get_current_context', 'search_graph', 'expand_branch', 'open_node', 'open_heritage_detail', 'open_region', 'go_back', 'return_to_root', 'focus_model', 'read_summary', 'stop_speaking', 'show_help'],
-        context_revision: `craft:${craft.craftId}`,
+        context_revision: `craft:${craft.craftId}:${currentStep()?.step_id || 'idle'}:${S.log.length}:${graphContext?.selected_node?.id || ''}`,
       };
     },
     async openNode({ node_id }) {

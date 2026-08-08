@@ -1,7 +1,7 @@
 import { el } from '../ui.js';
 import { adminNotice } from '../editable.js';
-import { adminState, importCraft, isAdmin, loadSubmissions, login, logout, reviewSubmission, saveCraft, saveCraftSteps } from '../admin.js';
-import { allCrafts, craftAssetUrl, ensureCraftLoaded } from '../data.js';
+import { adminState, applyGraphPatch, deleteCrafts, exportGraph, importCraft, isAdmin, loadSubmissions, login, logout, previewGraphPatch, reviewSubmission, saveCraft, saveCraftSteps, setContentReviewed } from '../admin.js';
+import { allCrafts, craftAssetUrl, ensureCraftLoaded, setContentReviewedLocal } from '../data.js';
 import { loadCommunityStats } from '../community.js';
 import { DISTRICT_PROFILES } from '../config.js';
 import { topNav } from './home.js';
@@ -86,8 +86,24 @@ export async function adminHomeView(root) {
     loadCommunityStats({ refresh: true }).catch(() => ({})),
   ]);
   const pendingCount = submissionData.submissions?.length || 0;
-  const adminImportTemplate = { schema: 'sh-crafted.heritage-submission/v1', title: '', district_id: '', category: '', summary: '', cover_url: '', model_path: 'assets/models/crafts/example.glb', overview_images: [{ title: '', image_url: '', description: '' }], graph_data: { summary: '', keywords: [], images: [{ title: '', image_url: '', description: '', source_url: '' }], relations: [{ type: 'tradition', title: '', summary: '', images: [{ title: '', image_url: '', description: '' }] }] }, steps: [{ name: '', description: '', materials: [], tools: [], actions: [], documentary_clips: [{ title: '', video_url: 'https://', start_seconds: 0, end_seconds: 30, description: '', source_url: '' }] }] };
+  const adminImportTemplate = { schema: 'sh-crafted.heritage-submission/v1', id: '', update_existing: false, title: '', district_id: '', category: '', summary: '', history: '', features: '', source_url: '', cover_url: '', model_path: 'assets/models/crafts/example.glb', overview_images: [{ title: '', image_url: '', description: '', source_url: '' }], graph_data: { summary: '', keywords: [], images: [{ title: '', image_url: '', description: '', source_url: '' }], relations: [{ type: 'tradition', title: '', summary: '', images: [{ title: '', image_url: '', description: '' }] }] }, steps: [{ name: '', description: '', result: '', materials: [], tools: [], actions: [], documentary_clips: [{ title: '', video_url: 'https://', start_seconds: 0, end_seconds: 30, description: '', source_url: '' }] }] };
   const importInput = el('input', { type: 'file', accept: '.json,.jsonl,application/json,application/x-ndjson' });
+  const graphPatchInput = el('input', { type: 'file', accept: '.json,application/json' });
+  const graphPatchStatus = el('span', { class: 'admin-save-status', text: '星图可增量同步' });
+  const reviewCheckbox = el('input', { type: 'checkbox', checked: adminState().contentReviewed });
+  const reviewStatus = el('span', { class: 'admin-save-status', text: adminState().contentReviewed ? '全库已确认' : '仍显示待审核提示' });
+  reviewCheckbox.addEventListener('change', async () => {
+    reviewCheckbox.disabled = true;
+    try {
+      await setContentReviewed(reviewCheckbox.checked);
+      setContentReviewedLocal(reviewCheckbox.checked);
+      reviewStatus.textContent = reviewCheckbox.checked ? '全库已确认' : '仍显示待审核提示';
+      window.dispatchEvent(new CustomEvent('sh-crafted:content-review-changed'));
+    } catch (error) {
+      reviewCheckbox.checked = !reviewCheckbox.checked;
+      reviewStatus.textContent = error.message;
+    } finally { reviewCheckbox.disabled = false; }
+  });
   importInput.addEventListener('change', async () => {
     const file = importInput.files?.[0]; if (!file) return;
     try {
@@ -95,32 +111,94 @@ export async function adminHomeView(root) {
       const rows = /\.jsonl$/i.test(file.name) ? text.split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line)) : [JSON.parse(text)];
       if (rows.length !== 1) throw new Error('管理员导入一次只支持一个主非遗条目');
       const record = rows[0]?.heritage || rows[0]?.craft || rows[0];
-      await importCraft({
+      const existing = record.id ? crafts.find((craft) => craft.craftId === record.id) : null;
+      if (existing && !record.update_existing) throw new Error(`稳定 ID ${record.id} 已存在；当前 JSON 未声明 update_existing，已停止导入。`);
+      if (existing && !confirm(`将更新现有项目“${existing.title}”（${record.id}）。\n\n系统只允许更新未被管理员手工维护的旧导入项目；原始 8 项和已编辑内容会由服务端拒绝覆盖。是否继续？`)) return;
+      const result = await importCraft({
         ...record,
         graph_data: record.graph_data || record.star_data || {},
         model_path: record.model_path || record.model_url || record.model || '',
         overview_images: record.overview_images || [],
       });
-      alert('主非遗导入成功，正在刷新管理列表。');
+      alert(result.updated ? '旧导入项目已安全更新，正在刷新管理列表。' : '主非遗导入成功，正在刷新管理列表。');
       location.reload();
     } catch (error) { alert(`导入失败：${error.message || 'JSON 格式错误'}`); }
     finally { importInput.value = ''; }
   });
-  const content = el('main', { class: 'admin-dashboard' }, [
-    el('div', { class: 'admin-page-heading' }, [
-      el('div', {}, [
-        el('p', { class: 'admin-kicker', text: `管理员 ${adminState().username}` }),
-        el('h1', { text: '内容与工序管理' }),
-        el('p', { text: '返回首页、地图或详情页可以直接编辑文字；这里用于调整每个项目的制作工序。' }),
-      ]),
-      el('div', { class: 'admin-heading-actions' }, [
-        el('label', { class: 'btn-ghost admin-import-button' }, [el('span', { text: '导入主非遗 JSON' }), importInput]),
-        el('button', { class: 'btn-ghost', type: 'button', text: '下载管理员模板', onclick: () => { const url = URL.createObjectURL(new Blob([JSON.stringify(adminImportTemplate, null, 2)], { type: 'application/json' })); const link = document.createElement('a'); link.href = url; link.download = '主非遗导入模板.json'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 0); } }),
-        el('a', { class: 'btn btn-primary', href: '#/admin/submissions', text: `审核社区投稿（${pendingCount}）` }),
-        el('button', { class: 'btn-ghost', text: '退出登录', onclick: () => logout() }),
-      ]),
-    ]),
-    el('div', { class: 'admin-craft-grid' }, crafts.map((craft) => el('article', { class: 'admin-craft-card' }, [
+  graphPatchInput.addEventListener('change', async () => {
+    const file = graphPatchInput.files?.[0]; if (!file) return;
+    try {
+      const patch = JSON.parse((await file.text()).replace(/^\uFEFF/, ''));
+      const preview = await previewGraphPatch(patch);
+      graphPatchStatus.textContent = `预览：新增节点 ${preview.counts.nodes_create}、更新 ${preview.counts.nodes_update}；关系冲突 ${preview.conflicts.length}`;
+      if (preview.revision_conflict || preview.conflicts.length) throw new Error('补丁与服务器版本或已有保护内容冲突，请先导出最新版后合并。');
+      if (!window.confirm(`确认应用星图补丁？将新增 ${preview.counts.nodes_create} 个节点。`)) return;
+      await applyGraphPatch(patch);
+      graphPatchStatus.textContent = '星图补丁已应用';
+      location.reload();
+    } catch (error) { graphPatchStatus.textContent = `补丁未应用：${error.message || '格式错误'}`; }
+    finally { graphPatchInput.value = ''; }
+  });
+  const downloadGraph = async () => {
+    const payload = await exportGraph();
+    const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
+    const link = document.createElement('a'); link.href = url; link.download = '探物志-知识星图补丁.json'; link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  };
+  const primaryIds = new Set(Array.from({ length: 8 }, (_, index) => `SHIH_${String(index + 1).padStart(4, '0')}`));
+  const deletableCrafts = crafts.filter((craft) => !primaryIds.has(craft.craftId) && !craft.config.protected);
+  const selectedCraftIds = new Set();
+  const selectionSummary = el('span', { class: 'admin-bulk-summary', text: '已选择 0 项', 'aria-live': 'polite' });
+  const selectAll = el('input', { type: 'checkbox', 'aria-label': '选择全部可删除项目', disabled: deletableCrafts.length === 0 });
+  const deleteButton = el('button', { class: 'admin-danger-button', type: 'button', text: '删除所选项目', disabled: true });
+  const cardCheckboxes = new Map();
+  const updateBulkState = () => {
+    const selectedCount = selectedCraftIds.size;
+    selectionSummary.textContent = `已选择 ${selectedCount} 项${deletableCrafts.length ? `，共 ${deletableCrafts.length} 项可删除` : '，当前没有可删除项目'}`;
+    deleteButton.disabled = selectedCount === 0;
+    selectAll.checked = deletableCrafts.length > 0 && selectedCount === deletableCrafts.length;
+    selectAll.indeterminate = selectedCount > 0 && selectedCount < deletableCrafts.length;
+    for (const [craftId, checkbox] of cardCheckboxes) checkbox.closest('.admin-craft-card')?.classList.toggle('is-selected', selectedCraftIds.has(craftId));
+  };
+  selectAll.addEventListener('change', () => {
+    selectedCraftIds.clear();
+    if (selectAll.checked) deletableCrafts.forEach((craft) => selectedCraftIds.add(craft.craftId));
+    for (const [craftId, checkbox] of cardCheckboxes) checkbox.checked = selectedCraftIds.has(craftId);
+    updateBulkState();
+  });
+  deleteButton.addEventListener('click', async () => {
+    const selected = crafts.filter((craft) => selectedCraftIds.has(craft.craftId));
+    if (!selected.length) return;
+    const names = selected.map((craft) => `• ${craft.title}（${craft.craftId}）`).join('\n');
+    if (!window.confirm(`确定删除以下 ${selected.length} 个项目吗？\n\n${names}\n\n项目将从地图和知识星图下线，并同步删除工序与图库。原始 8 项不受此操作影响。`)) return;
+    deleteButton.disabled = true;
+    deleteButton.textContent = '正在删除…';
+    try {
+      const result = await deleteCrafts(selected.map((craft) => craft.craftId));
+      window.alert(`已删除 ${result.deleted_count} 个项目。数据库历史中保留了删除前修订。`);
+      location.reload();
+    } catch (error) {
+      deleteButton.textContent = '删除所选项目';
+      updateBulkState();
+      adminNotice(error.message || '批量删除失败。', true);
+    }
+  });
+  const craftCards = crafts.map((craft) => {
+    const isProtected = primaryIds.has(craft.craftId) || Boolean(craft.config.protected);
+    const checkbox = el('input', {
+      type: 'checkbox', disabled: isProtected,
+      'aria-label': isProtected ? `${craft.title}是原始项目，不可删除` : `选择删除${craft.title}`,
+    });
+    if (!isProtected) {
+      cardCheckboxes.set(craft.craftId, checkbox);
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) selectedCraftIds.add(craft.craftId);
+        else selectedCraftIds.delete(craft.craftId);
+        updateBulkState();
+      });
+    }
+    return el('article', { class: `admin-craft-card${isProtected ? ' is-protected' : ''}`, 'data-craft-id': craft.craftId }, [
+      el('label', { class: 'admin-craft-select' }, [checkbox, el('span', { text: isProtected ? '原始项目' : '选择' })]),
       craft.config.heroFrame
         ? el('img', { src: craftAssetUrl(craft, craft.config.heroFrame), alt: craft.title, loading: 'lazy' })
         : el('div', { class: 'admin-card-placeholder', text: '社区条目' }),
@@ -132,7 +210,34 @@ export async function adminHomeView(root) {
           el('a', { class: 'btn-ghost', href: `#/craft/${craft.craftId}`, text: '查看用户页面' }),
         ]),
       ]),
-    ]))),
+    ]);
+  });
+  const bulkToolbar = el('section', { class: 'admin-bulk-toolbar', 'aria-label': '批量删除项目' }, [
+    el('label', { class: 'admin-bulk-select-all' }, [selectAll, el('span', { text: '选择全部可删除项目' })]),
+    selectionSummary,
+    deleteButton,
+  ]);
+  updateBulkState();
+  const content = el('main', { class: 'admin-dashboard' }, [
+    el('div', { class: 'admin-page-heading' }, [
+      el('div', {}, [
+        el('p', { class: 'admin-kicker', text: `管理员 ${adminState().username}` }),
+        el('h1', { text: '内容与工序管理' }),
+        el('p', { text: '返回首页、地图或详情页可以直接编辑文字；这里用于导入、筛选、删除项目并调整制作工序。' }),
+      ]),
+      el('div', { class: 'admin-heading-actions' }, [
+        el('label', { class: 'admin-review-toggle' }, [reviewCheckbox, el('span', { text: '专家已审核全部当前内容' }), reviewStatus]),
+        el('label', { class: 'btn-ghost admin-import-button' }, [el('span', { text: '导入主非遗 JSON' }), importInput]),
+        el('button', { class: 'btn-ghost', type: 'button', text: '下载管理员模板', onclick: () => { const url = URL.createObjectURL(new Blob([JSON.stringify(adminImportTemplate, null, 2)], { type: 'application/json' })); const link = document.createElement('a'); link.href = url; link.download = '主非遗导入模板.json'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 0); } }),
+        el('button', { class: 'btn-ghost', type: 'button', text: '导出星图补丁', onclick: downloadGraph }),
+        el('label', { class: 'btn-ghost admin-import-button' }, [el('span', { text: '导入星图补丁' }), graphPatchInput]),
+        graphPatchStatus,
+        el('a', { class: 'btn btn-primary', href: '#/admin/submissions', text: `审核社区投稿（${pendingCount}）` }),
+        el('button', { class: 'btn-ghost', text: '退出登录', onclick: () => logout() }),
+      ]),
+    ]),
+    bulkToolbar,
+    el('div', { class: 'admin-craft-grid' }, craftCards),
   ]);
   return adminShell(root, 'admin', content);
 }
@@ -181,7 +286,12 @@ export async function adminSubmissionsView(root) {
                 },
               }),
             ])
-          : el('p', { class: `admin-review-result is-${submission.status}`, text: submission.status === 'approved' ? `已上线：${submission.published_craft_id}` : '已驳回' });
+          : el('p', {
+              class: `admin-review-result is-${submission.status}`,
+              text: submission.status === 'approved'
+                ? (submission.publication_removed_at ? `已下线：${submission.published_craft_id}` : `已上线：${submission.published_craft_id}`)
+                : '已驳回',
+            });
         list.appendChild(el('article', { class: 'admin-submission-card' }, [
           el('header', { class: 'admin-submission-heading' }, [
             el('div', {}, [

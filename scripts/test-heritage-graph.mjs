@@ -35,9 +35,9 @@ const shadowLeaves = relatedHeritageForRelation(shadowPortal.target.id, shadowPo
 assert.ok(shadowLeaves.some((node) => node.id === 'heritage:tangshan_shadow'), '皮影传统分支应包含唐山皮影戏');
 const qibaoState = createHeritageGraphState('heritage:SHIH_0007');
 assert.equal(openGraphBranch(qibaoState, 'LOCATED_IN').ok, true);
-assert.ok(qibaoState.branchAllNodes.length > 10, '闵行地区分支应支持多组节点');
-assert.equal(setGraphBranchPage(qibaoState, 1).page, 1, '可以浏览下一组节点');
-assert.ok(qibaoState.branchNodes.length > 0 && qibaoState.branchNodes.length <= 10);
+assert.ok(qibaoState.branchAllNodes.length > 10, '闵行地区分支应展示全部节点');
+assert.equal(setGraphBranchPage(qibaoState, 1).page, 0, '分支不再分页');
+assert.equal(qibaoState.branchNodes.length, qibaoState.branchAllNodes.length, '分支节点全部可见');
 
 const coverage = {};
 for (const rootId of GRAPH_PROJECT_MINIMUMS) {

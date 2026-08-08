@@ -4,6 +4,7 @@ const state = {
   username: null,
   revision: '',
   communityRevision: '',
+  contentReviewed: false,
 };
 
 async function api(path, options = {}) {
@@ -32,6 +33,7 @@ export async function initializeAdmin() {
     state.authenticated = session.authenticated;
     state.username = session.username;
     state.revision = session.revision || '';
+    state.contentReviewed = Boolean(session.content_reviewed);
   } catch {
     state.authenticated = false;
   }
@@ -55,6 +57,8 @@ export async function login(username, password) {
   });
   state.authenticated = true;
   state.username = result.username;
+  state.revision = result.revision || state.revision;
+  state.contentReviewed = Boolean(result.content_reviewed);
   document.documentElement.classList.add('admin-authenticated');
   return result;
 }
@@ -87,9 +91,53 @@ async function save(path, body) {
 export const saveSiteTexts = (updates) => save('/api/admin/site-texts', { updates });
 export const saveDistrict = (id, fields) => save(`/api/admin/districts/${encodeURIComponent(id)}`, fields);
 export const saveCraft = (id, fields) => save(`/api/admin/crafts/${encodeURIComponent(id)}`, fields);
-export async function importCraft(payload) {
-  return api('/api/admin/crafts/import', { method: 'POST', body: JSON.stringify({ ...payload, revision: state.revision }) });
+export async function setContentReviewed(reviewed) {
+  try {
+    const payload = await api('/api/admin/content-review', { method: 'PUT', body: JSON.stringify({ reviewed: Boolean(reviewed), revision: state.revision }) });
+    state.revision = payload.revision || state.revision;
+    state.contentReviewed = Boolean(payload.content_reviewed);
+    return payload;
+  } catch (error) {
+    if (error.status === 409) throw new Error('内容版本已变化，请刷新页面后再确认审核状态。');
+    throw new Error('审核状态保存失败，请稍后重试。');
+  }
 }
+export async function importCraft(payload) {
+  try {
+    return await api('/api/admin/crafts/import', { method: 'POST', body: JSON.stringify({ ...payload, revision: state.revision }) });
+  } catch (error) {
+    if (error.status === 409) {
+      state.revision = error.payload?.revision || state.revision;
+      const messages = {
+        duplicate_craft_id: '该 ID 已存在。若要修复旧管理员导入项目，请使用带 update_existing: true 的新版 JSON。',
+        protected_existing_craft: '该项目属于原始主非遗或其他来源，管理员 JSON 不允许覆盖。',
+        existing_content_modified: '该项目已经被管理员维护过，为保护现有修改，JSON 更新已拒绝。请在编辑页手动合并。',
+        content_conflict: '内容版本已变化，请刷新管理员页面后重新导入。',
+      };
+      throw new Error(messages[error.payload?.error] || '导入目标与现有内容冲突，请刷新后检查。');
+    }
+    throw error;
+  }
+}
+export async function deleteCrafts(ids) {
+  try {
+    return await api('/api/admin/crafts/bulk-delete', {
+      method: 'POST',
+      body: JSON.stringify({ ids, revision: state.revision }),
+    });
+  } catch (error) {
+    if (error.status === 409) {
+      state.revision = error.payload?.revision || state.revision;
+      if (error.payload?.error === 'protected_craft_delete') throw new Error('选择中包含原始 8 项或其他受保护项目，整批删除已取消。');
+      if (error.payload?.error === 'content_conflict') throw new Error('内容版本已变化，请刷新页面后重新选择。');
+    }
+    if (error.status === 404) throw new Error('部分项目已不存在，请刷新页面后重新选择。');
+    throw new Error(error.message || '批量删除失败。');
+  }
+}
+export const exportGraph = () => api('/api/admin/graph/export');
+export const previewGraphPatch = (payload) => api('/api/admin/graph/patch/preview', { method: 'POST', body: JSON.stringify(payload) });
+export const applyGraphPatch = (payload) => api('/api/admin/graph/patch/apply', { method: 'POST', body: JSON.stringify(payload) });
 export const saveCraftSteps = (id, steps) => save(`/api/admin/crafts/${encodeURIComponent(id)}/steps`, { steps });
 
 export async function loadSubmissions(status = 'all') {
