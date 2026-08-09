@@ -13,6 +13,7 @@ const screenshots = {
   grabbed: path.join(os.tmpdir(), 'tanwuzhi-mascot-grabbed.png'),
   sleeping: path.join(os.tmpdir(), 'tanwuzhi-mascot-sleeping.png'),
   bubble: path.join(os.tmpdir(), 'tanwuzhi-mascot-bubble.png'),
+  component: path.join(os.tmpdir(), 'tanwuzhi-mascot-component.png'),
 };
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const browser = spawn(edge, [
@@ -85,9 +86,86 @@ try {
   assert.equal(desktop.ready, 'true', 'Mascot canvas did not become ready');
   assert.equal(desktop.overlaps, false, 'Mascot overlaps the gesture toggle on desktop');
   assert.equal(desktop.overflow, false, 'Mascot causes horizontal overflow on desktop');
+  for (let attempt = 0; attempt < 30; attempt++) {
+    if (await evaluate("Boolean(document.querySelector('.craft-page .workbench-col'))")) break;
+    await wait(100);
+  }
+  assert.equal(await evaluate("Boolean(document.querySelector('.craft-page .workbench-col'))"), true, 'Craft workbench did not become available for mascot landing');
 
-  const startX = desktop.mascot.x + desktop.mascot.width / 2;
-  const startY = desktop.mascot.y + desktop.mascot.height / 2;
+  const componentLanding = await evaluate(`(() => new Promise((resolve) => {
+    const mascot = document.querySelector('.cat-mascot-fab');
+    const host = document.querySelector('.agent-fab');
+    const surface = document.querySelector('.craft-page .workbench-col');
+    const start = mascot.getBoundingClientRect();
+    const target = surface.getBoundingClientRect();
+    const common = { bubbles: true, cancelable: true, pointerId: 914, pointerType: 'mouse', isPrimary: true, button: 0 };
+    const startX = start.left + start.width / 2;
+    const startY = start.top + start.height / 2;
+    const targetX = target.left + target.width / 2;
+    const targetY = startY + target.top - (innerHeight - 20);
+    mascot.dispatchEvent(new PointerEvent('pointerdown', { ...common, clientX: startX, clientY: startY, buttons: 1 }));
+    document.dispatchEvent(new PointerEvent('pointermove', { ...common, clientX: targetX, clientY: targetY, buttons: 1 }));
+    document.dispatchEvent(new PointerEvent('pointerup', { ...common, clientX: targetX, clientY: targetY, buttons: 0 }));
+    setTimeout(() => resolve({ surface: host.dataset.catWalkSurface || '', state: mascot.dataset.state }), 80);
+  }))()`);
+  assert.match(componentLanding.surface, /workbench-col/, 'Mascot did not land on the selected page component');
+  assert.ok(['falling', 'fallen'].includes(componentLanding.state), 'Mascot did not settle onto the component after release');
+  await wait(1300);
+  await screenshot(screenshots.component);
+
+  const bottomLanding = await evaluate(`(() => new Promise((resolve) => {
+    const mascot = document.querySelector('.cat-mascot-fab');
+    const host = document.querySelector('.agent-fab');
+    const surface = document.querySelector('.craft-page .workbench-col').getBoundingClientRect();
+    const start = mascot.getBoundingClientRect();
+    const common = { bubbles: true, cancelable: true, pointerId: 915, pointerType: 'mouse', isPrimary: true, button: 0 };
+    const startX = start.left + start.width / 2;
+    const startY = start.top + start.height / 2;
+    const targetY = startY + (innerHeight - 20) - surface.top;
+    mascot.dispatchEvent(new PointerEvent('pointerdown', { ...common, clientX: startX, clientY: startY, buttons: 1 }));
+    document.dispatchEvent(new PointerEvent('pointermove', { ...common, clientX: startX, clientY: targetY, buttons: 1 }));
+    document.dispatchEvent(new PointerEvent('pointerup', { ...common, clientX: startX, clientY: targetY, buttons: 0 }));
+    setTimeout(() => resolve({ surface: host.dataset.catWalkSurface || '', bottom: getComputedStyle(host).bottom, state: mascot.dataset.state }), 80);
+  }))()`);
+  assert.equal(bottomLanding.surface, '', 'Mascot should return to the bottom rail when no component is hit');
+  assert.equal(bottomLanding.bottom, '-6px', 'Mascot bottom rail should be 20px lower than before');
+  assert.ok(['falling', 'fallen'].includes(bottomLanding.state), 'Mascot did not settle onto the bottom rail after release');
+  await wait(1400);
+
+  await evaluate("document.querySelector('.craft-page .ev-link')?.click()");
+  for (let attempt = 0; attempt < 20; attempt++) {
+    if (await evaluate("Boolean(document.querySelector('.modal-mask .modal'))")) break;
+    await wait(80);
+  }
+  await wait(350);
+  const modalLanding = await evaluate(`(() => new Promise((resolve) => {
+    const mascot = document.querySelector('.cat-mascot-fab');
+    const host = document.querySelector('.agent-fab');
+    const modal = document.querySelector('.modal-mask .modal');
+    const start = mascot.getBoundingClientRect();
+    const target = modal.getBoundingClientRect();
+    const common = { bubbles: true, cancelable: true, pointerId: 916, pointerType: 'mouse', isPrimary: true, button: 0 };
+    const startX = start.left + start.width / 2;
+    const startY = start.top + start.height / 2;
+    const targetX = target.left + target.width / 2;
+    const targetY = startY + target.top - (innerHeight - 20);
+    mascot.dispatchEvent(new PointerEvent('pointerdown', { ...common, clientX: startX, clientY: startY, buttons: 1 }));
+    document.dispatchEvent(new PointerEvent('pointermove', { ...common, clientX: targetX, clientY: targetY, buttons: 1 }));
+    document.dispatchEvent(new PointerEvent('pointerup', { ...common, clientX: targetX, clientY: targetY, buttons: 0 }));
+    setTimeout(() => resolve({ surface: host.dataset.catWalkSurface || '', zIndex: Number(getComputedStyle(host).zIndex), modalTop: target.top, workbenchTop: document.querySelector('.workbench-col')?.getBoundingClientRect().top, startY, targetY }), 80);
+  }))()`);
+  assert.match(modalLanding.surface, /modal/, `Mascot did not recognize the open dialog as a preferred landing surface: ${JSON.stringify(modalLanding)}`);
+  assert.ok(modalLanding.zIndex > 800, 'Mascot should render above the dialog it is standing on');
+  await evaluate("document.querySelector('.modal .m-close')?.click()");
+  await wait(500);
+  assert.equal(await evaluate("document.querySelector('.agent-fab')?.dataset.catWalkSurface || ''"), '', 'Mascot should return to the bottom rail when its dialog closes');
+
+  await evaluate("document.querySelector('.cat-mascot-fab')?.dispatchEvent(new CustomEvent('mascot-command', { detail: { type: 'reset' } }))");
+  await wait(80);
+  const interactionStart = await layout();
+
+  const startX = interactionStart.mascot.x + interactionStart.mascot.width / 2;
+  const startY = interactionStart.mascot.y + interactionStart.mascot.height / 2;
   await mouse('mousePressed', startX, startY, 1);
   await mouse('mouseMoved', startX - 120, startY - 90, 1);
   await wait(180);

@@ -41,6 +41,8 @@ const EAR_RIGHT = 'hip/chest/head/jaw/earR1';
 const HANG_BASE_ANGLE = -1.18;
 const RESTING_STATES = new Set(['sleeping', 'fallen']);
 const FAB_CANVAS_BELOW_PX = 180;
+const FAB_WALK_FOOT_OFFSET_PX = 220;
+const FAB_SURFACE_REFRESH_MS = 240;
 
 function stateTargets(state, time, movement, transient) {
   const target = new Map();
@@ -149,7 +151,7 @@ function stateOffsets(state) {
   return offsets;
 }
 
-export function createCatMascot({ className = '', interactive = false, animate = true, autonomous = interactive, onBehavior = null } = {}) {
+export function createCatMascot({ className = '', interactive = false, animate = true, autonomous = interactive, onBehavior = null, surfaceProvider = null } = {}) {
   const root = document.createElement('span');
   root.className = `cat-mascot ${className}`.trim();
   root.setAttribute('role', 'img');
@@ -174,6 +176,8 @@ export function createCatMascot({ className = '', interactive = false, animate =
   let pointerStart = null;
   let movedDuringPress = false;
   let suppressClickUntil = 0;
+  let walkSurface = null;
+  let lastSurfaceRefreshAt = 0;
   const movement = { x: 0, y: 0, vx: 0, vy: 0, angle: 0, angularVelocity: 0 };
   const gaze = { x: 0, y: 0, targetX: 0, targetY: 0 };
   const boneState = new Map();
@@ -183,6 +187,78 @@ export function createCatMascot({ className = '', interactive = false, animate =
   const applyPosition = () => { root.style.translate = `${movement.x}px ${movement.y}px`; };
   const scheduleAutonomy = (delay = randomBetween(6500, 11000)) => { nextAutonomyAt = performance.now() + delay; };
   const startTransient = (name, duration) => { transient = name; transientUntil = performance.now() + duration; };
+
+  const hostElement = () => root.closest('.agent-fab');
+  const bottomTrackTop = () => innerHeight - 20;
+  const currentTrackTop = () => walkSurface?.top ?? bottomTrackTop();
+  const surfaceCandidates = () => {
+    if (!surfaceProvider) return [];
+    try {
+      return (surfaceProvider() || [])
+        .filter((surface) => surface && Number.isFinite(surface.left) && Number.isFinite(surface.right) && Number.isFinite(surface.top))
+        .filter((surface) => surface.right - surface.left >= 220 && surface.bottom - surface.top >= 70);
+    } catch (_) {
+      return [];
+    }
+  };
+  const setWalkSurface = (surface, { worldCenter = null, worldFootY = null } = {}) => {
+    const host = hostElement();
+    if (!host || !surface) return;
+    const hostWidth = host.offsetWidth || 184;
+    const rootWidth = root.offsetWidth || hostWidth;
+    const previousRect = root.getBoundingClientRect();
+    const previousCenter = worldCenter ?? (previousRect.width ? previousRect.left + previousRect.width / 2 : null);
+    const hostLeft = clamp(surface.left + (surface.right - surface.left - hostWidth) / 2, 8, innerWidth - hostWidth - 8);
+    const hostTop = surface.top - FAB_WALK_FOOT_OFFSET_PX;
+    host.style.left = `${hostLeft}px`;
+    host.style.right = 'auto';
+    host.style.top = `${hostTop}px`;
+    host.style.bottom = 'auto';
+    host.style.zIndex = String(surface.zIndex || '');
+    host.dataset.catWalkSurface = surface.id || 'component';
+    const min = surface.left + 16 - (hostLeft + (hostWidth - rootWidth) / 2);
+    const max = surface.right - 16 - rootWidth - (hostLeft + (hostWidth - rootWidth) / 2);
+    const nextX = previousCenter == null
+      ? (min + max) / 2
+      : previousCenter - (hostLeft + hostWidth / 2);
+    movement.x = clamp(nextX, Math.min(min, max), Math.max(min, max));
+    movement.y = worldFootY == null ? 0 : Math.min(0, worldFootY - surface.top);
+    walkSurface = surface;
+    applyPosition();
+  };
+  const clearWalkSurface = ({ worldCenter = null, worldFootY = null } = {}) => {
+    const host = hostElement();
+    if (!host || (!walkSurface && worldCenter == null && worldFootY == null)) return;
+    const previousRect = root.getBoundingClientRect();
+    const previousCenter = worldCenter ?? (previousRect.width ? previousRect.left + previousRect.width / 2 : null);
+    const rootWidth = root.offsetWidth || previousRect.width || 181;
+    host.style.left = '';
+    host.style.right = '';
+    host.style.top = '';
+    host.style.bottom = '';
+    host.style.zIndex = '';
+    delete host.dataset.catWalkSurface;
+    const baseLeft = host.offsetLeft + (host.offsetWidth - rootWidth) / 2;
+    movement.x = previousCenter == null ? 0 : clamp(previousCenter - rootWidth / 2 - baseLeft, 18 - baseLeft, innerWidth - 18 - rootWidth - baseLeft);
+    movement.y = worldFootY == null ? 0 : Math.min(0, worldFootY - bottomTrackTop());
+    walkSurface = null;
+    applyPosition();
+  };
+  const refreshWalkSurface = (now) => {
+    if (!surfaceProvider || !walkSurface || dragging || motionState === 'falling') return;
+    if (now - lastSurfaceRefreshAt < FAB_SURFACE_REFRESH_MS) return;
+    lastSurfaceRefreshAt = now;
+    const current = surfaceCandidates().find((surface) => surface.id === walkSurface.id);
+    if (!current || current.top >= innerHeight - 28 || current.bottom <= 48) {
+      clearWalkSurface();
+      return;
+    }
+    setWalkSurface(current);
+  };
+  const dropSurfaceAt = (worldCenter, worldFootY) => surfaceCandidates()
+    .filter((surface) => worldCenter >= surface.left - 42 && worldCenter <= surface.right + 42)
+    .filter((surface) => Math.abs(surface.top - worldFootY) <= 96)
+    .sort((a, b) => Math.abs(a.top - worldFootY) - Math.abs(b.top - worldFootY))[0] || null;
 
   const resize = () => {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -212,6 +288,11 @@ export function createCatMascot({ className = '', interactive = false, animate =
     const baseLeft = host
       ? host.offsetLeft + (host.offsetWidth - width) / 2
       : root.getBoundingClientRect().left - movement.x;
+    if (walkSurface) {
+      const min = walkSurface.left + 16 - baseLeft;
+      const max = walkSurface.right - 16 - width - baseLeft;
+      return { min: Math.min(min, max), max: Math.max(min, max) };
+    }
     return { min: 18 - baseLeft, max: innerWidth - 18 - width - baseLeft };
   };
 
@@ -285,6 +366,7 @@ export function createCatMascot({ className = '', interactive = false, animate =
     resize();
     const delta = Math.min(0.04, Math.max(0.001, (now - lastTime) / 1000));
     lastTime = now;
+    refreshWalkSurface(now);
     updateMotion(now, delta);
     movement.vx *= dragging ? Math.exp(-5 * delta) : 1;
     movement.vy *= dragging ? Math.exp(-5 * delta) : 1;
@@ -400,8 +482,11 @@ export function createCatMascot({ className = '', interactive = false, animate =
 
   const pointerMove = (event) => {
     if (!dragging || event.pointerId !== pointerId || !pointerStart) return;
-    const nextX = pointerStart.worldX + event.clientX - pointerStart.x;
-    const nextY = Math.min(0, pointerStart.worldY + event.clientY - pointerStart.y);
+    const rect = root.getBoundingClientRect();
+    const width = root.offsetWidth || rect.width;
+    const baseLeft = rect.left - movement.x;
+    const nextX = clamp(pointerStart.worldX + event.clientX - pointerStart.x, 18 - baseLeft, innerWidth - 18 - width - baseLeft);
+    const nextY = clamp(pointerStart.worldY + event.clientY - pointerStart.y, -innerHeight, innerHeight);
     movement.vx = (nextX - movement.x) * 18;
     movement.vy = (nextY - movement.y) * 18;
     const inertialAngle = clamp(-movement.vx * 0.00019, -0.38, 0.38);
@@ -419,20 +504,26 @@ export function createCatMascot({ className = '', interactive = false, animate =
     dragging = false;
     try { root.releasePointerCapture?.(pointerId); } catch { /* Synthetic pointer ids are not native pointers. */ }
     pointerId = null;
-    pointerStart = null;
     document.removeEventListener('pointermove', pointerMove);
     document.removeEventListener('pointerup', pointerUp);
     document.removeEventListener('pointercancel', pointerUp);
     if (movedDuringPress) {
+      const rect = root.getBoundingClientRect();
+      const worldCenter = rect.left + rect.width / 2;
+      const worldFootY = currentTrackTop() + movement.y;
+      const target = dropSurfaceAt(worldCenter, worldFootY);
+      if (target) setWalkSurface(target, { worldCenter, worldFootY });
+      else clearWalkSurface({ worldCenter, worldFootY });
       motionState = 'falling';
       movement.vy = Math.max(45, movement.vy * 0.35);
       movement.vx *= 0.18;
-      notify('drop');
+      notify('drop', { surface: target?.id || 'bottom' });
     } else {
       startTransient('tap', 620);
       suppressClickUntil = performance.now() + 220;
       notify('tap');
     }
+    pointerStart = null;
     requestDraw();
   };
   const pointerDown = (event) => {
@@ -466,6 +557,7 @@ export function createCatMascot({ className = '', interactive = false, animate =
       motionState = 'idle';
       movement.x = 0; movement.y = 0; movement.vx = 0; movement.vy = 0; movement.angle = 0;
       boneState.clear();
+      refreshWalkSurface(performance.now());
       applyPosition();
       scheduleAutonomy();
     } else if (type === 'tap') {

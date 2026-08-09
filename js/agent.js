@@ -16,6 +16,68 @@ import { createCompanionDialogue } from './mascot/companion-dialogue.js';
 const JIAO_AVATAR_URL = '';
 const reviewVisible = () => !isContentReviewed();
 
+const CAT_DIALOG_SURFACE_SELECTORS = [
+  '.modal-mask .modal',
+  '.gesture-permission-overlay.is-visible .gesture-permission-card',
+  '.gesture-calibration-overlay.is-visible .gesture-calibration-card',
+  '.gesture-settings-overlay.is-visible .gesture-settings-card',
+  '.gesture-help-overlay.is-visible .gesture-help-card',
+  '.heritage-graph-overlay[role="dialog"] .heritage-graph-info',
+];
+const CAT_PAGE_SURFACE_SELECTORS = [
+  '.craft-page .workbench-col',
+  '.craft-page .panel.open',
+  '.community-page .community-intro-card',
+  '.community-page .community-process-module.is-enabled',
+  '.passport .kb-overview',
+  '.graph-page .heritage-graph-info',
+  '.admin-login-card',
+  '.admin-dashboard .admin-bulk-toolbar',
+  '.admin-dashboard .admin-craft-card:first-child',
+  '.admin-submission-card:first-child',
+  '.admin-process-page .admin-step-editor',
+  '[data-cat-walk-surface]',
+];
+
+function catWalkSurfaces() {
+  const seen = new Set();
+  const collect = (selectors) => selectors.flatMap((selector) => [...document.querySelectorAll(selector)]);
+  const stackingZIndex = (node) => {
+    let zIndex = 500;
+    for (let current = node; current && current !== document.documentElement; current = current.parentElement) {
+      const value = Number.parseInt(getComputedStyle(current).zIndex, 10);
+      if (Number.isFinite(value)) zIndex = Math.max(zIndex, value + 10);
+    }
+    return zIndex;
+  };
+  const visibleSurface = (node) => {
+    if (seen.has(node) || !node.isConnected) return false;
+    seen.add(node);
+    const style = getComputedStyle(node);
+    if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0 || node.hidden) return false;
+    const rect = node.getBoundingClientRect();
+    return rect.width >= 220 && rect.height >= 70 && rect.top < innerHeight - 28 && rect.bottom > 48 && rect.right > rect.left;
+  };
+  const dialogs = collect(CAT_DIALOG_SURFACE_SELECTORS).filter(visibleSurface).slice(0, 1);
+  const pageSurfaces = collect(CAT_PAGE_SURFACE_SELECTORS).filter(visibleSurface);
+  return [...dialogs, ...pageSurfaces].slice(0, 2)
+    .filter((node) => {
+      const rect = node.getBoundingClientRect();
+      return rect.width >= 220 && rect.height >= 70;
+    })
+    .map((node) => {
+      const rect = node.getBoundingClientRect();
+      return {
+        id: node.dataset.catWalkSurface || node.id || String(node.className || 'surface'),
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        bottom: rect.bottom,
+        zIndex: stackingZIndex(node),
+      };
+    });
+}
+
 const panel = {
   open: false,
   craft: null,
@@ -730,6 +792,7 @@ function render() {
     className: 'cat-mascot-fab',
     interactive: true,
     autonomous: true,
+    surfaceProvider: catWalkSurfaces,
     onBehavior: (type, detail) => { if (!panel.open) companion?.respond(type, detail); },
   });
   const fab = el('button', {
