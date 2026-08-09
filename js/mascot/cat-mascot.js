@@ -21,14 +21,42 @@ function loadAssets() {
     const rig = await response.json();
     const bones = new Map(rig.bones.map((bone) => [bone.id, bone]));
     const images = new Map();
+    const imageBounds = new Map();
     await Promise.all([...new Set(rig.sprites.map((sprite) => sprite.image))].map((name) => new Promise((resolve, reject) => {
       const image = new Image();
       image.decoding = 'async';
-      image.onload = () => { images.set(name, image); resolve(); };
+      image.onload = () => {
+        images.set(name, image);
+        const width = image.naturalWidth || image.width;
+        const height = image.naturalHeight || image.height;
+        const alphaCanvas = document.createElement('canvas');
+        alphaCanvas.width = width;
+        alphaCanvas.height = height;
+        const alphaContext = alphaCanvas.getContext('2d', { willReadFrequently: true });
+        alphaContext.drawImage(image, 0, 0);
+        const pixels = alphaContext.getImageData(0, 0, width, height).data;
+        let minX = width;
+        let minY = height;
+        let maxX = -1;
+        let maxY = -1;
+        for (let y = 0; y < height; y += 1) {
+          for (let x = 0; x < width; x += 1) {
+            if (pixels[(y * width + x) * 4 + 3] < 8) continue;
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            maxX = Math.max(maxX, x + 1);
+            maxY = Math.max(maxY, y + 1);
+          }
+        }
+        imageBounds.set(name, maxX >= 0
+          ? { left: minX, top: minY, right: maxX, bottom: maxY }
+          : { left: 0, top: 0, right: width, bottom: height });
+        resolve();
+      };
       image.onerror = reject;
       image.src = `${ASSET_ROOT}${name}`;
     })));
-    return { rig, bones, images };
+    return { rig, bones, images, imageBounds };
   });
   return assetsPromise;
 }
@@ -411,6 +439,23 @@ export function createCatMascot({ className = '', interactive = false, animate =
     const fitY = groundY - (viewport.y + viewport.height) * scale;
     const anchorCanvasX = grab ? fitX + grab.restX * scale : 0;
     const anchorCanvasY = grab ? fitY + grab.restY * scale : 0;
+    const visual = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+    const includeVisualPoint = (modelX, modelY) => {
+      let x = modelX;
+      let y = modelY;
+      if (grab && poseAngle) {
+        const dx = x - grab.restX;
+        const dy = y - grab.restY;
+        x = grab.restX + dx * Math.cos(poseAngle) - dy * Math.sin(poseAngle);
+        y = grab.restY + dx * Math.sin(poseAngle) + dy * Math.cos(poseAngle);
+      }
+      const canvasX = fitX + x * scale;
+      const canvasY = fitY + y * scale;
+      visual.minX = Math.min(visual.minX, canvasX);
+      visual.minY = Math.min(visual.minY, canvasY);
+      visual.maxX = Math.max(visual.maxX, canvasX);
+      visual.maxY = Math.max(visual.maxY, canvasY);
+    };
     context.save();
     context.setTransform(scale, 0, 0, scale, fitX, fitY);
     if (grab && poseAngle) {
@@ -426,6 +471,21 @@ export function createCatMascot({ className = '', interactive = false, animate =
       const deltaBone = multiply(current, translation(-bone.restX, -bone.restY));
       const eyeOffset = sprite.id.startsWith('eye-') && !['sleeping', 'fallen'].includes(state) ? gaze : { x: 0, y: 0 };
       const spriteMatrix = multiply(deltaBone, multiply(translation(sprite.x + eyeOffset.x, sprite.y + eyeOffset.y), rotation(sprite.rotation || 0)));
+      const imageWidth = image.naturalWidth || image.width;
+      const imageHeight = image.naturalHeight || image.height;
+      const opaque = assets.imageBounds.get(sprite.image)
+        || { left: 0, top: 0, right: imageWidth, bottom: imageHeight };
+      [
+        [opaque.left, opaque.top],
+        [opaque.right, opaque.top],
+        [opaque.right, opaque.bottom],
+        [opaque.left, opaque.bottom],
+      ].forEach(([x, y]) => {
+        includeVisualPoint(
+          spriteMatrix[0] * x + spriteMatrix[2] * y + spriteMatrix[4],
+          spriteMatrix[1] * x + spriteMatrix[3] * y + spriteMatrix[5],
+        );
+      });
       context.save();
       context.transform(...spriteMatrix);
       context.drawImage(image, 0, 0);
@@ -433,6 +493,21 @@ export function createCatMascot({ className = '', interactive = false, animate =
     }
     context.restore();
     canvas.style.transform = walkingDirection < 0 ? 'scaleX(-1)' : '';
+    if (Number.isFinite(visual.minX)) {
+      const cssScaleX = canvas.clientWidth / width;
+      const cssScaleY = canvas.clientHeight / height;
+      let localLeft = canvas.offsetLeft + visual.minX * cssScaleX;
+      let localRight = canvas.offsetLeft + visual.maxX * cssScaleX;
+      if (walkingDirection < 0) {
+        const mirroredLeft = canvas.offsetLeft + canvas.clientWidth - visual.maxX * cssScaleX;
+        const mirroredRight = canvas.offsetLeft + canvas.clientWidth - visual.minX * cssScaleX;
+        localLeft = mirroredLeft;
+        localRight = mirroredRight;
+      }
+      const localTop = canvas.offsetTop + visual.minY * cssScaleY;
+      const localBottom = canvas.offsetTop + visual.maxY * cssScaleY;
+      root.dataset.visualBounds = [localLeft, localTop, localRight, localBottom].map((value) => value.toFixed(2)).join(',');
+    }
     root.dataset.ready = 'true';
     root.dataset.state = state;
     root.dataset.motion = motionState;

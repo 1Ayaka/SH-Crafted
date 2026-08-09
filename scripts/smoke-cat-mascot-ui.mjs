@@ -92,6 +92,25 @@ try {
   }
   assert.equal(await evaluate("Boolean(document.querySelector('.craft-page .workbench-col'))"), true, 'Craft workbench did not become available for mascot landing');
 
+  const lowerScreenBubble = await evaluate(`(() => new Promise((resolve) => {
+    const mascot = document.querySelector('.cat-mascot-fab');
+    mascot.dispatchEvent(new CustomEvent('mascot-command', { detail: { type: 'tap' } }));
+    setTimeout(() => {
+      const outer = mascot.getBoundingClientRect();
+      const bounds = mascot.dataset.visualBounds.split(',').map(Number);
+      const scaleX = outer.width / mascot.offsetWidth;
+      const scaleY = outer.height / mascot.offsetHeight;
+      const anchor = { top: outer.top + bounds[1] * scaleY, bottom: outer.top + bounds[3] * scaleY };
+      const bubble = document.querySelector('.mascot-bubble');
+      const rect = bubble.getBoundingClientRect();
+      resolve({ placement: bubble.dataset.placement, gap: anchor.top - rect.bottom, background: getComputedStyle(bubble).backgroundColor });
+      bubble.classList.remove('is-visible');
+    }, 180);
+  }))()`);
+  assert.equal(lowerScreenBubble.placement, 'above', 'Bubble should stay above a mascot in the lower half of the viewport');
+  assert.ok(lowerScreenBubble.gap >= 16 && lowerScreenBubble.gap <= 20, `Lower bubble gap is unstable: ${lowerScreenBubble.gap}`);
+  assert.match(lowerScreenBubble.background, /0\.6\)/, 'Bubble background should use 60% opacity');
+
   const componentLanding = await evaluate(`(() => new Promise((resolve) => {
     const mascot = document.querySelector('.cat-mascot-fab');
     const host = document.querySelector('.agent-fab');
@@ -111,6 +130,18 @@ try {
   assert.match(componentLanding.surface, /workbench-col/, 'Mascot did not land on the selected page component');
   assert.ok(['falling', 'fallen'].includes(componentLanding.state), 'Mascot did not settle onto the component after release');
   await wait(1300);
+  const upperScreenBubble = await evaluate(`(() => {
+    const mascot = document.querySelector('.cat-mascot-fab');
+    const outer = mascot.getBoundingClientRect();
+    const bounds = mascot.dataset.visualBounds.split(',').map(Number);
+    const scaleY = outer.height / mascot.offsetHeight;
+    const anchor = { top: outer.top + bounds[1] * scaleY, bottom: outer.top + bounds[3] * scaleY };
+    const bubble = document.querySelector('.mascot-bubble');
+    const rect = bubble.getBoundingClientRect();
+    return { placement: bubble.dataset.placement, gap: rect.top - anchor.bottom };
+  })()`);
+  assert.equal(upperScreenBubble.placement, 'below', 'Bubble should stay below a mascot in the upper half of the viewport');
+  assert.ok(upperScreenBubble.gap >= 16 && upperScreenBubble.gap <= 20, `Upper bubble gap is unstable: ${upperScreenBubble.gap}`);
   await screenshot(screenshots.component);
 
   const bottomLanding = await evaluate(`(() => new Promise((resolve) => {

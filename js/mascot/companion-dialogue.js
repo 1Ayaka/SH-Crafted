@@ -127,6 +127,10 @@ function messageFor(type, payload = {}) {
 }
 
 export function createCompanionDialogue({ anchor, onOpenAgent } = {}) {
+  const viewportPadding = 12;
+  const bubbleGap = 18;
+  const upperFlipLine = 0.42;
+  const lowerFlipLine = 0.58;
   const bubble = document.createElement('aside');
   bubble.className = 'mascot-bubble';
   bubble.setAttribute('role', 'status');
@@ -153,16 +157,47 @@ export function createCompanionDialogue({ anchor, onOpenAgent } = {}) {
   let frame = 0;
   let lastSemanticAt = 0;
   let lastSemanticKey = '';
+  let placement = '';
+
+  const visualAnchorRect = () => {
+    const rect = anchorElement.getBoundingClientRect();
+    const bounds = String(anchorElement.dataset.visualBounds || '').split(',').map(Number);
+    if (bounds.length !== 4 || bounds.some((value) => !Number.isFinite(value))) return rect;
+    const scaleX = rect.width / Math.max(1, anchorElement.offsetWidth || rect.width);
+    const scaleY = rect.height / Math.max(1, anchorElement.offsetHeight || rect.height);
+    const left = rect.left + bounds[0] * scaleX;
+    const top = rect.top + bounds[1] * scaleY;
+    const right = rect.left + bounds[2] * scaleX;
+    const bottom = rect.top + bounds[3] * scaleY;
+    return { left, top, right, bottom, width: right - left, height: bottom - top };
+  };
 
   const position = () => {
     frame = 0;
     if (!bubble.classList.contains('is-visible') || !anchorElement?.isConnected) return;
-    const rect = anchorElement.getBoundingClientRect();
+    const rect = visualAnchorRect();
     const bubbleRect = bubble.getBoundingClientRect();
-    const left = Math.max(12, Math.min(innerWidth - bubbleRect.width - 12, rect.left + rect.width / 2 - bubbleRect.width / 2));
-    const top = Math.max(12, rect.top - bubbleRect.height - 12);
+    const centerY = rect.top + rect.height / 2;
+    const roomAbove = rect.top - viewportPadding;
+    const roomBelow = innerHeight - viewportPadding - rect.bottom;
+    const requiredRoom = bubbleRect.height + bubbleGap;
+    if (!placement) placement = centerY <= innerHeight / 2 ? 'below' : 'above';
+    if (placement === 'above' && centerY < innerHeight * upperFlipLine) placement = 'below';
+    if (placement === 'below' && centerY > innerHeight * lowerFlipLine) placement = 'above';
+    if (placement === 'above' && roomAbove < requiredRoom && roomBelow > roomAbove) placement = 'below';
+    if (placement === 'below' && roomBelow < requiredRoom && roomAbove > roomBelow) placement = 'above';
+
+    const rawLeft = rect.left + rect.width / 2 - bubbleRect.width / 2;
+    const rawTop = placement === 'below'
+      ? rect.bottom + bubbleGap
+      : rect.top - bubbleRect.height - bubbleGap;
+    const left = Math.round(Math.max(viewportPadding, Math.min(innerWidth - bubbleRect.width - viewportPadding, rawLeft)));
+    const top = Math.round(Math.max(viewportPadding, Math.min(innerHeight - bubbleRect.height - viewportPadding, rawTop)));
     bubble.style.left = `${left}px`;
     bubble.style.top = `${top}px`;
+    bubble.dataset.placement = placement;
+    const anchorZ = Number.parseInt(getComputedStyle(anchorElement.closest('.agent-fab') || anchorElement).zIndex, 10);
+    bubble.style.zIndex = String(Math.max(1510, (Number.isFinite(anchorZ) ? anchorZ : 500) + 1));
     frame = requestAnimationFrame(position);
   };
   function hide() {
@@ -171,6 +206,8 @@ export function createCompanionDialogue({ anchor, onOpenAgent } = {}) {
     pendingContinuation = null;
     cancelAnimationFrame(frame);
     frame = 0;
+    placement = '';
+    delete bubble.dataset.placement;
   }
   const show = (text, { duration = 5200, withAction = true, continuation = null } = {}) => {
     if (!text) return;
@@ -178,6 +215,7 @@ export function createCompanionDialogue({ anchor, onOpenAgent } = {}) {
     copy.textContent = text;
     pendingContinuation = withAction ? continuation : null;
     action.hidden = !withAction;
+    placement = '';
     bubble.classList.add('is-visible');
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(position);
