@@ -183,6 +183,7 @@ export async function graphView(root, params = {}) {
   };
 
   explorer = mountHeritageGraph(canvasHost, state, { onSelect: (node) => {
+    if (node) agent.react('graph', { id: node.id, title: node.title, summary: node.summary });
     if (state.mode === 'overview' && node?.type === 'heritage') {
       location.hash = `#/graph/${encodeURIComponent(node.id)}`;
       return;

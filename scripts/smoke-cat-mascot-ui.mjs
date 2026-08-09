@@ -1,0 +1,222 @@
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+const base = process.argv.find((arg) => arg.startsWith('--base='))?.slice(7) || 'http://127.0.0.1:7101';
+const edge = process.env['PROGRAMFILES(X86)']
+  ? path.join(process.env['PROGRAMFILES(X86)'], 'Microsoft', 'Edge', 'Application', 'msedge.exe')
+  : 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'tanwuzhi-mascot-ui-'));
+const screenshots = {
+  grabbed: path.join(os.tmpdir(), 'tanwuzhi-mascot-grabbed.png'),
+  sleeping: path.join(os.tmpdir(), 'tanwuzhi-mascot-sleeping.png'),
+  bubble: path.join(os.tmpdir(), 'tanwuzhi-mascot-bubble.png'),
+};
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const browser = spawn(edge, [
+  '--headless=new', '--disable-gpu', '--no-sandbox', '--remote-debugging-port=0',
+  `--user-data-dir=${profile}`, 'about:blank',
+], { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
+
+let ws;
+try {
+  let debuggerPort;
+  browser.stderr.setEncoding('utf8');
+  browser.stderr.on('data', (chunk) => {
+    debuggerPort ||= chunk.match(/DevTools listening on ws:\/\/127\.0\.0\.1:(\d+)\//)?.[1];
+  });
+  for (let attempt = 0; attempt < 40 && !debuggerPort; attempt++) await wait(100);
+  assert.ok(debuggerPort, 'Could not discover the Edge debugging port');
+
+  const targets = await fetch(`http://127.0.0.1:${debuggerPort}/json`).then((response) => response.json());
+  const target = targets.find((item) => item.type === 'page');
+  assert.ok(target, 'Could not find a browser page');
+  ws = new WebSocket(target.webSocketDebuggerUrl);
+  await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
+
+  let sequence = 0;
+  const pending = new Map();
+  ws.onmessage = ({ data }) => {
+    const message = JSON.parse(data);
+    const request = pending.get(message.id);
+    if (!request) return;
+    pending.delete(message.id);
+    message.error ? request.reject(new Error(message.error.message)) : request.resolve(message.result);
+  };
+  const send = (method, params = {}) => new Promise((resolve, reject) => {
+    const id = ++sequence;
+    pending.set(id, { resolve, reject });
+    ws.send(JSON.stringify({ id, method, params }));
+  });
+  const evaluate = async (expression) => {
+    const result = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
+    return result.result.value;
+  };
+  const setViewport = (width, height, mobile = false) => send('Emulation.setDeviceMetricsOverride', {
+    width, height, deviceScaleFactor: 1, mobile,
+  });
+  const mouse = (type, x, y, buttons = 0) => send('Input.dispatchMouseEvent', {
+    type, x, y, button: 'left', buttons, clickCount: type === 'mousePressed' ? 1 : 0,
+  });
+  const screenshot = async (file) => {
+    const result = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+    fs.writeFileSync(file, Buffer.from(result.data, 'base64'));
+  };
+  const layout = () => evaluate(`(() => {
+    const mascot = document.querySelector('.cat-mascot-fab');
+    const gesture = document.querySelector('.gesture-toggle');
+    const rect = (node) => node ? ({ x: node.getBoundingClientRect().x, y: node.getBoundingClientRect().y, width: node.getBoundingClientRect().width, height: node.getBoundingClientRect().height }) : null;
+    const a = rect(mascot); const b = rect(gesture);
+    const overlaps = Boolean(a && b && a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y);
+    return { ready: mascot?.dataset.ready, state: mascot?.dataset.state, tailAngle: Number(mascot?.dataset.tailAngle || 0), poseAngle: Number(mascot?.dataset.poseAngle || 0), anchorLocal: mascot?.dataset.anchorLocal, poseClipped: mascot?.dataset.poseClipped, direction: mascot?.dataset.direction, mascot: a, gesture: b, overlaps, panelOpen: document.querySelector('.agent-panel')?.classList.contains('open') || false, overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth };
+  })()`);
+
+  await send('Page.enable');
+  await send('Runtime.enable');
+  await setViewport(1440, 900);
+  await send('Page.navigate', { url: `${base}/#/craft/SHIH_0001` });
+  for (let attempt = 0; attempt < 40; attempt++) {
+    if ((await layout()).ready === 'true') break;
+    await wait(150);
+  }
+  const desktop = await layout();
+  assert.equal(desktop.ready, 'true', 'Mascot canvas did not become ready');
+  assert.equal(desktop.overlaps, false, 'Mascot overlaps the gesture toggle on desktop');
+  assert.equal(desktop.overflow, false, 'Mascot causes horizontal overflow on desktop');
+
+  const startX = desktop.mascot.x + desktop.mascot.width / 2;
+  const startY = desktop.mascot.y + desktop.mascot.height / 2;
+  await mouse('mousePressed', startX, startY, 1);
+  await mouse('mouseMoved', startX - 120, startY - 90, 1);
+  await wait(180);
+  const dragged = await layout();
+  assert.equal(dragged.state, 'grabbed', 'Mascot did not enter the grabbed state');
+  assert.ok(dragged.poseAngle < -0.8, `Grabbed mascot body did not hang from the head anchor: ${dragged.poseAngle}`);
+  assert.ok(Math.abs(dragged.tailAngle) > 0.08, `Grabbed mascot tail did not react to movement: ${dragged.tailAngle}`);
+  assert.equal(dragged.anchorLocal, desktop.anchorLocal, 'Head anchor moved when the mascot switched into the grabbed pose');
+  assert.equal(dragged.poseClipped, 'false', 'Grabbed mascot pose exceeded the expanded animation canvas');
+  await screenshot(screenshots.grabbed);
+  await mouse('mouseReleased', startX - 120, startY - 90);
+  await wait(100);
+  const released = await layout();
+  assert.equal(released.panelOpen, false, 'Dragging the mascot opened the assistant panel');
+  assert.ok(['falling', 'fallen'].includes(released.state), 'Released mascot did not fall toward the page bottom');
+  await wait(2400);
+
+  const gestureDrag = await evaluate(`(() => new Promise((resolve) => {
+    const mascot = document.querySelector('.cat-mascot-fab');
+    const rect = mascot.getBoundingClientRect();
+    const common = { bubbles: true, cancelable: true, pointerId: 913, pointerType: 'mouse', isPrimary: true, button: 0 };
+    mascot.dispatchEvent(new PointerEvent('pointerdown', { ...common, clientX: rect.x + rect.width / 2, clientY: rect.y + rect.height / 2, buttons: 1 }));
+    document.elementFromPoint(30, 160).dispatchEvent(new PointerEvent('pointermove', { ...common, clientX: 30, clientY: 160, buttons: 1 }));
+    requestAnimationFrame(() => {
+      const state = mascot.dataset.state;
+      const translated = mascot.style.translate;
+      mascot.dispatchEvent(new PointerEvent('pointerup', { ...common, clientX: 30, clientY: 160, buttons: 0 }));
+      resolve({ state, translated });
+    });
+  }))()`);
+  assert.equal(gestureDrag.state, 'grabbed', 'Synthetic gesture pointer did not retain the grabbed state outside the mascot');
+  assert.notEqual(gestureDrag.translated, '', 'Synthetic gesture pointer did not move the mascot');
+  await wait(2400);
+
+  const commanded = await evaluate(`(() => new Promise((resolve) => {
+    const mascot = document.querySelector('.cat-mascot-fab');
+    mascot.dispatchEvent(new CustomEvent('mascot-command', { detail: { type: 'reset' } }));
+    const beforeX = mascot.getBoundingClientRect().x;
+    mascot.dispatchEvent(new CustomEvent('mascot-command', { detail: { type: 'walk', duration: 420 } }));
+    requestAnimationFrame(() => {
+      const walking = mascot.dataset.state;
+      setTimeout(() => {
+        const afterX = mascot.getBoundingClientRect().x;
+        const direction = mascot.dataset.direction;
+        const canvasTransform = mascot.querySelector('canvas').style.transform;
+        setTimeout(() => resolve({ walking, sleeping: mascot.dataset.state, poseMode: mascot.dataset.poseMode, beforeX, afterX, direction, canvasTransform }), 360);
+      }, 140);
+    });
+  }))()`);
+  assert.equal(commanded.walking, 'walking', 'Mascot did not enter autonomous walking state');
+  assert.equal(commanded.sleeping, 'sleeping', 'Mascot did not enter sleeping state');
+  assert.equal(commanded.poseMode, 'ragdoll-flat', 'Sleeping pose should use the reusable flat ragdoll pose');
+  assert.ok(commanded.direction === 'right' ? commanded.afterX > commanded.beforeX : commanded.afterX < commanded.beforeX, 'Mascot body faces a direction that disagrees with its movement');
+  assert.equal(commanded.canvasTransform, commanded.direction === 'left' ? 'scaleX(-1)' : '', 'Mascot sprite orientation disagrees with walking direction');
+  await wait(750);
+  assert.equal((await layout()).state, 'sleeping', 'Mascot did not remain in its resting pose');
+  await screenshot(screenshots.sleeping);
+  await wait(500);
+
+  const tapLayout = await layout();
+  const tapX = tapLayout.mascot.x + tapLayout.mascot.width / 2;
+  const tapY = tapLayout.mascot.y + tapLayout.mascot.height / 2;
+  await mouse('mouseMoved', 60, 80);
+  await wait(150);
+  const gaze = await evaluate("document.querySelector('.cat-mascot-fab')?.dataset.gaze");
+  assert.notEqual(gaze, '0.00,0.00', 'Mascot eyes did not respond to pointer movement');
+  await mouse('mousePressed', tapX, tapY, 1);
+  await mouse('mouseReleased', tapX, tapY);
+  await wait(400);
+  assert.equal((await layout()).panelOpen, false, 'A short mascot interaction should not immediately open the full panel');
+  const tapFeedback = await evaluate(`(() => ({
+    transient: document.querySelector('.cat-mascot-fab')?.dataset.transient,
+    bubble: document.querySelector('.mascot-bubble')?.classList.contains('is-visible') || false
+  }))()`);
+  assert.equal(tapFeedback.transient, 'tap', 'Clicking the mascot did not wiggle its ears');
+  assert.equal(tapFeedback.bubble, true, 'Clicking the mascot did not show a short dialogue bubble');
+  await screenshot(screenshots.bubble);
+  const continueRect = await evaluate(`(() => {
+    const rect = document.querySelector('.mascot-bubble button')?.getBoundingClientRect();
+    return rect ? { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 } : null;
+  })()`);
+  assert.ok(continueRect, 'Companion dialogue did not expose a continue action');
+  await mouse('mousePressed', continueRect.x, continueRect.y, 1);
+  await mouse('mouseReleased', continueRect.x, continueRect.y);
+  await wait(300);
+  const continuationImmediate = await evaluate(`(() => ({
+    panelOpen: document.querySelector('.agent-panel')?.classList.contains('open') || false,
+    bridge: Boolean(document.querySelector('.ap-companion-bridge')),
+    welcomeRepeated: document.querySelector('.ap-log')?.textContent.includes('你好，我是小蕉') || false,
+    noticeRemoved: !document.querySelector('.ap-notice'),
+    voiceNoteRemoved: !document.querySelector('.ap-voice-note'),
+    readingControlRemoved: ![...document.querySelectorAll('.ap-voice-button')].some((node) => node.textContent.includes('朗读')),
+  }))()`);
+  assert.equal(continuationImmediate.panelOpen, true, 'Continue action did not open the assistant panel');
+  assert.equal(continuationImmediate.bridge, true, 'Assistant did not carry the companion message into the conversation');
+  assert.equal(continuationImmediate.welcomeRepeated, false, 'First continuation was replaced by the generic welcome message');
+  assert.equal(continuationImmediate.noticeRemoved, true, 'Model notice should be removed from the panel');
+  assert.equal(continuationImmediate.voiceNoteRemoved, true, 'Long voice notice should be removed from the panel');
+  assert.equal(continuationImmediate.readingControlRemoved, true, 'Reading control should be removed from the panel');
+  await wait(4500);
+  const continuationResult = await evaluate(`(() => ({
+    messages: document.querySelectorAll('.ap-msg.agent').length,
+    links: document.querySelectorAll('.ap-explore-link').length,
+    followups: document.querySelectorAll('.ap-followup').length,
+  }))()`);
+  assert.ok(continuationResult.messages >= 2, 'Assistant did not continue answering after the bridge message');
+  assert.ok(continuationResult.links >= 1, 'Continuation did not include a relevant exploration entry');
+  assert.ok(continuationResult.followups >= 2, 'Continuation did not include related knowledge prompts');
+  await evaluate("document.querySelector('.mascot-bubble button')?.click()");
+  await wait(400);
+  const opened = await layout();
+  assert.equal(opened.panelOpen, true, 'The dialogue action did not open the assistant panel');
+  assert.equal(opened.state, 'awake', 'Mascot should stay awake beside the open assistant panel');
+
+  await setViewport(390, 844, true);
+  await wait(500);
+  const mobile = await layout();
+  assert.equal(mobile.overlaps, false, 'Mascot overlaps the gesture toggle on mobile');
+  assert.equal(mobile.overflow, false, 'Mascot causes horizontal overflow on mobile');
+
+  console.log(JSON.stringify({ desktop, dragged, released, gestureDrag, commanded, gaze, tapFeedback, opened, mobile, screenshots }, null, 2));
+} finally {
+  ws?.close();
+  if (!browser.killed) browser.kill();
+  await Promise.race([
+    new Promise((resolve) => browser.once('exit', resolve)),
+    wait(2000),
+  ]);
+  if (profile.startsWith(os.tmpdir())) {
+    try { fs.rmSync(profile, { recursive: true, force: true, maxRetries: 3, retryDelay: 150 }); } catch { /* OS releases the temporary Edge profile shortly after exit. */ }
+  }
+}

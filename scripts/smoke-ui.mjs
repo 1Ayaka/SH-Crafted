@@ -109,6 +109,8 @@ try {
   await wait(5000);
 
   await evaluate("document.querySelector('.agent-fab')?.click()");
+  await wait(120);
+  await evaluate("document.querySelector('.mascot-bubble button')?.click()");
   await wait(500);
   await evaluate(`(() => {
     const input = document.querySelector('.ap-input-row input');

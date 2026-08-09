@@ -1,7 +1,7 @@
 // 小蕉智能体侧栏 —— DeepSeek 模型应答 + 检索式降级
 // 慢路径（非材料/动作/工序直读）优先走 server.mjs 的 /api/agent 代理（密钥只在服务器侧）；
 // 代理不可用（无密钥/超时/5xx）时静默降级为基于资料库的检索式占位应答，并提示降级状态
-import { el, catSVG, openEvidenceModal } from './ui.js';
+import { el, openEvidenceModal } from './ui.js';
 import { evidenceTimecode, isContentReviewed } from './data.js';
 import { buildAgentContext as buildUIAgentContext } from './agent/context-builder.js';
 import { createToolRegistry } from './agent/tool-registry.js';
@@ -9,6 +9,8 @@ import { resolveIntent } from './agent/intent-resolver.js';
 import { getGraphNode, heritageForGraphTarget, relationsForNode, searchGraph } from './agent/graph-adapter.js';
 import { createVoiceController } from './voice/voice-controller.js';
 import { VOICE_STATES } from './voice/voice-state-machine.js';
+import { createCatMascot } from './mascot/cat-mascot.js';
+import { createCompanionDialogue } from './mascot/companion-dialogue.js';
 
 // 用户提供小蕉头像后，只需把这里改成站内图片路径；空值时保留微信式头像位且不显示破图。
 const JIAO_AVATAR_URL = '';
@@ -31,7 +33,36 @@ const panel = {
   global: false,
   defaultHost: {},
   contextSignature: '',
+  mascots: [],
+  activeMascots: [],
+  companion: null,
+  lastCompanionStep: '',
+  lastCompanionAction: '',
 };
+
+function mascotStateForVoice(voiceState = panel.voiceStatus) {
+  if (['REQUESTING_PERMISSION', 'WAKE_LISTENING', 'AWAKENED', 'LISTENING', 'TRANSCRIBING'].includes(voiceState)) return 'listening';
+  if (['THINKING', 'CONFIRMING', 'EXECUTING'].includes(voiceState)) return 'thinking';
+  if (voiceState === 'SPEAKING') return 'speaking';
+  if (voiceState === 'ERROR') return 'error';
+  return panel.open ? 'awake' : 'idle';
+}
+
+function setMascotState(state) {
+  panel.activeMascots.forEach((mascot) => mascot.setState(state));
+}
+
+function companionRespond(type, payload = {}, options = {}) {
+  if (!panel.open) panel.companion?.respond(type, payload, options);
+}
+
+function destroyMascots() {
+  panel.mascots.forEach((mascot) => mascot.destroy());
+  panel.mascots = [];
+  panel.activeMascots = [];
+  panel.companion?.destroy();
+  panel.companion = null;
+}
 
 function contextSignature(value = {}) {
   const compactList = (items, limit) => (Array.isArray(items) ? items.slice(-limit) : [])
@@ -67,6 +98,7 @@ function ensureVoice() {
     },
     onStateChange(next) {
       panel.voiceStatus = next;
+      setMascotState(mascotStateForVoice(next));
       panel.nodes.voiceStatus && updateVoiceStatus();
     },
   });
@@ -217,11 +249,12 @@ function addMsg(kind, contentNodes, who) {
     el('div', { class: 'bubble' }, contentNodes),
   ]);
   const avatar = kind === 'agent'
-    ? el('div', {
-      class: `ap-avatar ap-avatar-jiao${JIAO_AVATAR_URL ? ' has-image' : ''}`,
-      'aria-label': '小蕉头像（图片待补充）',
-      title: '小蕉头像待补充',
-    }, JIAO_AVATAR_URL ? [el('img', { src: JIAO_AVATAR_URL, alt: '' })] : [])
+    ? (() => {
+      if (JIAO_AVATAR_URL) return el('div', { class: 'ap-avatar ap-avatar-jiao has-image' }, [el('img', { src: JIAO_AVATAR_URL, alt: '' })]);
+      const mascot = createCatMascot({ className: 'ap-avatar ap-avatar-jiao', animate: false });
+      panel.mascots.push(mascot);
+      return mascot.element;
+    })()
     : null;
   const msg = el('div', { class: `ap-msg ${kind}` }, [
     avatar,
@@ -531,13 +564,13 @@ function retrievalAnswer(query, craft, claims, evidence, externalFacts, knowledg
   addMsg('agent', nodes, '小蕉');
 }
 
-async function answer(query) {
+async function answer(query, { showUser = true, allowTools = true } = {}) {
   const craft = panel.craft;
-  addMsg('user', [el('span', { text: query })], '我');
+  if (showUser) addMsg('user', [el('span', { text: query })], '我');
 
   // 导航与语音控制优先通过白名单工具执行；无法识别为站内操作时，
   // 才继续使用原有知识检索/模型问答链路。
-  if (await runToolCommand(query)) return;
+  if (allowTools && await runToolCommand(query)) return;
 
   // 快路径：资源 / 动作 / 工序等直接读取结构化数据
   if (craft) {
@@ -584,6 +617,7 @@ async function answer(query) {
   }
 
   // 慢路径：优先 DeepSeek 代理（/api/agent）；不可用则静默降级为检索式占位应答
+  setMascotState('thinking');
   const { claims, evidence, externalFacts } = retrieve(query, craft);
   const generation = panel.generation;
   const controller = new AbortController();
@@ -643,7 +677,32 @@ async function answer(query) {
     retrievalAnswer(query, craft, claims, evidence, externalFacts, knowledgeHits);
   } finally {
     panel.requests.delete(controller);
+    setMascotState(mascotStateForVoice());
   }
+}
+
+function continuationQuery(continuation = {}) {
+  const payload = continuation.payload || {};
+  const topic = payload.name || payload.title || payload.text || panel.craft?.title || '当前页面';
+  const prompts = {
+    district: `接着介绍${topic}：结合当前页面，讲一个地域文化或非遗小知识，并推荐不超过两个相关非遗探索入口。`,
+    craft: `接着介绍${topic}：讲一个材料、工序或纪录片里的有趣细节，并给出不超过两个相关探索入口。`,
+    step: `接着讲解工序“${topic}”：说明它改变了什么，并补充一个相关工艺小知识。`,
+    action: `接着解释刚才的操作“${topic}”：说明它在工艺中的作用，并补充一个相关小知识。`,
+    graph: `接着介绍节点“${topic}”：说明它与上一个节点的联系和区别，并给出不超过两个相关探索入口。`,
+    tap: `结合我当前正在看的页面，自然地补充一个上海非遗小知识；只有确实相关时才给探索入口。`,
+  };
+  return prompts[continuation.type] || `结合当前页面继续讲解“${topic}”，补充一个有趣的小知识。`;
+}
+
+function continueFromCompanion(continuation) {
+  if (!continuation) { api.open(); return; }
+  api.open({ skipGreeting: true });
+  addMsg('agent', [
+    el('p', { class: 'ap-companion-bridge', text: continuation.text || '我把刚才的线索带进来了，我们从这里接着聊。' }),
+    el('p', { class: 'small muted', text: '我正在结合你此刻看到的页面继续查找。' }),
+  ], '小蕉');
+  answer(continuationQuery(continuation), { showUser: false, allowTools: false });
 }
 
 function contextBanner() {
@@ -660,15 +719,24 @@ function contextBanner() {
 
 function render() {
   invalidateRequests();
+  destroyMascots();
   const root = document.createElement('div');
   root.innerHTML = '';
   document.querySelector('.agent-fab')?.remove();
   document.querySelector('.agent-panel')?.remove();
 
+  let companion = null;
+  const fabMascot = createCatMascot({
+    className: 'cat-mascot-fab',
+    interactive: true,
+    autonomous: true,
+    onBehavior: (type, detail) => { if (!panel.open) companion?.respond(type, detail); },
+  });
   const fab = el('button', {
     class: 'agent-fab', 'aria-label': '唤出小蕉智能讲解', title: '小蕉 · 智能讲解',
-    onclick: () => api.toggle(),
-  }, [catSVG(), el('span', { class: 'fab-label', text: '小蕉 · 智能讲解' })]);
+    onclick: () => { if (!fabMascot.consumeClickSuppression()) fabMascot.react('tap'); },
+  }, [fabMascot.element, el('span', { class: 'fab-label', text: '小蕉 · 智能讲解' })]);
+  companion = createCompanionDialogue({ anchor: fabMascot.element, onOpenAgent: (continuation) => api.continueFromCompanion(continuation) });
 
   const log = el('div', { class: 'ap-log' });
   const ctxLine = el('div', { class: 'ap-context' });
@@ -683,8 +751,6 @@ function render() {
       }
     },
   });
-  const noticeEl = el('div', { class: 'ap-notice' });
-  const voiceNote = el('p', { class: 'ap-voice-note', text: '唤醒默认关闭。主动开启后，本页会把麦克风音频发送到本项目服务器的 FunASR，仅识别“小蕉小蕉”和随后一个问题；不会保存原始音频，切到后台会暂停。' });
   const voiceStatus = el('div', { class: 'ap-voice-status', role: 'status', 'aria-live': 'polite' });
   const voiceFeedback = el('div', { class: 'ap-voice-feedback', role: 'status', 'aria-live': 'polite', hidden: true });
   const voiceTranscript = el('div', { class: 'ap-voice-transcript', role: 'status', 'aria-live': 'polite' });
@@ -712,15 +778,14 @@ function render() {
       try { await voice.start({ wake: false }); } catch (error) { showVoiceFeedback(voiceFailureText(error), 'error'); }
     },
   });
-  const stopButton = el('button', { class: 'ap-voice-button ap-stop-button', type: 'button', text: '停止朗读', onclick: () => ensureVoice().stopSpeaking() });
+  const headMascot = createCatMascot({ className: 'cat-mascot-head' });
   const panelEl = el('aside', { class: 'agent-panel', role: 'dialog', 'aria-modal': 'false', 'aria-label': '小蕉智能体面板' }, [
     el('div', { class: 'ap-head' }, [
-      catSVG(),
+      headMascot.element,
       el('h3', { text: '小蕉' }),
       el('button', { class: 'ap-close', text: '×', 'aria-label': '收起小蕉', onclick: () => api.close() }),
     ]),
-    noticeEl,
-    el('div', { class: 'ap-voice-controls' }, [voiceNote, voiceStatus, voiceFeedback, voiceTranscript, wakeButton, micButton, stopButton]),
+    el('div', { class: 'ap-voice-controls' }, [voiceStatus, voiceFeedback, voiceTranscript, wakeButton, micButton]),
     ctxLine,
     el('div', { class: 'ap-quick' }, ['它用什么材料？', '有哪些动作？', '有哪几道工序？'].map((q) =>
       el('button', { text: q, onclick: () => answer(q) }))),
@@ -734,9 +799,13 @@ function render() {
     ]),
   ]);
   document.body.append(fab, panelEl);
-  panel.nodes = { fab, panel: panelEl, log, ctxLine, input, notice: noticeEl, voiceStatus, voiceFeedback, voiceTranscript, wakeButton, micButton };
+  panel.mascots.push(fabMascot, headMascot);
+  panel.activeMascots = [fabMascot, headMascot];
+  panel.companion = companion;
+  panel.nodes = { fab, panel: panelEl, log, ctxLine, input, voiceStatus, voiceFeedback, voiceTranscript, wakeButton, micButton };
   refreshNotice();
   updateVoiceStatus();
+  setMascotState(mascotStateForVoice());
 }
 
 const api = {
@@ -764,6 +833,7 @@ const api = {
     panel.onToggle = null;
     panel.host = {};
     panel.registry = null;
+    destroyMascots();
     document.body.classList.remove('agent-open');
   },
   enableGlobal(host = {}) {
@@ -773,18 +843,21 @@ const api = {
     panel.registry = null;
     api.mount();
   },
-  open() {
+  open({ skipGreeting = false } = {}) {
     if (!panel.nodes.panel) render();
     const openedAt = performance.now();
     panel.open = true;
+    panel.companion?.hide();
+    setMascotState('awake');
+    setTimeout(() => { if (panel.open && mascotStateForVoice() === 'idle') setMascotState('idle'); }, 650);
     panel.nodes.panel.classList.add('open');
     document.body.classList.add('agent-open');   // 停靠布局：内容区整体左挤
     panel.nodes.ctxLine.innerHTML = '';
     panel.nodes.ctxLine.appendChild(el('b', { text: '会话上下文 ' }));
     panel.nodes.ctxLine.append(contextBanner());
-    if (!panel.nodes.log.children.length) {
+    if (!skipGreeting && !panel.nodes.log.children.length) {
       addMsg('agent', [
-        el('p', { text: `你好，我是小蕉，一只正在收集上海非遗资料的小猫。${panel.craft ? `关于「${panel.craft.title}」，我找到了纪录片转写和知识草稿，可以帮你检索。` : '进入具体工艺页后，我可以检索该项目的资料。'}我不会替你完成操作，但可以在你卡住时提供线索。` }),
+        el('p', { text: `你好，我是小蕉，一只从皮影和剪纸中诞生、正在收集上海非遗资料的小猫。${panel.craft ? `关于「${panel.craft.title}」，我找到了纪录片转写和知识草稿，可以帮你检索。` : '我会结合你当前看到的地区、节点或工艺内容寻找线索。'}我不会替你完成操作，但可以在你卡住时提供线索。` }),
       ], '小蕉');
     }
     panel.onToggle?.(true);
@@ -794,8 +867,10 @@ const api = {
       window.__agentPerformance = { open_latency_ms: latency, measured_at: Date.now() };
     });
   },
+  continueFromCompanion,
   close() {
     panel.open = false;
+    setMascotState('idle');
     panel.nodes.panel?.classList.remove('open');
     document.body.classList.remove('agent-open');
     panel.onToggle?.(false);
@@ -803,12 +878,23 @@ const api = {
   toggle() { (panel.open ? api.close : api.open)(); },
   isOpen: () => panel.open,
   setCraft(craft) {
+    const changed = panel.craft?.craftId !== craft?.craftId;
     if (panel.craft !== craft) invalidateRequests();
     panel.craft = craft;
+    if (changed && craft) companionRespond('craft', { id: craft.craftId, title: craft.title, summary: craft.summary });
   },
   setContext(ctx) {
     const previous = panel.contextSignature || contextSignature(panel.context);
     Object.assign(panel.context, ctx);
+    if (ctx.current_step_id && ctx.current_step_id !== panel.lastCompanionStep) {
+      panel.lastCompanionStep = ctx.current_step_id;
+      companionRespond('step', { id: ctx.current_step_id, name: ctx.current_step_name || ctx.current_step_id });
+    }
+    const latestAction = Array.isArray(ctx.recent_actions) ? ctx.recent_actions.at(-1) : '';
+    if (latestAction && latestAction !== panel.lastCompanionAction) {
+      panel.lastCompanionAction = latestAction;
+      companionRespond('action', { text: latestAction });
+    }
     panel.contextSignature = contextSignature(panel.context);
     if (previous !== panel.contextSignature) invalidateRequests();
     if (panel.open) {
@@ -833,6 +919,7 @@ const api = {
   stopSpeaking() { ensureVoice().stopSpeaking(); },
   setVoicePreferences(next) { return ensureVoice().setPreferences(next); },
   voiceState() { return panel.voice?.state?.() || VOICE_STATES.DISABLED; },
+  react(type, payload = {}, options = {}) { companionRespond(type, payload, options); },
   say(text) { if (panel.open) addMsg('agent', [el('p', { text })], '小蕉'); },
   onToggle(fn) { panel.onToggle = fn; },
 };

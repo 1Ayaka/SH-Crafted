@@ -360,6 +360,7 @@ export async function exploreView(root) {
   }
   function showProjectPanel(host, craft) {
     selectedCraft = craft;
+    agent.react('craft', { id: craft.craftId, title: craft.title, summary: craft.summary });
     // The map only carries catalogue metadata. Warm this one package while the
     // visitor reads its introduction so opening the detail feels immediate.
     ensureCraftLoaded(craft.craftId).catch(() => {});
@@ -491,6 +492,12 @@ export async function exploreView(root) {
     exitFocus3D(true, true);
     activeDistrictIds = districtIds;
     activeDistrictId = districtIds[0] || null;
+    const districtProfile = DISTRICT_PROFILES[activeDistrictId] || {};
+    agent.react('district', {
+      id: activeDistrictId || nodeName,
+      name: displayNodeName(nodeName),
+      heritageOverview: districtProfile.heritageOverview || crafts[0]?.summary || '',
+    });
     explorationHistory.push(graphId('region', activeDistrictId || nodeName));
     hideSlip(); slip?.remove(); slip = null; slipFor = null;
     map3d.focusDistrict(nodeName);
@@ -690,6 +697,11 @@ export async function exploreView(root) {
     exitFlatFocus(true);
     activeDistrictId = d.id;
     activeDistrictIds = [d.id];
+    agent.react('district', {
+      id: d.id,
+      name: d.name,
+      heritageOverview: DISTRICT_PROFILES[d.id]?.heritageOverview || '',
+    });
     explorationHistory.push(graphId('region', d.id));
     stage.classList.add('focusing');
     stage.querySelectorAll('.district').forEach((g) => g.classList.toggle('focused', g.dataset.district === d.id));

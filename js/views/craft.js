@@ -422,6 +422,7 @@ export async function craftView(root, { id }) {
     agent.setContext({
       page: 'craft_experience',
       current_step_id: currentStep()?.step_id || null,
+      current_step_name: currentStep()?.displayName || '',
       inventory_states: [
         ...[...S.materialItems.values()].map((item) => ({ name: item.currentName, state: `${item.level}级材料 · 已在工作台` })),
         ...[...S.resourceStates.entries()]

@@ -1,0 +1,327 @@
+{
+  "schema": "tanwuzhi.godot-cat-rig/v1",
+  "source": "node_2d.tscn",
+  "viewport": {
+    "x": 46,
+    "y": 98,
+    "width": 626,
+    "height": 523
+  },
+  "grabBone": "hip/chest/head",
+  "bones": [
+    {
+      "id": "hip",
+      "parent": null,
+      "x": 268,
+      "y": 415,
+      "restX": 268,
+      "restY": 415
+    },
+    {
+      "id": "hip/chest",
+      "parent": "hip",
+      "x": 107,
+      "y": -2,
+      "restX": 375,
+      "restY": 413
+    },
+    {
+      "id": "hip/chest/head",
+      "parent": "hip/chest",
+      "x": 74,
+      "y": -5,
+      "restX": 449,
+      "restY": 408
+    },
+    {
+      "id": "hip/chest/head/jaw",
+      "parent": "hip/chest/head",
+      "x": -7,
+      "y": -73,
+      "restX": 442,
+      "restY": 335
+    },
+    {
+      "id": "hip/chest/head/jaw/earL1",
+      "parent": "hip/chest/head/jaw",
+      "x": -83,
+      "y": -137,
+      "restX": 359,
+      "restY": 198
+    },
+    {
+      "id": "hip/chest/head/jaw/earL1/earL2",
+      "parent": "hip/chest/head/jaw/earL1",
+      "x": -12,
+      "y": -38,
+      "restX": 347,
+      "restY": 160
+    },
+    {
+      "id": "hip/chest/head/jaw/earR1",
+      "parent": "hip/chest/head/jaw",
+      "x": 60,
+      "y": -141,
+      "restX": 502,
+      "restY": 194
+    },
+    {
+      "id": "hip/chest/head/jaw/earR1/earR2",
+      "parent": "hip/chest/head/jaw/earR1",
+      "x": 5,
+      "y": -34,
+      "restX": 507,
+      "restY": 160
+    },
+    {
+      "id": "hip/chest/legFR",
+      "parent": "hip/chest",
+      "x": 45,
+      "y": 48,
+      "restX": 420,
+      "restY": 461
+    },
+    {
+      "id": "hip/chest/legFR/Bone2D",
+      "parent": "hip/chest/legFR",
+      "x": -1,
+      "y": 88,
+      "restX": 419,
+      "restY": 549
+    },
+    {
+      "id": "hip/chest/legFL",
+      "parent": "hip/chest",
+      "x": 83,
+      "y": 31,
+      "restX": 458,
+      "restY": 444
+    },
+    {
+      "id": "hip/chest/legFL/Bone2D",
+      "parent": "hip/chest/legFL",
+      "x": 2,
+      "y": 105,
+      "restX": 460,
+      "restY": 549
+    },
+    {
+      "id": "hip/legBL",
+      "parent": "hip",
+      "x": -7,
+      "y": 39,
+      "restX": 261,
+      "restY": 454
+    },
+    {
+      "id": "hip/legBL/Bone2D",
+      "parent": "hip/legBL",
+      "x": -2,
+      "y": 95,
+      "restX": 259,
+      "restY": 549
+    },
+    {
+      "id": "hip/legBR",
+      "parent": "hip",
+      "x": 31,
+      "y": 51,
+      "restX": 299,
+      "restY": 466
+    },
+    {
+      "id": "hip/legBR/Bone2D",
+      "parent": "hip/legBR",
+      "x": 1,
+      "y": 88,
+      "restX": 300,
+      "restY": 554
+    },
+    {
+      "id": "hip/tail1",
+      "parent": "hip",
+      "x": -42,
+      "y": 31,
+      "restX": 226,
+      "restY": 446
+    },
+    {
+      "id": "hip/tail1/tail2",
+      "parent": "hip/tail1",
+      "x": -38,
+      "y": -38,
+      "restX": 188,
+      "restY": 408
+    },
+    {
+      "id": "hip/tail1/tail2/tail3",
+      "parent": "hip/tail1/tail2",
+      "x": -14,
+      "y": -67,
+      "restX": 174,
+      "restY": 341
+    },
+    {
+      "id": "hip/tail1/tail2/tail3/tail4",
+      "parent": "hip/tail1/tail2/tail3",
+      "x": -5,
+      "y": -86,
+      "restX": 169,
+      "restY": 255
+    }
+  ],
+  "sprites": [
+    {
+      "id": "earL-2",
+      "image": "4ea6e5f193cbad77544285a7b0ab469e.png",
+      "bone": "hip/chest/head/jaw/earR1",
+      "x": 0,
+      "y": 0,
+      "rotation": 0
+    },
+    {
+      "id": "earR-3",
+      "image": "4c14ed9de031500c51842d78bb0a9b07.png",
+      "bone": "hip/chest/head/jaw/earL1",
+      "x": 0,
+      "y": -1.0000001,
+      "rotation": -0.001991292
+    },
+    {
+      "id": "tail1-4",
+      "image": "466068e48ce8a8d52e93d91681a7f6f2.png",
+      "bone": "hip/tail1/tail2/tail3",
+      "x": 0,
+      "y": 0,
+      "rotation": 0
+    },
+    {
+      "id": "tail2-5",
+      "image": "954f539538843b458d405b9c3b725831.png",
+      "bone": "hip/tail1/tail2",
+      "x": 0,
+      "y": 0,
+      "rotation": 0
+    },
+    {
+      "id": "tail3-6",
+      "image": "ca0f0dc46c5b8ca55ee2bc41836fa464.png",
+      "bone": "hip/tail1",
+      "x": 0,
+      "y": 0,
+      "rotation": 0
+    },
+    {
+      "id": "legForwardL-7",
+      "image": "4dd94d462312d85d42f0eed56f276ec0.png",
+      "bone": "hip/chest/legFL",
+      "x": 33.12,
+      "y": 0,
+      "rotation": 0
+    },
+    {
+      "id": "footForwardL-8",
+      "image": "75a5cb367835355d963a45135d1d5f82.png",
+      "bone": "hip/chest/legFL/Bone2D",
+      "x": 33.12,
+      "y": 0,
+      "rotation": 0
+    },
+    {
+      "id": "legForwardL2-9",
+      "image": "4dd94d462312d85d42f0eed56f276ec0.png",
+      "bone": "hip/legBR",
+      "x": -129.71,
+      "y": 0,
+      "rotation": 0
+    },
+    {
+      "id": "footForwardL-10",
+      "image": "75a5cb367835355d963a45135d1d5f82.png",
+      "bone": "hip/legBR/Bone2D",
+      "x": -129.71,
+      "y": 0,
+      "rotation": 0
+    },
+    {
+      "id": "body1-11",
+      "image": "7f4b656f23abebd3c42ced2e803f6093.png",
+      "bone": "hip/chest",
+      "x": 0,
+      "y": 0,
+      "rotation": 0
+    },
+    {
+      "id": "body2-12",
+      "image": "3646801bfbaf945352be6715c56468ed.png",
+      "bone": "hip",
+      "x": 0,
+      "y": 0,
+      "rotation": 0
+    },
+    {
+      "id": "legForwardR-13",
+      "image": "4dd94d462312d85d42f0eed56f276ec0.png",
+      "bone": "hip/chest/legFR",
+      "x": -7.405,
+      "y": 0,
+      "rotation": 0
+    },
+    {
+      "id": "footForwardR-14",
+      "image": "75a5cb367835355d963a45135d1d5f82.png",
+      "bone": "hip/chest/legFR/Bone2D",
+      "x": -9.009999999999998,
+      "y": 4,
+      "rotation": 0
+    },
+    {
+      "id": "legForwardR2-15",
+      "image": "4dd94d462312d85d42f0eed56f276ec0.png",
+      "bone": "hip/legBL",
+      "x": -166.11,
+      "y": 0,
+      "rotation": 0
+    },
+    {
+      "id": "footForwardR-16",
+      "image": "75a5cb367835355d963a45135d1d5f82.png",
+      "bone": "hip/legBL/Bone2D",
+      "x": -166.11,
+      "y": 0,
+      "rotation": 0
+    },
+    {
+      "id": "headBk-17",
+      "image": "20bed1487e4f214c753dedf6d2e24c41.png",
+      "bone": "hip/chest/head",
+      "x": 0,
+      "y": 0,
+      "rotation": 0
+    },
+    {
+      "id": "eye-18",
+      "image": "2840c9d36b9120fdafa8be43b59f8fc6.png",
+      "bone": "hip/chest/head",
+      "x": 0,
+      "y": 0,
+      "rotation": 0
+    },
+    {
+      "id": "eye-19",
+      "image": "2840c9d36b9120fdafa8be43b59f8fc6.png",
+      "bone": "hip/chest/head",
+      "x": 141,
+      "y": -13,
+      "rotation": 0
+    },
+    {
+      "id": "head-20",
+      "image": "5f7be524e342c3955b715b28a905437e.png",
+      "bone": "hip/chest/head",
+      "x": 0,
+      "y": 0,
+      "rotation": 0
+    }
+  ]
+}
