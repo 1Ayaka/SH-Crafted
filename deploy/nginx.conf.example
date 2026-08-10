@@ -3,6 +3,11 @@ server {
     listen [::]:80;
     server_name avonana.site www.avonana.site;
 
+    # Community and admin image uploads allow files up to 6MB. Keep the proxy
+    # ceiling slightly higher so Nginx does not reject them before Node can
+    # validate the real file type and return a useful error message.
+    client_max_body_size 8m;
+
     gzip on;
     gzip_comp_level 5;
     gzip_min_length 1024;
