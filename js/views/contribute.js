@@ -109,8 +109,41 @@ export async function contributeView(root, { districtId }) {
   const starImageInput = el('input', { class: 'community-image-file-input', type: 'file', accept: COMMUNITY_IMAGE_ACCEPT, multiple: true, tabindex: '-1' });
   const starImageProgress = createUploadProgress();
   const starImageStatus = el('p', { class: 'community-import-status', role: 'status', 'aria-live': 'polite' });
+  const coverPreview = el('div', { class: 'community-main-image-preview' });
+  const coverInput = el('input', { class: 'community-image-file-input', type: 'file', accept: COMMUNITY_IMAGE_ACCEPT, tabindex: '-1' });
+  const coverProgress = createUploadProgress();
+  const renderCoverPreview = () => {
+    coverPreview.replaceChildren(...[
+      coverUrl.value ? el('img', { src: coverUrl.value, alt: '项目主图预览' }) : el('div', { class: 'community-overview-image-empty', text: '尚未设置主图' }),
+      el('p', { text: coverUrl.value ? '这张图将作为项目封面，并在节点缺图时自动兜底。' : '建议上传一张最能代表项目的图片。' }),
+    ]);
+  };
+  const uploadCover = async (files) => {
+    const file = [...files][0];
+    if (!file) return;
+    coverInput.disabled = true; coverProgress.start(file.name);
+    try {
+      const image = await uploadCommunityImage(file, { onProgress: coverProgress.update });
+      coverUrl.value = image.image_url; coverProgress.success(`${file.name} 已设为主图`);
+      renderCoverPreview(); renderStarImages(); saveDraft();
+    } catch (error) { coverProgress.error(error.message || '主图上传失败'); }
+    finally { coverInput.disabled = false; }
+  };
+  const coverDrop = el('div', { class: 'community-overview-drop', role: 'button', tabindex: '0', 'aria-label': '上传项目主图' }, [
+    el('strong', { text: '拖入主图，或点击选择' }), el('span', { text: '项目封面 · 节点缺图时的默认图片' }), coverInput,
+  ]);
+  bindImageDropZone({ zone: coverDrop, input: coverInput, onFiles: uploadCover });
+  const mainImageSection = el('section', { class: 'community-image-purpose-section is-primary' }, [
+    el('div', { class: 'community-image-purpose-heading' }, [el('span', { text: '01' }), el('div', {}, [el('h3', { text: '主图（项目封面）' }), el('p', { text: '用于项目识别、列表封面，并作为节点图的默认兜底。' })])]),
+    coverPreview, coverDrop, coverProgress.el, field('或填写公开图片链接', coverUrl, '上传图片后会自动填写此地址。'),
+  ]);
+  renderCoverPreview();
   const renderStarImages = () => {
     starImagesHost.replaceChildren();
+    if (!starImages.length) starImagesHost.appendChild(el('div', { class: 'community-node-fallback' }, [
+      coverUrl.value ? el('img', { src: coverUrl.value, alt: '节点主图兜底预览' }) : null,
+      el('div', {}, [el('strong', { text: coverUrl.value ? '将使用主图兜底' : '节点图可留空' }), el('p', { text: coverUrl.value ? '无需重复上传；前台节点会显示上方主图。' : '设置主图后，这里会自动显示兜底预览。' })]),
+    ]));
     starImages.forEach((image, index) => {
       const titleControl = el('input', { value: image.title || '', placeholder: `节点图片 ${index + 1} 标题` });
       const descriptionControl = el('textarea', { rows: '2', placeholder: '图片内容说明' }, [image.description || '']);
@@ -147,7 +180,7 @@ export async function contributeView(root, { districtId }) {
   ]);
   bindImageDropZone({ zone: starImageDrop, input: starImageInput, onFiles: uploadStarImages });
   const starImageSection = el('section', { class: 'community-star-image-section' }, [
-    el('h3', { text: '星图节点图片' }), el('p', { text: '用于知识星图节点的信息面板，可与上方概览图不同。' }),
+    el('div', { class: 'community-image-purpose-heading' }, [el('span', { text: '03' }), el('div', {}, [el('h3', { text: '节点图（知识星图专用）' }), el('p', { text: '选填。仅用于星图信息面板；留空时自动使用主图，不会借用概览图。' })])]),
     starImageDrop, starImageProgress.el, starImageStatus, starImagesHost,
   ]);
   renderStarImages();
@@ -157,16 +190,24 @@ export async function contributeView(root, { districtId }) {
   const status = el('p', { class: 'community-submit-status', role: 'status' });
   const stepsHost = el('div', { class: 'community-steps' });
   const processSection = el('section', { class: 'community-process-module' });
+  const overviewSection = el('section', { class: 'community-image-purpose-section' }, [
+    el('div', { class: 'community-image-purpose-heading' }, [el('span', { text: '02' }), el('div', {}, [el('h3', { text: '概览图（作品浏览）' }), el('p', { text: '用于项目详情展示更多角度，不会自动成为主图或节点图。' })])]),
+    overviewHost,
+  ]);
   const detailFields = el('div', { class: 'community-full-fields' }, [
     field('历史与来历', history),
     field('特色与价值', features),
     field('资料来源链接', sourceUrl, '建议填写政府、文化机构、博物馆或公开报道页面。'),
-    field('封面图片链接', coverUrl, '暂时使用公开图片链接；管理员会在上线前检查来源与展示效果。'),
+    el('section', { class: 'community-image-role-guide', 'aria-label': '图片用途说明' }, [
+      el('strong', { text: '图片按用途分开维护' }), el('p', { text: '主图负责项目身份，概览图负责浏览，节点图只服务知识星图。' }),
+    ]),
+    mainImageSection,
     field('更多图片链接', galleryUrls),
+    overviewSection,
     el('div', { class: 'community-star-fields' }, [field('星图摘要', starSummary), field('星图关联', starRelations), field('星图关键词', starKeywords)]),
     starImageSection,
-    overviewHost,
   ]);
+  coverUrl.addEventListener('input', () => { renderCoverPreview(); renderStarImages(); saveDraft(); });
 
   let saveTimer = 0;
   function snapshot() {
@@ -346,7 +387,7 @@ export async function contributeView(root, { districtId }) {
       contributorName.value = imported.contributor_name; contributorContact.value = imported.contributor_contact;
       state.steps = imported.steps; state.includeSteps = imported.steps.length > 0;
       processToggle.checked = state.includeSteps; processSection.classList.toggle('is-enabled', state.includeSteps);
-      setKind('full'); renderSteps(); renderOverviewImages(); renderStarImages(); saveDraft();
+      setKind('full'); renderSteps(); renderOverviewImages(); renderCoverPreview(); renderStarImages(); saveDraft();
       importStatus.textContent = `已导入“${imported.title || file.name}”，请检查后提交审核。`;
       importStatus.className = 'community-import-status success';
     } catch (error) {

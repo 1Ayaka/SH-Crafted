@@ -569,7 +569,10 @@ export async function adminCraftView(root, { id }) {
   const graphData = structuredClone(craft.config?.graphData || craft.communityDetails?.star_data || { summary: '', relations: [], keywords: [] });
   graphData.relations = Array.isArray(graphData.relations) ? graphData.relations.map((item) => typeof item === 'string' ? ({ type: 'tradition', title: item, summary: '' }) : item) : [];
   graphData.keywords = Array.isArray(graphData.keywords) ? graphData.keywords : [];
-  graphData.images = Array.isArray(graphData.images) && graphData.images.length ? graphData.images : (Array.isArray(graphData.overview_images) ? graphData.overview_images : []);
+  // Overview/gallery images and graph-node images have different purposes.
+  // Never copy one collection into the other; an empty node collection is
+  // rendered with the project main image as a runtime fallback.
+  graphData.images = Array.isArray(graphData.images) ? graphData.images : [];
   let activeIndex = 0;
   let dirty = false;
   let changeVersion = 0;
@@ -590,6 +593,10 @@ export async function adminCraftView(root, { id }) {
   };
   let coverPath = craft.config?.heroFrame || '';
   let coverChanged = false;
+  let overviewImages = (craft.config?.works || []).slice(0, 8).map((work) => ({
+    title: work.name || '', image_url: work.frame || '', description: work.description || '', source_url: work.sourceUrl || '',
+  }));
+  let overviewChanged = false;
   let contentDirty = false;
   const contentState = el('span', { class: 'admin-save-status is-saved', text: '正文已保存' });
   const contentSaveButton = el('button', { class: 'btn-ghost', type: 'button', text: '保存正文' });
@@ -600,6 +607,7 @@ export async function adminCraftView(root, { id }) {
   const coverInput = el('input', { class: 'admin-upload-file-input', type: 'file', accept: COMMUNITY_IMAGE_ACCEPT, tabindex: '-1' });
   const coverProgress = createUploadProgress();
   const coverPreview = el('div', { class: 'admin-cover-preview' });
+  const overviewEditor = el('div', { class: 'admin-overview-editor' });
   const claimList = el('div', { class: 'admin-claim-list' });
   const markContentDirty = () => {
     contentDirty = true;
@@ -638,6 +646,44 @@ export async function adminCraftView(root, { id }) {
   ]);
   bindImageDropZone({ zone: coverDrop, input: coverInput, onFiles: uploadCover });
   renderCoverPreview();
+  const renderOverviewEditor = () => {
+    overviewEditor.replaceChildren();
+    const list = el('div', { class: 'admin-image-list' });
+    overviewImages.forEach((image, index) => {
+      const title = el('input', { value: image.title || '', placeholder: `概览图 ${index + 1} 标题` });
+      const description = el('textarea', { rows: '2', placeholder: '图片说明' }, [image.description || '']);
+      const source = el('input', { value: image.source_url || '', placeholder: '来源链接（可选）' });
+      [title, description, source].forEach((control) => control.addEventListener('input', () => {
+        Object.assign(image, { title: title.value, description: description.value, source_url: source.value });
+        overviewChanged = true; markContentDirty();
+      }));
+      list.appendChild(el('article', { class: 'admin-documentary-item' }, [
+        el('img', { src: craftAssetUrl(craft, image.image_url), alt: image.title || '概览图', loading: 'lazy' }),
+        el('div', { class: 'admin-documentary-fields' }, [title, description, source]),
+        iconButton('删除概览图', minusSvg, () => { overviewImages.splice(index, 1); overviewChanged = true; markContentDirty(); renderOverviewEditor(); }),
+      ]));
+    });
+    const input = el('input', { class: 'admin-upload-file-input', type: 'file', accept: COMMUNITY_IMAGE_ACCEPT, multiple: true, tabindex: '-1' });
+    const progress = createUploadProgress();
+    const drop = el('div', { class: 'admin-image-drop is-compact', role: 'button', tabindex: '0', 'aria-label': '上传项目概览图' }, [
+      el('strong', { text: '添加概览图' }), el('span', { text: '用于详情页作品浏览，最多 8 张' }), input,
+    ]);
+    bindImageDropZone({ zone: drop, input, onFiles: async (files) => {
+      const selected = [...files].slice(0, Math.max(0, 8 - overviewImages.length));
+      for (const [index, file] of selected.entries()) {
+        progress.start(`${index + 1}/${selected.length} · ${file.name}`);
+        try {
+          const uploaded = await uploadCraftImage(craft.craftId, file, { onProgress: progress.update });
+          overviewImages.push({ title: file.name.replace(/\.[^.]+$/, ''), image_url: uploaded.image_url, description: '', source_url: '' });
+          overviewChanged = true; markContentDirty();
+        } catch (error) { progress.error(error.message || '概览图上传失败'); return; }
+      }
+      progress.success(`${selected.length} 张概览图已上传，保存正文后正式应用`);
+      setTimeout(renderOverviewEditor, 350);
+    } });
+    overviewEditor.append(drop, progress.el, list);
+  };
+  renderOverviewEditor();
   [titleInput, categoryInput, summaryInput].forEach((control) => control.addEventListener('input', markContentDirty));
   const renderClaims = () => {
     claimList.replaceChildren();
@@ -667,8 +713,10 @@ export async function adminCraftView(root, { id }) {
         summary: summaryInput.value,
         claims: contentDraft.claims,
         ...(coverChanged ? { cover_path: coverPath } : {}),
+        ...(overviewChanged ? { overview_images: overviewImages } : {}),
       });
       coverChanged = false;
+      overviewChanged = false;
       contentDirty = false;
       contentState.className = 'admin-save-status is-saved';
       contentState.textContent = '正文已保存';
@@ -695,9 +743,18 @@ export async function adminCraftView(root, { id }) {
       el('label', { class: 'admin-field' }, [el('span', { text: '分类' }), categoryInput]),
     ]),
     el('label', { class: 'admin-field' }, [el('span', { text: '项目简介' }), summaryInput]),
+    el('section', { class: 'admin-image-role-guide', 'aria-label': '图片用途说明' }, [
+      el('article', { class: 'is-primary' }, [el('span', { text: '01 · 主图' }), el('strong', { text: '项目身份图' }), el('p', { text: '项目封面、列表与节点缺图时的默认图片。' })]),
+      el('article', {}, [el('span', { text: '02 · 概览图' }), el('strong', { text: '作品浏览图' }), el('p', { text: '用于详情页展示更多角度，不会自动变成节点图。' })]),
+      el('article', {}, [el('span', { text: '03 · 节点图' }), el('strong', { text: '星图专用图' }), el('p', { text: '在下方知识星图维护；不填写时自动使用主图。' })]),
+    ]),
     el('section', { class: 'admin-cover-editor' }, [
-      el('div', {}, [el('h3', { text: '项目封面' }), el('p', { class: 'admin-field-help', text: '用于项目列表和详情页主视觉；上传后还需保存正文。' })]),
+      el('div', {}, [el('h3', { text: '主图（项目封面）' }), el('p', { class: 'admin-field-help', text: '项目最重要的一张图，也是节点图缺失时的兜底；上传后还需保存正文。' })]),
       el('div', { class: 'admin-cover-editor-grid' }, [coverPreview, el('div', {}, [coverDrop, coverProgress.el])]),
+    ]),
+    el('section', { class: 'admin-cover-editor' }, [
+      el('div', {}, [el('h3', { text: '概览图（作品浏览）' }), el('p', { class: 'admin-field-help', text: '只用于项目详情中的作品浏览，与主图、知识星图节点图相互独立。' })]),
+      overviewEditor,
     ]),
     el('section', {}, [el('h3', { text: '事实陈述' }), el('p', { class: 'admin-field-help', text: '删除后保存即不再出现在用户页面或智能体项目资料中。' }), claimList]),
   );
@@ -715,7 +772,14 @@ export async function adminCraftView(root, { id }) {
   const imageCollectionEditor = (images, label) => {
     const host = el('div', { class: 'admin-image-collection' });
     const render = () => {
-      host.replaceChildren(el('p', { class: 'admin-field-help', text: label }));
+      host.replaceChildren(...[
+        el('p', { class: 'admin-field-help', text: label }),
+        label === '节点图（知识星图专用）' && !images.length
+          ? el('div', { class: 'admin-image-fallback' }, [
+            coverPath ? el('img', { src: craftAssetUrl(craft, coverPath), alt: `${craft.title}主图兜底预览` }) : null,
+            el('div', {}, [el('strong', { text: coverPath ? '正在使用主图兜底' : '暂无可用图片' }), el('p', { text: coverPath ? '节点没有专用图片，前台会自动显示上方项目主图。' : '请先设置主图，或在这里上传节点专用图片。' })]),
+          ]) : null,
+      ].filter(Boolean));
       const picker = el('div', { class: 'admin-documentary-picker' });
       (craft.config?.works || []).slice(0, 8).forEach((work) => {
         const image = { title: work.name || '节点图片', image_url: work.frame || '', description: '', source_url: '' };
@@ -787,7 +851,7 @@ export async function adminCraftView(root, { id }) {
     } catch (error) { adminNotice(error.message, true); }
     graphSaveButton.disabled = false;
   } });
-  graphEditor.append(el('div', { class: 'admin-section-heading' }, [el('div', {}, [el('h2', { text: '知识星图' }), el('p', { text: '维护该非遗及关联节点的文字、图片和关系；默认关键帧可直接点击或拖入，不需要编辑 JSON。' })]), el('div', {}, [graphState, graphSaveButton])]), el('label', { class: 'admin-field' }, [el('span', { text: '星图摘要' }), graphSummary]), el('label', { class: 'admin-field' }, [el('span', { text: '星图关键词' }), graphKeywords]), imageCollectionEditor(graphData.images, '主节点图片'), graphRelations);
+  graphEditor.append(el('div', { class: 'admin-section-heading' }, [el('div', {}, [el('h2', { text: '知识星图' }), el('p', { text: '节点图只服务星图信息面板；留空会稳定回退到项目主图，不再借用概览图。' })]), el('div', {}, [graphState, graphSaveButton])]), el('label', { class: 'admin-field' }, [el('span', { text: '星图摘要' }), graphSummary]), el('label', { class: 'admin-field' }, [el('span', { text: '星图关键词' }), graphKeywords]), imageCollectionEditor(graphData.images, '节点图（知识星图专用）'), graphRelations);
   renderGraphRelations();
   const saveButton = el('button', { class: 'btn btn-primary', text: '保存全部工序' });
   const saveStatus = el('span', { class: 'admin-save-status is-saved', text: '已保存' });

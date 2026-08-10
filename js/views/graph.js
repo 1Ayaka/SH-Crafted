@@ -114,15 +114,29 @@ export async function graphView(root, params = {}) {
     const selected = context.selected_node || context.current_root;
     info.replaceChildren();
     if (!selected) return;
-    info.append(
+    const nodeImages = Array.isArray(selected.images) ? selected.images : [];
+    const usesMainFallback = selected.image_display_role === 'main-fallback'
+      || nodeImages.some((image) => image?.display_role === 'main-fallback');
+    info.append(...[
       el('div', { class: 'heritage-graph-info-head' }, [
         el('span', { class: `heritage-graph-type type-${selected.type}`, text: TYPE_LABELS[selected.type] || '节点' }),
         el('h3', { tabindex: '-1', text: selected.title }),
       ]),
-      selected.overview_image ? el('img', { class: 'heritage-graph-overview-image', src: selected.overview_image, alt: `${selected.title}概览图`, loading: 'lazy' }) : null,
-      selected.images?.length ? el('div', { class: 'heritage-graph-image-gallery', 'aria-label': `${selected.title}图片` }, selected.images.slice(0, 8).map((image) => el('figure', { class: 'heritage-graph-image-card' }, [el('img', { src: image.image_url || image.url, alt: image.title || selected.title, loading: 'lazy' }), image.title || image.description ? el('figcaption', { text: image.title || image.description }) : null]))) : null,
+      usesMainFallback
+        ? el('figure', { class: 'heritage-graph-fallback-image' }, [
+          el('img', { class: 'heritage-graph-overview-image', src: nodeImages[0]?.image_url || selected.overview_image, alt: `${selected.title}项目主图`, loading: 'lazy' }),
+          el('figcaption', { text: '节点未设置专用图 · 当前使用项目主图' }),
+        ])
+        : selected.overview_image ? el('figure', { class: 'heritage-graph-main-image' }, [
+          el('img', { class: 'heritage-graph-overview-image', src: selected.overview_image, alt: `${selected.title}项目主图`, loading: 'lazy' }),
+          el('figcaption', { text: '项目主图' }),
+        ]) : null,
+      !usesMainFallback && nodeImages.length ? el('section', { class: 'heritage-graph-node-images' }, [
+        el('h4', { text: '节点专用图' }),
+        el('div', { class: 'heritage-graph-image-gallery', 'aria-label': `${selected.title}节点专用图` }, nodeImages.slice(0, 8).map((image) => el('figure', { class: 'heritage-graph-image-card' }, [el('img', { src: image.image_url || image.url, alt: image.title || selected.title, loading: 'lazy' }), image.title || image.description ? el('figcaption', { text: image.title || image.description }) : null]))),
+      ]) : null,
       el('p', { class: selected.summary ? '' : 'is-muted', text: selected.summary || '该节点的详细摘要与来源正在整理中。' }),
-    );
+    ].filter(Boolean));
     if (selected.community_knowledge?.length) info.appendChild(el('section', { class: 'heritage-graph-community-knowledge' }, [
       el('h4', { text: '社区审核补充' }),
       ...selected.community_knowledge.slice(-4).reverse().map((item) => el('article', {}, [

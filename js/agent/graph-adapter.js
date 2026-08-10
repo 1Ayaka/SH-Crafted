@@ -62,8 +62,27 @@ export function parseGraphId(value) {
   return match ? { type: match[1], rawId: match[2] } : null;
 }
 
+function craftImageUrl(craft, value) {
+  const source = String(value || '').trim();
+  if (!source || /^(?:[a-z]+:|\/|assets\/|data\/)/i.test(source)) return source;
+  return `${craft.baseUrl || ''}${source}`;
+}
+
 function craftNode(craft) {
   const primarySource = craft.externalSources?.[0] || {};
+  const mainImage = craftImageUrl(craft, craft.config?.heroFrame || craft.config?.works?.[0]?.frame || '');
+  const nodeImages = Array.isArray(craft.config?.graphData?.images)
+    ? craft.config.graphData.images.filter((image) => image?.image_url || image?.url).map((image) => ({
+      ...image,
+      image_url: craftImageUrl(craft, image.image_url || image.url),
+    }))
+    : [];
+  const displayImages = nodeImages.length ? nodeImages : (mainImage ? [{
+    title: `${craft.title}主图`,
+    description: '该节点尚未设置专用图片，当前使用项目主图。',
+    image_url: mainImage,
+    display_role: 'main-fallback',
+  }] : []);
   return {
     id: graphId('heritage', craft.craftId),
     raw_id: craft.craftId,
@@ -72,9 +91,10 @@ function craftNode(craft) {
     title: craft.title,
     aliases: [craft.title, craft.config?.craftName].filter(Boolean),
     summary: String(craft.summary || '').slice(0, 180),
-    overview_image: craft.config?.works?.[0]?.frame || craft.config?.heroFrame || '',
+    overview_image: mainImage,
     graph_data: craft.config?.graphData || {},
-    images: craft.config?.graphData?.images || craft.config?.graphData?.overview_images || [],
+    images: displayImages,
+    image_display_role: nodeImages.length ? 'node' : (mainImage ? 'main-fallback' : 'empty'),
     district_id: craft.config?.districtId || null,
     heritage_level: craft.config?.heritageLevel || (/^SHIH_\d{4}$/.test(craft.craftId) ? 'primary' : 'secondary'),
     public: true,
@@ -138,12 +158,21 @@ export function graphNodes() {
     .map((node) => {
       const detail = detailNodes.get(node.id)
         || (node.type === 'heritage' && detailNodesByTitle.get(String(node.title || '').trim()));
-      return detail ? {
+      if (!detail) return node;
+      const communityImages = (Array.isArray(node.images) ? node.images : []).filter((image) => image?.submission_id || image?.image_origin === 'community_review');
+      const detailImages = detail.image_display_role === 'main-fallback' && communityImages.length ? [] : detail.images;
+      const images = [...detailImages, ...communityImages]
+        .filter((image, index, all) => all.findIndex((other) => (other.image_url || other.url) === (image.image_url || image.url)) === index);
+      return {
         ...node,
         raw_id: detail.raw_id,
         detail_available: true,
         canonical_id: detail.id,
-      } : node;
+        overview_image: detail.overview_image || node.overview_image || '',
+        images,
+        image_display_role: communityImages.length ? 'node' : detail.image_display_role,
+        graph_data: detail.graph_data,
+      };
     }).filter((node) => {
     if (seen.has(node.id)) return false;
     const titleKey = node.type === 'heritage' ? String(node.title || '').trim() : '';

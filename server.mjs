@@ -562,14 +562,24 @@ function syncGraphFromContent(content, { includeSeed = false } = {}) {
     const generated = {
       id: heritageId, raw_id: craft.id, type: 'heritage', title: craft.title, aliases: [craft.title].filter(Boolean),
       summary: craft.graph_data?.summary || craft.summary || '', district_id: craft.district_id || '',
-      overview_image: craft.graph_data?.images?.[0]?.image_url || craft.graph_data?.overview_images?.[0]?.image_url || craft.cover_path || '',
-      images: normalizeGraphImages(craft.graph_data?.images || craft.graph_data?.overview_images),
+      overview_image: craft.cover_path || '',
+      images: normalizeGraphImages(craft.graph_data?.images),
       heritage_level: isPrimary ? 'primary' : 'secondary', protected: isPrimary,
       published: true, review_status: craft.source === 'community' ? 'approved_community' : 'edited_by_admin',
     };
     if (!current) { nodes.set(heritageId, generated); changed = true; }
     else {
       mergeMissingNode(generated);
+      // Heritage image fields are generated from the project record. Keep them
+      // synchronized even when the explicit node-image list becomes empty;
+      // the client then presents the project cover as a clearly labelled fallback.
+      if (current.overview_image !== generated.overview_image) { current.overview_image = generated.overview_image; changed = true; }
+      const reviewedCommunityImages = (Array.isArray(current.images) ? current.images : []).filter((image) => image?.submission_id);
+      const synchronizedImages = [...generated.images, ...reviewedCommunityImages]
+        .filter((image, index, all) => all.findIndex((other) => other.image_url === image.image_url) === index).slice(0, 12);
+      if (JSON.stringify(current.images ?? []) !== JSON.stringify(synchronizedImages)) {
+        current.images = synchronizedImages; changed = true;
+      }
       if (current.heritage_level !== generated.heritage_level) { current.heritage_level = generated.heritage_level; changed = true; }
       if (Boolean(current.protected) !== isPrimary) { current.protected = isPrimary; changed = true; }
     }
@@ -1430,7 +1440,7 @@ async function publishGraphSubmission(submission) {
       target.summary = submission.statement;
     } else if (!target.summary && submission.contribution_type === 'supplement') target.summary = submission.statement;
     if (submission.contribution_type === 'image') {
-      target.images = [...(Array.isArray(target.images) ? target.images : []), ...(submission.images || [])]
+      target.images = [...(Array.isArray(target.images) ? target.images : []), ...(submission.images || []).map((image) => ({ ...image, submission_id: submission.id, image_origin: 'community_review' }))]
         .filter((item, index, all) => all.findIndex((other) => other.image_url === item.image_url) === index).slice(0, 12);
       if (!target.overview_image && target.images[0]) target.overview_image = target.images[0].image_url;
     }
@@ -1965,6 +1975,15 @@ async function handleAdminApi(req, res, urlPath) {
           if ('summary' in body) item.summary = cleanText(body.summary, 10000);
           if ('cover_path' in body || 'cover_url' in body) item.cover_path = cleanImageSource(body.cover_path || body.cover_url);
           if ('claims' in body) item.claims = normalizeCraftClaims(body.claims);
+          if ('overview_images' in body) {
+            const overviewImages = normalizeGraphImages(body.overview_images);
+            next.craft_gallery = next.craft_gallery.filter((entry) => entry.craft_id !== craftMatch[1]);
+            overviewImages.forEach((image, index) => next.craft_gallery.push({
+              craft_id: craftMatch[1], title: image.title || `概览图 ${index + 1}`,
+              description: image.description || '', image_url: image.image_url,
+              source_url: image.source_url || '', sort: index,
+            }));
+          }
           if ('graph_data' in body) {
             const graph = body.graph_data && typeof body.graph_data === 'object' ? body.graph_data : {};
             item.graph_data = {

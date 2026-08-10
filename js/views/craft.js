@@ -1545,7 +1545,11 @@ export async function craftView(root, { id }) {
       const summary = selected.summary
         ? el('p', { text: selected.summary })
         : el('p', { class: 'is-muted', text: '该节点的详细摘要与来源正在整理中。' });
-      info.append(heading, selected.images?.length ? el('div', { class: 'heritage-graph-image-gallery' }, selected.images.slice(0, 8).map((image) => el('figure', { class: 'heritage-graph-image-card' }, [el('img', { src: image.image_url || image.url, alt: image.title || selected.title, loading: 'lazy' }), image.title || image.description ? el('figcaption', { text: image.title || image.description }) : null]))) : null, summary);
+      const usesMainFallback = selected.image_display_role === 'main-fallback' || selected.images?.some((image) => image?.display_role === 'main-fallback');
+      info.append(...[heading, selected.images?.length ? el('div', { class: `heritage-graph-image-gallery${usesMainFallback ? ' is-main-fallback' : ''}` }, [
+        usesMainFallback ? el('p', { class: 'heritage-graph-image-role', text: '节点未设置专用图 · 当前使用项目主图' }) : el('p', { class: 'heritage-graph-image-role', text: '节点专用图' }),
+        ...selected.images.slice(0, 8).map((image) => el('figure', { class: 'heritage-graph-image-card' }, [el('img', { src: image.image_url || image.url, alt: image.title || selected.title, loading: 'lazy' }), image.title || image.description ? el('figcaption', { text: image.title || image.description }) : null])),
+      ]) : null, summary].filter(Boolean));
       if (context.mode === 'root') {
         info.appendChild(el('p', { class: 'heritage-graph-info-note', text: '中央节点是当前完成品。三个固定入口只显示已接入并附有来源的关系。' }));
       }

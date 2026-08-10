@@ -193,6 +193,8 @@ export async function loadAll(onProgress) {
       frame: work.image_url || work.source_path,
       name: work.title || '',
       evidenceId: work.evidence_id || '',
+      description: work.description || '',
+      sourceUrl: work.source_url || '',
     }));
     const summary = managedValue(managedCraft, 'summary', '');
     const metrics = knowledgeStats?.per_craft?.[pkg.video_id] || {};
