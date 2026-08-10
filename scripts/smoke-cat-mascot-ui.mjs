@@ -14,6 +14,7 @@ const screenshots = {
   sleeping: path.join(os.tmpdir(), 'tanwuzhi-mascot-sleeping.png'),
   bubble: path.join(os.tmpdir(), 'tanwuzhi-mascot-bubble.png'),
   component: path.join(os.tmpdir(), 'tanwuzhi-mascot-component.png'),
+  chat: path.join(os.tmpdir(), 'tanwuzhi-mascot-chat-logo.png'),
 };
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const browser = spawn(edge, [
@@ -375,6 +376,16 @@ try {
   await wait(400);
   const opened = await layout();
   assert.equal(opened.panelOpen, true, 'The dialogue action did not open the assistant panel');
+  const chatAvatar = await evaluate(`(() => {
+    const image = document.querySelector('.ap-msg.agent .ap-avatar-jiao img');
+    return {
+      source: image?.getAttribute('src') || '',
+      loaded: Boolean(image?.complete && image.naturalWidth > 0),
+    };
+  })()`);
+  assert.equal(chatAvatar.loaded, true, 'The Xiao Jiao chat avatar did not load');
+  assert.match(chatAvatar.source, /assets\/brand\/tanwuzhi-logo\.png$/, 'The Xiao Jiao chat avatar is not using the shared brand logo');
+  await screenshot(screenshots.chat);
   assert.equal(opened.state, 'awake', 'Mascot should stay awake beside the open assistant panel');
 
   await setViewport(390, 844, true);
@@ -383,7 +394,7 @@ try {
   assert.equal(mobile.overlaps, false, 'Mascot overlaps the gesture toggle on mobile');
   assert.equal(mobile.overflow, false, 'Mascot causes horizontal overflow on mobile');
 
-  console.log(JSON.stringify({ desktop, dragged, released, gestureDrag, commanded, gaze, tapFeedback, opened, mobile, screenshots }, null, 2));
+  console.log(JSON.stringify({ desktop, dragged, released, gestureDrag, commanded, gaze, tapFeedback, opened, chatAvatar, mobile, screenshots }, null, 2));
 } finally {
   ws?.close();
   if (!browser.killed) browser.kill();

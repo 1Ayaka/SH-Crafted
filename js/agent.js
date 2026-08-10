@@ -14,8 +14,7 @@ import { createCompanionDialogue } from './mascot/companion-dialogue.js';
 import { createRelationshipStore } from './mascot/relationship-store.js';
 import { sanitizeAgentText } from './agent/response-sanitizer.js';
 
-// 用户提供小蕉头像后，只需把这里改成站内图片路径；空值时保留微信式头像位且不显示破图。
-const JIAO_AVATAR_URL = '';
+const JIAO_AVATAR_URL = 'assets/brand/tanwuzhi-logo.png';
 const reviewVisible = () => !isContentReviewed();
 const relationship = createRelationshipStore();
 

@@ -13,6 +13,7 @@ const screenshots = {
   overview: path.join(os.tmpdir(), 'tanwuzhi-map-markers.png'),
   center: path.join(os.tmpdir(), 'tanwuzhi-map-center.png'),
   passport: path.join(os.tmpdir(), 'tanwuzhi-passport.png'),
+  home: path.join(os.tmpdir(), 'tanwuzhi-home-brand.png'),
 };
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const freePort = () => new Promise((resolve, reject) => {
@@ -87,6 +88,12 @@ try {
   const nav = await evaluate(`(() => ({
     labels: [...document.querySelectorAll('.topnav nav a')].map((node) => node.textContent.trim()),
     adminVisible: Boolean(document.querySelector('.admin-entry-link, .admin-mode-link')),
+    title: document.title,
+    brandName: document.querySelector('.topnav .brand .name')?.textContent.trim() || '',
+    brandLogo: document.querySelector('.topnav .brand-logo')?.getAttribute('src') || '',
+    brandLogoLoaded: (document.querySelector('.topnav .brand-logo')?.naturalWidth || 0) > 0,
+    legacySealVisible: Boolean(document.querySelector('.topnav .seal')),
+    favicon: document.querySelector('link[rel="icon"]')?.getAttribute('href') || '',
   }))()`);
   const mapToolbarTop = await evaluate("document.querySelector('.toolbar').getBoundingClientRect().top");
   await until("document.querySelectorAll('.map-heritage-marker').length > 0");
@@ -275,10 +282,17 @@ try {
   await send('Page.navigate', { url: `${base}/#/` });
   await until("document.querySelector('.home .topnav')");
   const homeNav = await evaluate("[...document.querySelectorAll('.topnav nav a')].map((node) => node.textContent.trim())");
+  const homeBrand = await evaluate(`(() => ({
+    logoLoaded: (document.querySelector('.home .cat-hint-logo')?.naturalWidth || 0) > 0,
+    logoSource: document.querySelector('.home .cat-hint-logo')?.getAttribute('src') || '',
+  }))()`);
+  const homeShot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+  fs.writeFileSync(screenshots.home, Buffer.from(homeShot.data, 'base64'));
 
   const result = {
     nav,
     homeNav,
+    homeBrand,
     overviewMarkers,
     markerFollowing,
     markerPreview,
@@ -301,7 +315,9 @@ try {
   };
   const errors = [];
   if (nav.labels.join('|') !== '地图探索|知识星图|数据护照') errors.push('地图页公开导航顺序不正确');
+  if (nav.title !== '探物志-上海非遗交互数字平台' || nav.brandName !== '探物志-上海非遗交互数字平台' || !nav.brandLogoLoaded || nav.legacySealVisible || !nav.brandLogo.includes('tanwuzhi-logo.png') || !nav.favicon.includes('tanwuzhi-logo.png')) errors.push('全站标题、导航 Logo 或浏览器图标未统一使用探物志品牌');
   if (homeNav.join('|') !== '地图探索|知识星图|数据护照') errors.push('首页公开导航顺序不正确或仍有冗余入口');
+  if (!homeBrand.logoLoaded || !homeBrand.logoSource.includes('tanwuzhi-logo.png')) errors.push('首页左下角未使用探物志 Logo');
   if (nav.adminVisible) errors.push('公开导航仍显示管理入口');
   if (overviewMarkers.count !== 8 || overviewMarkers.visibleNumbers || overviewMarkers.width > 34 || !overviewMarkers.labels.every((label) => label.includes('·')) || !decodeURIComponent(overviewMarkers.iconMask).includes('地图,图钉,标记,标点.png')) errors.push('地图未按“一项非遗一个小标记”规则或指定图案渲染');
   if (!markerFollowing.available || markerFollowing.movedCount < 6 || markerFollowing.maxDragDistance < 8 || markerFollowing.riseDistance < 1) errors.push('非遗标记未持续跟随地图旋转或区块抬升');

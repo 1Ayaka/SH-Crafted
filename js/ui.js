@@ -30,6 +30,15 @@ export function catSVG(cls = 'cat') {
   ]);
 }
 
+export function brandLogo(cls = 'brand-logo', alt = '探物志') {
+  return el('img', {
+    class: cls,
+    src: 'assets/brand/tanwuzhi-logo.png',
+    alt,
+    draggable: 'false',
+  });
+}
+
 let escHandler = null;
 export function openModal({ title, body, onClose }) {
   const root = document.getElementById('modal-root');

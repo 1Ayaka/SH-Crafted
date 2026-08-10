@@ -1,7 +1,7 @@
 // 首页：manifest 驱动的明度分层背景（layerbg）+ 水墨晕染交互（inkbloom）+ 任意键穿越转场（transitions）
 // 分层/视差/漂移全部读取 assets/bg/manifest.json，JS 不硬编码图片相关数值
 // 转场走跨页转场系统：home_exit（本页离场）/ map_enter（地图页进场标记类）
-import { el, catSVG } from '../ui.js';
+import { el, brandLogo } from '../ui.js';
 import { reducedMotion } from '../particles.js';
 import { siteText, trueStats } from '../data.js';
 import { navigate } from '../router.js';
@@ -17,8 +17,8 @@ export function topNav(active) {
   const editing = isAdmin();
   return el('header', { class: 'topnav' }, [
     el('a', { class: 'brand', href: '#/', 'aria-label': '返回初始页', style: { display: 'flex', alignItems: 'center', gap: '14px' } }, [
-      el('span', { class: 'seal', text: '探物' }),
-      el('span', { class: 'name', text: '上海非遗交互数字平台' }),
+      brandLogo('brand-logo', '探物志 Logo'),
+      el('span', { class: 'name', text: '探物志-上海非遗交互数字平台' }),
     ]),
     el('nav', {}, [
       el('a', { href: '#/explore', class: active === 'explore' ? 'active' : '', text: '地图探索' }),
@@ -90,7 +90,7 @@ export async function homeView(root) {
     el('button', {
       class: 'cat-hint', title: '小蕉 · 智能讲解（在工艺页内提供）',
       onclick: () => navigate('#/explore'),
-    }, [catSVG(), el('span', { text: '小蕉 · 智能讲解' })]),
+    }, [brandLogo('brand-logo cat-hint-logo', '小蕉 Logo'), el('span', { text: '小蕉 · 智能讲解' })]),
   ]);
   root.appendChild(wrap);
 
