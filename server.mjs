@@ -65,6 +65,10 @@ const ADMIN_LOGIN_MAX_ATTEMPTS = Number.isFinite(configuredLoginMaxAttempts)
   ? Math.min(200, Math.max(10, Math.trunc(configuredLoginMaxAttempts)))
   : 50;
 const ADMIN_LOGIN_WINDOW_MS = 10 * 60 * 1000;
+const configuredImageUploadConcurrency = Number(env('IMAGE_UPLOAD_MAX_CONCURRENCY', '4'));
+const IMAGE_UPLOAD_MAX_CONCURRENCY = Number.isFinite(configuredImageUploadConcurrency)
+  ? Math.min(16, Math.max(1, Math.trunc(configuredImageUploadConcurrency)))
+  : 4;
 const configuredContentStorePath = env('CONTENT_STORE_PATH').trim();
 const CONTENT_STORE_PATH = normalize(configuredContentStorePath || join(ROOT, '.content', 'content.json'));
 const configuredCommunityStorePath = env('COMMUNITY_STORE_PATH').trim();
@@ -84,6 +88,24 @@ let editableContent;
 let contentWriteQueue = Promise.resolve();
 let communityState;
 let communityWriteQueue = Promise.resolve();
+let activeImageUploads = 0;
+
+async function withImageUploadSlot(req, res, headers, handler) {
+  if (activeImageUploads >= IMAGE_UPLOAD_MAX_CONCURRENCY) {
+    req.resume();
+    jsonResponse(res, 503, {
+      error: 'image_upload_busy',
+      retry_after_seconds: 3,
+    }, { ...headers, 'Retry-After': '3' });
+    return;
+  }
+  activeImageUploads += 1;
+  try {
+    await handler();
+  } finally {
+    activeImageUploads = Math.max(0, activeImageUploads - 1);
+  }
+}
 
 // ---------- 统一知识库索引 ----------
 // 启动时一次性装入内存。网页问答与 /api/kb/search 共用同一检索函数，
@@ -939,6 +961,43 @@ function saveCommunity(expectedRevision, mutate) {
   return operation;
 }
 
+const pendingEngagementUpdates = [];
+let engagementFlushTimer = null;
+
+function flushEngagementUpdates() {
+  engagementFlushTimer = null;
+  const batch = pendingEngagementUpdates.splice(0);
+  if (!batch.length) return;
+  const results = [];
+  saveCommunity('', (next) => {
+    for (const update of batch) {
+      const entry = ensureEngagement(next, update.craftId);
+      if (update.action === 'view') entry.view_count += 1;
+      if (update.action === 'inherit') {
+        const existing = Number(entry.inheritors[update.visitorHash]) || 0;
+        if (!existing) {
+          entry.inheritor_count += 1;
+          entry.inheritors[update.visitorHash] = entry.inheritor_count;
+        }
+      }
+      results.push({
+        view_count: entry.view_count,
+        inheritor_count: entry.inheritor_count,
+        visitor_ordinal: Number(entry.inheritors[update.visitorHash]) || 0,
+      });
+    }
+  }).then((updated) => {
+    batch.forEach((update, index) => update.resolve({ ...results[index], updated_at: updated.updated_at }));
+  }).catch((error) => batch.forEach((update) => update.reject(error)));
+}
+
+function saveEngagementUpdate(craftId, action, visitorHash) {
+  return new Promise((resolve, reject) => {
+    pendingEngagementUpdates.push({ craftId, action, visitorHash, resolve, reject });
+    if (!engagementFlushTimer) engagementFlushTimer = setTimeout(flushEngagementUpdates, 20);
+  });
+}
+
 function publicContent() {
   return { ...editableContent, content_reviewed: Boolean(editableContent.content_reviewed), source: 'site-admin' };
 }
@@ -1267,17 +1326,20 @@ async function handleCommunityApi(req, res, urlPath) {
   if (!validWriteOrigin(req)) { jsonResponse(res, 403, { error: 'invalid_origin' }, responseHeaders); return; }
 
   if (urlPath === '/api/community/images' && req.method === 'POST') {
-    const ip = clientAddress(req);
-    const now = Date.now();
-    const previous = communityImageUploadAttempts.get(ip);
-    const attempt = previous?.resetAt > now ? previous : { count: 0, resetAt: now + 60 * 60 * 1000 };
-    if (attempt.count >= 30) {
-      jsonResponse(res, 429, { error: 'image_upload_rate_limited' }, responseHeaders);
-      return;
-    }
-    attempt.count += 1;
-    communityImageUploadAttempts.set(ip, attempt);
-    await handleCommunityImageUpload(req, res, responseHeaders);
+    await withImageUploadSlot(req, res, responseHeaders, async () => {
+      const ip = clientAddress(req);
+      const now = Date.now();
+      const previous = communityImageUploadAttempts.get(ip);
+      const attempt = previous?.resetAt > now ? previous : { count: 0, resetAt: now + 60 * 60 * 1000 };
+      if (attempt.count >= 30) {
+        req.resume();
+        jsonResponse(res, 429, { error: 'image_upload_rate_limited' }, responseHeaders);
+        return;
+      }
+      attempt.count += 1;
+      communityImageUploadAttempts.set(ip, attempt);
+      await handleCommunityImageUpload(req, res, responseHeaders);
+    });
     return;
   }
 
@@ -1289,24 +1351,8 @@ async function handleCommunityApi(req, res, urlPath) {
       return;
     }
     try {
-      let result;
-      const updated = await saveCommunity('', (next) => {
-        const entry = ensureEngagement(next, craftId);
-        if (action === 'view') entry.view_count += 1;
-        if (action === 'inherit') {
-          const existing = Number(entry.inheritors[visitor.hash]) || 0;
-          if (!existing) {
-            entry.inheritor_count += 1;
-            entry.inheritors[visitor.hash] = entry.inheritor_count;
-          }
-        }
-        result = {
-          view_count: entry.view_count,
-          inheritor_count: entry.inheritor_count,
-          visitor_ordinal: Number(entry.inheritors[visitor.hash]) || 0,
-        };
-      });
-      jsonResponse(res, 200, { ok: true, craft_id: craftId, ...result, updated_at: updated.updated_at }, responseHeaders);
+      const result = await saveEngagementUpdate(craftId, action, visitor.hash);
+      jsonResponse(res, 200, { ok: true, craft_id: craftId, ...result }, responseHeaders);
     } catch {
       jsonResponse(res, 500, { error: 'community_store_unavailable' }, responseHeaders);
     }
@@ -1667,19 +1713,19 @@ async function handleAdminApi(req, res, urlPath) {
     return;
   }
   if (urlPath === '/api/admin/brand/logo' && req.method === 'PUT') {
-    await handleBrandLogoUpload(req, res);
+    await withImageUploadSlot(req, res, {}, () => handleBrandLogoUpload(req, res));
     return;
   }
 
   const stepImageUploadMatch = urlPath.match(/^\/api\/admin\/crafts\/([A-Za-z0-9_-]+)\/steps\/([A-Za-z0-9_-]+)\/image$/);
   if (stepImageUploadMatch && req.method === 'POST') {
-    await handleStepImageUpload(req, res, stepImageUploadMatch[1], stepImageUploadMatch[2]);
+    await withImageUploadSlot(req, res, {}, () => handleStepImageUpload(req, res, stepImageUploadMatch[1], stepImageUploadMatch[2]));
     return;
   }
 
   const craftImageUploadMatch = urlPath.match(/^\/api\/admin\/crafts\/([A-Za-z0-9_-]+)\/images$/);
   if (craftImageUploadMatch && req.method === 'POST') {
-    await handleAdminCraftImageUpload(req, res, craftImageUploadMatch[1]);
+    await withImageUploadSlot(req, res, {}, () => handleAdminCraftImageUpload(req, res, craftImageUploadMatch[1]));
     return;
   }
 

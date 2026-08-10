@@ -90,6 +90,14 @@ async function save(path, body) {
   }
 }
 
+function uploadFailureMessage(error, fallback) {
+  if (error?.message === 'upload_timeout') return '图片上传超时，请检查网络后重试；较大的图片建议先压缩。';
+  if (error?.message === 'upload_aborted') return '图片上传已取消，请重新选择后再试。';
+  if (error?.status === 503 || error?.payload?.error === 'image_upload_busy') return '当前上传人数较多，请稍后重试。';
+  if (error?.message === 'network_error') return '网络中断，图片未上传完成。';
+  return fallback;
+}
+
 export const saveSiteTexts = (updates) => save('/api/admin/site-texts', { updates });
 export const loadBrandLogo = () => api('/api/admin/brand/logo');
 export async function uploadBrandLogo(file, { onProgress } = {}) {
@@ -106,7 +114,7 @@ export async function uploadBrandLogo(file, { onProgress } = {}) {
     if (error.status === 413) throw new Error('Logo 图片不能超过 2MB。');
     if (error.status === 415) throw new Error('Logo 仅支持 PNG 格式，以保留透明背景。');
     if (error.payload?.error === 'brand_logo_dimensions') throw new Error('Logo 尺寸需在 64×64 至 2048×2048 像素之间。');
-    throw new Error('Logo 保存失败，请稍后重试。');
+    throw new Error(uploadFailureMessage(error, 'Logo 保存失败，请稍后重试。'));
   }
 }
 export const saveDistrict = (id, fields) => save(`/api/admin/districts/${encodeURIComponent(id)}`, fields);
@@ -173,7 +181,7 @@ export async function uploadCraftImage(craftId, file, { onProgress } = {}) {
     if (error.status === 401) throw new Error('登录已过期，请重新登录。');
     if (error.status === 413) throw new Error('图片不能超过 6MB。');
     if (error.status === 415) throw new Error('仅支持 PNG、JPG、WebP 或 GIF 图片。');
-    throw new Error(error.message === 'network_error' ? '网络中断，图片未上传完成。' : '图片上传失败，请稍后重试。');
+    throw new Error(uploadFailureMessage(error, '图片上传失败，请稍后重试。'));
   }
 }
 
@@ -194,7 +202,7 @@ export async function uploadCraftStepImage(craftId, stepId, file, { onProgress }
     if (error.status === 401) throw new Error('登录已过期，请重新登录。');
     if (error.status === 413) throw new Error('图片不能超过 6MB。');
     if (error.status === 415) throw new Error('仅支持 PNG、JPG 或 WebP 图片。');
-    throw new Error('图片上传失败，请稍后重试。');
+    throw new Error(uploadFailureMessage(error, '图片上传失败，请稍后重试。'));
   }
 }
 

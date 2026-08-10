@@ -425,12 +425,17 @@ a:hover { color: var(--terracotta); }
   padding: 7px 13px; border-radius: 999px; color: var(--ink-faint); font-size: 12px;
   background: rgba(241,232,214,0.86); box-shadow: var(--shadow-soft); pointer-events: none;
 }
+.map-anchor-overflow.is-action { pointer-events: auto; border: 1px solid rgba(96,108,56,.28); }
+.map-anchor-overflow.is-action:not(:disabled):hover,
+.map-anchor-overflow.is-action:not(:disabled):focus-visible { color: var(--moss); background: rgba(241,232,214,.97); border-color: var(--moss); }
+.map-anchor-overflow.is-action:disabled { cursor: default; }
 .craft-list-more { display: block; margin: 22px auto 8px; }
 .map3d-focus-overlay { position: absolute; inset: 0; z-index: 20; }
 .map-heritage-marker-layer { position: absolute; inset: 0; z-index: 18; pointer-events: none; }
 .map-heritage-marker-layer[hidden] { display: none; }
 .map-heritage-marker {
-  position: absolute; width: 32px; height: 39px; transform: translate(-50%, -92%);
+  position: absolute; left: 0; top: 0; width: 32px; height: 39px;
+  transform: translate3d(var(--map-x, 0), var(--map-y, 0), 0) translate(-50%, -92%);
   display: grid; place-items: center; pointer-events: none; user-select: none; color: var(--paper);
   filter: drop-shadow(0 7px 8px rgba(43,51,39,.24)); transition: opacity var(--t-fast) ease;
 }
@@ -439,6 +444,15 @@ a:hover { color: var(--terracotta); }
   -webkit-mask: url("../assets/地图,图钉,标记,标点.png") center / contain no-repeat;
   mask: url("../assets/地图,图钉,标记,标点.png") center / contain no-repeat;
 }
+.map-heritage-marker.is-folded .map-heritage-marker-icon::before,
+.map-heritage-marker.is-folded .map-heritage-marker-icon::after {
+  content: ""; position: absolute; inset: 0; z-index: -1; background: #718064;
+  -webkit-mask: url("../assets/地图,图钉,标记,标点.png") center / contain no-repeat;
+  mask: url("../assets/地图,图钉,标记,标点.png") center / contain no-repeat;
+  opacity: .34;
+}
+.map-heritage-marker.is-folded .map-heritage-marker-icon::before { transform: translate(-4px, 2px) scale(.92); }
+.map-heritage-marker.is-folded .map-heritage-marker-icon::after { transform: translate(4px, 3px) scale(.88); opacity: .22; }
 .map3d-wrap .slip-panel { z-index: 45; }
 .focus-bar { display: flex; align-items: center; gap: 18px; padding: 10px 3vw 14px; }
 /* 平面兜底地图的转场进场：轻微放大落定 */
@@ -660,6 +674,8 @@ a:hover { color: var(--terracotta); }
   transition: opacity var(--t-fast) ease;
   will-change: left, top, opacity;
 }
+.craft-anchor.is-entering .craft-anchor-hit { animation: mapAnchorReveal 360ms cubic-bezier(.18,.82,.3,1) var(--anchor-delay, 0ms) both; }
+@keyframes mapAnchorReveal { from { opacity: 0; filter: blur(3px); transform: translateY(8px) scale(.96); } to { opacity: 1; filter: none; transform: none; } }
 .map3d-focus-overlay .craft-anchor::after {
   content: "";
   position: absolute; z-index: -1; left: 50%; top: calc(100% + 1px);
@@ -686,6 +702,9 @@ a:hover { color: var(--terracotta); }
   background: var(--paper); padding: 2px 12px; border-radius: 999px;
   border: 1px solid rgba(96,108,56,0.3);
 }
+.craft-card,
+.community-overview-image-card,
+.admin-documentary-item { content-visibility: auto; contain-intrinsic-size: auto 180px; }
 .cluster-tip {
   position: absolute; z-index: 45; max-width: 300px; pointer-events: none;
   background: var(--paper); border: 1px solid rgba(96,108,56,0.4);

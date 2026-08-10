@@ -114,7 +114,7 @@ export async function contributeView(root, { districtId }) {
   const coverProgress = createUploadProgress();
   const renderCoverPreview = () => {
     coverPreview.replaceChildren(...[
-      coverUrl.value ? el('img', { src: coverUrl.value, alt: '项目主图预览' }) : el('div', { class: 'community-overview-image-empty', text: '尚未设置主图' }),
+      coverUrl.value ? el('img', { src: coverUrl.value, alt: '项目主图预览', loading: 'lazy', decoding: 'async' }) : el('div', { class: 'community-overview-image-empty', text: '尚未设置主图' }),
       el('p', { text: coverUrl.value ? '这张图将作为项目封面，并在节点缺图时自动兜底。' : '建议上传一张最能代表项目的图片。' }),
     ]);
   };
@@ -141,7 +141,7 @@ export async function contributeView(root, { districtId }) {
   const renderStarImages = () => {
     starImagesHost.replaceChildren();
     if (!starImages.length) starImagesHost.appendChild(el('div', { class: 'community-node-fallback' }, [
-      coverUrl.value ? el('img', { src: coverUrl.value, alt: '节点主图兜底预览' }) : null,
+      coverUrl.value ? el('img', { src: coverUrl.value, alt: '节点主图兜底预览', loading: 'lazy', decoding: 'async' }) : null,
       el('div', {}, [el('strong', { text: coverUrl.value ? '将使用主图兜底' : '节点图可留空' }), el('p', { text: coverUrl.value ? '无需重复上传；前台节点会显示上方主图。' : '设置主图后，这里会自动显示兜底预览。' })]),
     ]));
     starImages.forEach((image, index) => {
@@ -151,7 +151,7 @@ export async function contributeView(root, { districtId }) {
       const sync = () => { Object.assign(image, { title: titleControl.value, description: descriptionControl.value, source_url: sourceControl.value }); saveDraft(); };
       [titleControl, descriptionControl, sourceControl].forEach((control) => control.addEventListener('input', sync));
       starImagesHost.appendChild(el('article', { class: 'community-overview-image-card' }, [
-        el('img', { src: image.image_url, alt: image.title || '星图节点图片' }),
+        el('img', { src: image.image_url, alt: image.title || '星图节点图片', loading: 'lazy', decoding: 'async' }),
         field('图片标题', titleControl), field('图片说明', descriptionControl), field('图片来源', sourceControl),
         el('button', { type: 'button', class: 'community-remove-step', text: '删除图片', onclick: () => { starImages.splice(index, 1); renderStarImages(); saveDraft(); } }),
       ]));
@@ -245,7 +245,7 @@ export async function contributeView(root, { districtId }) {
       const sync = () => { image.title = titleInput.value; image.description = description.value; saveDraft(); };
       titleInput.addEventListener('input', sync); description.addEventListener('input', sync);
       overviewHost.appendChild(el('article', { class: 'community-overview-image-card' }, [
-        image.image_url ? el('img', { src: image.image_url, alt: image.title || '概览图预览' }) : el('div', { class: 'community-overview-image-empty', text: '等待上传图片' }),
+        image.image_url ? el('img', { src: image.image_url, alt: image.title || '概览图预览', loading: 'lazy', decoding: 'async' }) : el('div', { class: 'community-overview-image-empty', text: '等待上传图片' }),
         field('图片标题', titleInput), field('图片说明（必填）', description),
         el('button', { type: 'button', class: 'community-remove-step', text: '删除图片', onclick: () => { overviewImages.splice(index, 1); renderOverviewImages(); saveDraft(); } }),
       ]));

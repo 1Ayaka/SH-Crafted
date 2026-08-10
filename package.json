@@ -25,6 +25,8 @@
     "admin:test-ui": "node scripts/smoke-admin-ui.mjs",
     "step-image:test-api": "node scripts/test-step-image-upload.mjs",
     "image-upload:test-progress": "node scripts/test-image-upload-progress.mjs",
+    "image-upload:test-concurrency": "node scripts/test-image-upload-concurrency.mjs",
+    "image-upload:test-timeout": "node scripts/test-image-upload-timeout.mjs",
     "brand:test-api": "node scripts/test-brand-logo-upload.mjs",
     "community:test": "node scripts/smoke-community-api.mjs",
     "content:migrate": "node scripts/migrate-content-store.mjs",
@@ -42,6 +44,8 @@
     "voice:test-integration": "node scripts/smoke-funasr-service.mjs",
     "audit:production-config": "node scripts/audit-production-config.mjs",
     "performance:test": "node scripts/test-performance.mjs",
+    "performance:test-map-load": "node scripts/test-map-load-policy.mjs",
+    "performance:test-server-load": "node scripts/test-server-load-guards.mjs",
     "heritage:validate-batch": "node scripts/validate-shanghai-heritage-batch.mjs",
     "admin:test-import-update": "node scripts/test-admin-import-update.mjs"
   },

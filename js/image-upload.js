@@ -1,6 +1,12 @@
 const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 export const COMMUNITY_IMAGE_ACCEPT = [...ALLOWED_IMAGE_TYPES].join(',');
 export const COMMUNITY_IMAGE_MAX_BYTES = 6 * 1024 * 1024;
+const MAX_PARALLEL_IMAGE_UPLOADS = 2;
+const IMAGE_UPLOAD_BASE_TIMEOUT_MS = 90_000;
+const IMAGE_UPLOAD_TIMEOUT_PER_MIB_MS = 12_000;
+const IMAGE_UPLOAD_MAX_TIMEOUT_MS = 180_000;
+let activeImageUploads = 0;
+const pendingImageUploads = [];
 
 export function validateCommunityImage(file) {
   if (!(file instanceof File)) throw new Error('请选择图片文件。');
@@ -10,10 +16,12 @@ export function validateCommunityImage(file) {
   return file;
 }
 
-export function uploadImageRequest({ url, method = 'POST', file, headers = {}, onProgress }) {
+function runImageUpload({ url, method = 'POST', file, headers = {}, onProgress }) {
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open(method, url);
+    const sizeMiB = Math.max(0, Number(file?.size) || 0) / (1024 * 1024);
+    request.timeout = Math.min(IMAGE_UPLOAD_MAX_TIMEOUT_MS, Math.round(IMAGE_UPLOAD_BASE_TIMEOUT_MS + sizeMiB * IMAGE_UPLOAD_TIMEOUT_PER_MIB_MS));
     request.withCredentials = true;
     Object.entries(headers).forEach(([name, value]) => request.setRequestHeader(name, value));
     request.upload.addEventListener('progress', (event) => {
@@ -35,8 +43,29 @@ export function uploadImageRequest({ url, method = 'POST', file, headers = {}, o
       reject(error);
     });
     request.addEventListener('error', () => reject(new Error('network_error')));
+    request.addEventListener('timeout', () => reject(new Error('upload_timeout')));
     request.addEventListener('abort', () => reject(new Error('upload_aborted')));
     request.send(file);
+  });
+}
+
+function drainImageUploadQueue() {
+  while (activeImageUploads < MAX_PARALLEL_IMAGE_UPLOADS && pendingImageUploads.length) {
+    const task = pendingImageUploads.shift();
+    activeImageUploads += 1;
+    runImageUpload(task.options)
+      .then(task.resolve, task.reject)
+      .finally(() => {
+        activeImageUploads -= 1;
+        drainImageUploadQueue();
+      });
+  }
+}
+
+export function uploadImageRequest(options) {
+  return new Promise((resolve, reject) => {
+    pendingImageUploads.push({ options, resolve, reject });
+    drainImageUploadQueue();
   });
 }
 
@@ -91,6 +120,9 @@ export async function uploadCommunityImage(file, { onProgress } = {}) {
       invalid_image_content: '图片内容与文件格式不一致，请重新导出后上传。',
       image_upload_rate_limited: '上传过于频繁，请稍后再试。',
       network_error: '网络中断，图片未上传完成。',
+      upload_timeout: '图片上传超时，请检查网络后重试；较大的图片建议先压缩。',
+      upload_aborted: '图片上传已取消，请重新选择后再试。',
+      image_upload_busy: '当前上传人数较多，请稍后重试。',
     };
     throw new Error(messages[error.payload?.error || error.message] || '图片上传失败，请稍后重试。');
   }

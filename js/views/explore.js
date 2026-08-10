@@ -15,8 +15,13 @@ import { saveCraft, saveDistrict, saveSiteTexts } from '../admin.js';
 import { mountEditableModule } from '../editable.js';
 import { claimInheritor, engagementFor, inheritorButtonText, recordCraftView } from '../community.js';
 import { graphId, heritageDetailTarget, parseGraphId } from '../agent/graph-adapter.js';
+import { MAP_LOAD_POLICY, allocateOverviewMarkerBudget, flatParticleCount, markerWeight, progressiveAnchorSlots } from '../map-load-policy.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
+const {
+  focusAnchorLimit: FOCUS_ANCHOR_LIMIT,
+  focusAnchorBatch: FOCUS_ANCHOR_BATCH,
+} = MAP_LOAD_POLICY;
 
 // GLB 仍使用历史节点名；中心节点在展示层聚合五个现行行政区，
 // 数据库中的 district_id 始终保留现行区 ID，导入和审核无需迁移。
@@ -446,7 +451,7 @@ export async function exploreView(root) {
       el('span', { class: 'craft-anchor-visual' }, [
         cv,
         craft.config.heroFrame
-          ? el('img', { src: craftAssetUrl(craft, craft.config.heroFrame), alt: `${craft.title}代表图片`, decoding: 'async' })
+          ? el('img', { src: craftAssetUrl(craft, craft.config.heroFrame), alt: `${craft.title}代表图片`, loading: 'lazy', decoding: 'async' })
           : el('span', { class: 'craft-anchor-placeholder', text: '社区条目' }),
       ]),
       el('span', { class: 'anchor-name', text: craft.title }),
@@ -482,15 +487,22 @@ export async function exploreView(root) {
   function mountOverviewMarkers(wrap3d) {
     overviewOverlay = el('div', { class: 'map-heritage-marker-layer', 'aria-hidden': 'true' });
     wrap3d.appendChild(overviewOverlay);
+    const markerBudget = allocateOverviewMarkerBudget(map3d.districtNames.map((id) => ({ id, count: nodeCrafts(id).length })));
     for (const nodeName of map3d.districtNames.filter((name) => nodeCrafts(name).length)) {
       const crafts = nodeCrafts(nodeName);
-      crafts.forEach((_craft, index) => {
-        const marker = el('span', { class: 'map-heritage-marker', 'data-district': nodeName }, [
+      const markerCount = markerBudget.get(nodeName) || 0;
+      for (let index = 0; index < markerCount; index += 1) {
+        const weight = markerWeight(crafts.length, index, markerCount);
+        const marker = el('span', {
+          class: `map-heritage-marker${weight > 1 ? ' is-folded' : ''}`,
+          'data-district': nodeName,
+          'data-weight': String(weight),
+        }, [
           el('span', { class: 'map-heritage-marker-icon' }),
         ]);
         overviewOverlay.appendChild(marker);
-        overviewMarkers.push({ el: marker, nodeName, index, total: crafts.length });
-      });
+        overviewMarkers.push({ el: marker, nodeName, index, total: markerCount, x: NaN, y: NaN, visible: null });
+      }
     }
   }
 
@@ -542,24 +554,46 @@ export async function exploreView(root) {
       else exitFocus3D();
     });
 
-    const visibleCrafts = crafts.slice(0, 36);
-    visibleCrafts.forEach((c, i) => {
-      const cluster = makeCluster(c, (craft) => showProjectPanel(mapViewEl, craft));
-      cluster.el.style.left = '50%';
-      cluster.el.style.top = '45%';
-      focusOverlay.appendChild(cluster.el);
-      focusAnchors.push({
-        el: cluster.el,
-        field: cluster.field,
-        nodeName,
-        index: i,
-        total: visibleCrafts.length,
+    const availableCrafts = crafts.slice(0, FOCUS_ANCHOR_LIMIT);
+    const anchorSlots = progressiveAnchorSlots(availableCrafts.length);
+    let renderedCrafts = 0;
+    const overflow = el('button', { class: 'map-anchor-overflow is-action', type: 'button' });
+    const updateOverflow = () => {
+      const remainingVisible = availableCrafts.length - renderedCrafts;
+      const unavailable = crafts.length - availableCrafts.length;
+      overflow.hidden = remainingVisible <= 0 && unavailable <= 0;
+      overflow.textContent = remainingVisible > 0
+        ? `平滑展开更多（尚有 ${remainingVisible} 项）`
+        : `另有 ${unavailable} 项，请使用搜索或列表查看`;
+      overflow.disabled = remainingVisible <= 0;
+    };
+    const appendCraftBatch = () => {
+      const next = availableCrafts.slice(renderedCrafts, renderedCrafts + FOCUS_ANCHOR_BATCH);
+      next.forEach((c, offset) => {
+        const i = anchorSlots[renderedCrafts + offset];
+        const cluster = makeCluster(c, (craft) => showProjectPanel(mapViewEl, craft));
+        cluster.el.classList.add('is-entering');
+        cluster.el.style.setProperty('--anchor-delay', `${offset * 36}ms`);
+        cluster.el.style.left = '50%';
+        cluster.el.style.top = '45%';
+        focusOverlay.appendChild(cluster.el);
+        focusAnchors.push({
+          el: cluster.el,
+          field: cluster.field,
+          nodeName,
+          index: i,
+          total: availableCrafts.length,
+          x: NaN,
+          y: NaN,
+          visible: null,
+        });
       });
-    });
-    if (crafts.length > visibleCrafts.length) focusOverlay.appendChild(el('p', {
-      class: 'map-anchor-overflow',
-      text: `本区另有 ${crafts.length - visibleCrafts.length} 项，请使用上方搜索或列表查看`,
-    }));
+      renderedCrafts += next.length;
+      updateOverflow();
+    };
+    overflow.addEventListener('click', (event) => { event.stopPropagation(); appendCraftBatch(); });
+    focusOverlay.appendChild(overflow);
+    appendCraftBatch();
   }
 
   async function renderMap3D(container) {
@@ -591,17 +625,23 @@ export async function exploreView(root) {
             const world = map3d.districtAnchorWorld(a.nodeName, a.index, a.total);
             if (!world) continue;
             const p = project(world);
-            a.el.style.left = `${p.x}px`;
-            a.el.style.top = `${p.y + surfaceOffset}px`;
-            a.el.style.opacity = p.behind ? '0' : '1';
+            const x = Math.round(p.x * 2) / 2;
+            const y = Math.round((p.y + surfaceOffset) * 2) / 2;
+            const visible = !p.behind;
+            if (x !== a.x) { a.el.style.left = `${x}px`; a.x = x; }
+            if (y !== a.y) { a.el.style.top = `${y}px`; a.y = y; }
+            if (visible !== a.visible) { a.el.style.opacity = visible ? '1' : '0'; a.visible = visible; }
           }
           for (const marker of overviewMarkers) {
             const world = map3d.districtAnchorWorld(marker.nodeName, marker.index, marker.total);
             if (!world) continue;
             const p = project(world);
-            marker.el.style.left = `${p.x}px`;
-            marker.el.style.top = `${p.y + surfaceOffset}px`;
-            marker.el.style.opacity = p.behind ? '0' : '1';
+            const x = Math.round(p.x * 2) / 2;
+            const y = Math.round((p.y + surfaceOffset) * 2) / 2;
+            const visible = !p.behind;
+            if (x !== marker.x) { marker.el.style.setProperty('--map-x', `${x}px`); marker.x = x; }
+            if (y !== marker.y) { marker.el.style.setProperty('--map-y', `${y}px`); marker.y = y; }
+            if (visible !== marker.visible) { marker.el.style.opacity = visible ? '1' : '0'; marker.visible = visible; }
           }
         },
       });
@@ -648,6 +688,7 @@ export async function exploreView(root) {
     svg.setAttribute('role', 'img');
     svg.setAttribute('aria-label', '上海行政区示意地图（非真实边界）');
     const stage = el('div', { class: 'map-stage' }, [svg]);
+    const markerBudget = allocateOverviewMarkerBudget(DISTRICTS.map((district) => ({ id: district.id, count: districtCrafts(district.id).length })));
 
     for (const d of DISTRICTS) {
       const crafts = districtCrafts(d.id);
@@ -669,7 +710,8 @@ export async function exploreView(root) {
       if (live) {
         const dots = document.createElementNS(SVG_NS, 'g');
         dots.setAttribute('class', 'dots');
-        for (let i = 0; i < crafts.length * 7; i++) {
+        const particleCount = flatParticleCount(crafts.length);
+        for (let i = 0; i < particleCount; i++) {
           const c = document.createElementNS(SVG_NS, 'circle');
           c.setAttribute('cx', (d.x + 1.2 + Math.random() * (d.w - 2.4)).toFixed(2));
           c.setAttribute('cy', (d.y + 1.2 + Math.random() * (d.h - 3.4)).toFixed(2));
@@ -677,9 +719,10 @@ export async function exploreView(root) {
           dots.appendChild(c);
         }
         g.appendChild(dots);
-        crafts.forEach((_craft, index) => {
+        const markerCount = markerBudget.get(d.id) || 0;
+        for (let index = 0; index < markerCount; index += 1) {
           const markerImage = document.createElementNS(SVG_NS, 'image');
-          const columns = Math.min(crafts.length, 4);
+          const columns = Math.min(markerCount, 4);
           const column = index % columns;
           const row = Math.floor(index / columns);
           markerImage.setAttribute('href', 'assets/地图,图钉,标记,标点.png');
@@ -691,7 +734,7 @@ export async function exploreView(root) {
           markerImage.setAttribute('aria-hidden', 'true');
           markerImage.setAttribute('pointer-events', 'none');
           g.appendChild(markerImage);
-        });
+        }
       }
 
       const label = document.createElementNS(SVG_NS, 'text');
@@ -767,18 +810,32 @@ export async function exploreView(root) {
       el('span', { class: 'platform-label', text: d.name }),
       el('span', { class: 'platform-note', text: '空间地台为平面占位 · 项目位置为策展空间位置，非实际地址' }),
     ]);
-    const visibleCrafts = crafts.slice(0, 36);
-    for (const c of visibleCrafts) {
-      const cluster = makeCluster(c, (craft) => showProjectPanel(flatFocusEl, craft));
-      cluster.el.style.left = `${c.config.anchor.x * 100}%`;
-      cluster.el.style.top = `${c.config.anchor.y * 100}%`;
-      platform.appendChild(cluster.el);
-      flatFocusFields.push(cluster.field);
-    }
-    if (crafts.length > visibleCrafts.length) platform.appendChild(el('p', {
-      class: 'map-anchor-overflow',
-      text: `本区另有 ${crafts.length - visibleCrafts.length} 项，请使用上方搜索或列表查看`,
-    }));
+    const availableCrafts = crafts.slice(0, FOCUS_ANCHOR_LIMIT);
+    let renderedCrafts = 0;
+    const overflow = el('button', { class: 'map-anchor-overflow is-action', type: 'button' });
+    const appendCraftBatch = () => {
+      const next = availableCrafts.slice(renderedCrafts, renderedCrafts + FOCUS_ANCHOR_BATCH);
+      next.forEach((c, offset) => {
+        const cluster = makeCluster(c, (craft) => showProjectPanel(flatFocusEl, craft));
+        cluster.el.classList.add('is-entering');
+        cluster.el.style.setProperty('--anchor-delay', `${offset * 36}ms`);
+        cluster.el.style.left = `${c.config.anchor.x * 100}%`;
+        cluster.el.style.top = `${c.config.anchor.y * 100}%`;
+        platform.appendChild(cluster.el);
+        flatFocusFields.push(cluster.field);
+      });
+      renderedCrafts += next.length;
+      const remainingVisible = availableCrafts.length - renderedCrafts;
+      const unavailable = crafts.length - availableCrafts.length;
+      overflow.hidden = remainingVisible <= 0 && unavailable <= 0;
+      overflow.textContent = remainingVisible > 0
+        ? `平滑展开更多（尚有 ${remainingVisible} 项）`
+        : `另有 ${unavailable} 项，请使用搜索或列表查看`;
+      overflow.disabled = remainingVisible <= 0;
+    };
+    overflow.addEventListener('click', (event) => { event.stopPropagation(); appendCraftBatch(); });
+    platform.appendChild(overflow);
+    appendCraftBatch();
     platform.addEventListener('click', (e) => {
       if (e.target !== platform) return;
       if (projectPanel) clearProjectPanel();
