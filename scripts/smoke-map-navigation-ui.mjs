@@ -99,7 +99,8 @@ try {
   await until("document.querySelectorAll('.map-heritage-marker').length > 0");
   const overviewMarkers = await evaluate(`(() => ({
     count: document.querySelectorAll('.map-heritage-marker').length,
-    labels: [...document.querySelectorAll('.map-heritage-marker')].map((node) => node.getAttribute('aria-label')),
+    hiddenFromA11y: document.querySelector('.map-heritage-marker-layer')?.getAttribute('aria-hidden') === 'true',
+    nonInteractive: [...document.querySelectorAll('.map-heritage-marker')].every((node) => node.tagName !== 'BUTTON' && getComputedStyle(node).pointerEvents === 'none' && node.tabIndex < 0),
     visibleNumbers: [...document.querySelectorAll('.map-heritage-marker')].some((node) => /\d/.test(node.textContent)),
     width: document.querySelector('.map-heritage-marker')?.getBoundingClientRect().width || 0,
     iconMask: getComputedStyle(document.querySelector('.map-heritage-marker-icon')).webkitMaskImage,
@@ -124,7 +125,7 @@ try {
       point.y - beforeDrag[index].y,
     ));
 
-    const districtName = markers[0].getAttribute('aria-label').split(' · ')[0];
+    const districtName = markers[0].dataset.district;
     const beforeRise = centers()[0];
     system.threeAdapter.hover(context, districtName);
     await new Promise((resolve) => setTimeout(resolve, 420));
@@ -140,18 +141,9 @@ try {
   await evaluate("[...document.querySelectorAll('.map-zoom-controls button')].find((node) => node.textContent.includes('还原')).click()");
   await wait(900);
   await evaluate("document.querySelector('.map-heritage-marker').click()");
-  await until("document.querySelector('.map-heritage-preview .map-heritage-preview-list article')");
-  await until("[...document.querySelectorAll('.map-heritage-preview-list img')].every((image) => image.complete)");
-  const markerPreview = await evaluate(`(() => ({
-    visible: Boolean(document.querySelector('.map-heritage-preview')),
-    cards: document.querySelectorAll('.map-heritage-preview-list article').length,
-    hasName: Boolean(document.querySelector('.map-heritage-preview-list article span')),
-    hasImage: Boolean(document.querySelector('.map-heritage-preview-list img, .map-heritage-preview-placeholder')),
-    loadedImages: [...document.querySelectorAll('.map-heritage-preview-list img')].filter((image) => image.naturalWidth > 0).length,
-  }))()`);
+  const markerPreview = await evaluate(`({ visible: Boolean(document.querySelector('.map-heritage-preview')) })`);
   const overviewShot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
   fs.writeFileSync(screenshots.overview, Buffer.from(overviewShot.data, 'base64'));
-  await evaluate("document.querySelector('.map-heritage-preview-close').click()");
 
   await evaluate(`(() => {
     const input = document.querySelector('.toolbar input[type="search"]');
@@ -320,9 +312,9 @@ try {
   if (homeNav.join('|') !== '地图探索|知识星图|数据护照') errors.push('首页公开导航顺序不正确或仍有冗余入口');
   if (!homeBrand.logoLoaded || !isBrandLogo(homeBrand.logoSource)) errors.push('首页左下角未使用探物志 Logo');
   if (nav.adminVisible) errors.push('公开导航仍显示管理入口');
-  if (overviewMarkers.count !== 8 || overviewMarkers.visibleNumbers || overviewMarkers.width > 34 || !overviewMarkers.labels.every((label) => label.includes('·')) || !decodeURIComponent(overviewMarkers.iconMask).includes('地图,图钉,标记,标点.png')) errors.push('地图未按“一项非遗一个小标记”规则或指定图案渲染');
+  if (overviewMarkers.count !== 8 || overviewMarkers.visibleNumbers || overviewMarkers.width > 34 || !decodeURIComponent(overviewMarkers.iconMask).includes('地图,图钉,标记,标点.png')) errors.push('地图未按“一项非遗一个小标记”规则或指定图案渲染');
   if (!markerFollowing.available || markerFollowing.movedCount < 6 || markerFollowing.maxDragDistance < 8 || markerFollowing.riseDistance < 1) errors.push('非遗标记未持续跟随地图旋转或区块抬升');
-  if (!markerPreview.visible || !markerPreview.cards || !markerPreview.hasName || !markerPreview.hasImage || markerPreview.loadedImages < 1) errors.push('点击地图标记后未显示非遗名称与图片预览');
+  if (!overviewMarkers.nonInteractive || !overviewMarkers.hiddenFromA11y || markerPreview.visible) errors.push('地图数量标记仍可交互或进入辅助技术焦点');
   if (!result.search.visible || !result.search.hasCraft || !listHasMatch) errors.push('地图或列表搜索不可用');
   if (result.toolbarShift > 3) errors.push(`地图/列表切换时工具条位移 ${result.toolbarShift}px`);
   if (center.heading !== '上海中心城区' || !result.center.listsFiveDistricts) errors.push('中心城区五区聚合不完整');

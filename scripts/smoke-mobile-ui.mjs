@@ -190,19 +190,19 @@ try {
       if (device.name === 'standard' && page.name === 'map') {
         await until("Boolean(document.querySelector('.map-heritage-marker'))");
         await evaluate("document.querySelector('.map-heritage-marker').click()");
-        await until("Boolean(document.querySelector('.map-heritage-preview'))");
         await wait(250);
         const previewAudit = await evaluate(`(() => {
-          const rect = document.querySelector('.map-heritage-preview').getBoundingClientRect();
-          return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, cards: document.querySelectorAll('.map-heritage-preview-list article').length };
+          const marker = document.querySelector('.map-heritage-marker');
+          const rect = marker.getBoundingClientRect();
+          const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+          return { pointerEvents: getComputedStyle(marker).pointerEvents, tag: marker.tagName, tabIndex: marker.tabIndex, hitIsMarker: hit === marker || marker.contains(hit), previewVisible: Boolean(document.querySelector('.map-heritage-preview')) };
         })()`);
-        if (previewAudit.left < -1 || previewAudit.right > device.width + 1 || previewAudit.bottom > device.height + 1 || previewAudit.cards < 1) {
-          throw new Error(`standard/map-preview failed ${JSON.stringify(previewAudit)}`);
+        if (previewAudit.pointerEvents !== 'none' || previewAudit.tag === 'BUTTON' || previewAudit.tabIndex >= 0 || previewAudit.hitIsMarker || previewAudit.previewVisible) {
+          throw new Error(`standard/map-marker-interaction failed ${JSON.stringify(previewAudit)}`);
         }
         const previewShot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
-        fs.writeFileSync(path.join(artifactDir, `map-preview-${device.width}x${device.height}.png`), Buffer.from(previewShot.data, 'base64'));
-        await evaluate("document.querySelector('.map-heritage-preview-close').click()");
-        results.push({ device: device.name, page: 'map-preview', ...previewAudit });
+        fs.writeFileSync(path.join(artifactDir, `map-markers-${device.width}x${device.height}.png`), Buffer.from(previewShot.data, 'base64'));
+        results.push({ device: device.name, page: 'map-markers', ...previewAudit });
 
         await evaluate(`(() => {
           const input = document.querySelector('.toolbar input[type="search"]');

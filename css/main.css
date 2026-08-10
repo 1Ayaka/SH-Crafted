@@ -431,27 +431,14 @@ a:hover { color: var(--terracotta); }
 .map-heritage-marker-layer[hidden] { display: none; }
 .map-heritage-marker {
   position: absolute; width: 32px; height: 39px; transform: translate(-50%, -92%);
-  display: grid; place-items: center; pointer-events: auto; color: var(--paper);
-  filter: drop-shadow(0 7px 8px rgba(43,51,39,.24)); transition: transform var(--t-fast) ease, filter var(--t-fast) ease, opacity var(--t-fast) ease;
+  display: grid; place-items: center; pointer-events: none; user-select: none; color: var(--paper);
+  filter: drop-shadow(0 7px 8px rgba(43,51,39,.24)); transition: opacity var(--t-fast) ease;
 }
-.map-heritage-marker:hover, .map-heritage-marker:focus-visible, .map-heritage-marker.is-open { transform: translate(-50%, -100%) scale(1.08); filter: drop-shadow(0 9px 10px rgba(43,51,39,.32)); outline: none; }
 .map-heritage-marker-icon {
   position: absolute; inset: 0; background: #718064;
   -webkit-mask: url("../assets/地图,图钉,标记,标点.png") center / contain no-repeat;
   mask: url("../assets/地图,图钉,标记,标点.png") center / contain no-repeat;
 }
-.map-heritage-preview {
-  position: absolute; z-index: 3; max-height: min(50vh, 440px); overflow: auto; padding: 17px;
-  pointer-events: auto; border: 1px solid rgba(96,108,56,.38); border-radius: 20px;
-  background: rgba(239,228,204,.96); box-shadow: var(--shadow-lift); backdrop-filter: blur(10px);
-}
-.map-heritage-preview-close { float: right; color: var(--ink-faint); font-size: 11px; }
-.map-heritage-preview-kicker { margin: 1px 0 12px; color: var(--moss); font-size: 12px; letter-spacing: .12em; }
-.map-heritage-preview-list { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 9px; clear: both; }
-.map-heritage-preview-list article { min-width: 0; padding: 7px; border-radius: 12px; background: rgba(255,255,255,.28); color: var(--ink); font-family: var(--serif); font-size: 12px; }
-.map-heritage-preview-list img, .map-heritage-preview-placeholder { width: 100%; aspect-ratio: 4 / 3; display: grid; place-items: center; object-fit: cover; margin-bottom: 5px; border-radius: 8px; background: rgba(96,108,56,.1); color: var(--ink-faint); font-family: var(--sans); font-size: 10px; }
-.map-heritage-preview small { display: block; margin-top: 9px; color: var(--ink-faint); }
-.map-heritage-preview-enter { width: 100%; margin-top: 12px; justify-content: center; }
 .map3d-wrap .slip-panel { z-index: 45; }
 .focus-bar { display: flex; align-items: center; gap: 18px; padding: 10px 3vw 14px; }
 /* 平面兜底地图的转场进场：轻微放大落定 */
@@ -486,7 +473,7 @@ a:hover { color: var(--terracotta); }
 .map-stage.focusing .district:not(.focused) .dots { opacity: 0; }
 
 .dots circle { fill: var(--ink); opacity: 0.75; }
-.flat-heritage-marker { opacity: .72; filter: sepia(.25) saturate(.68) hue-rotate(24deg); }
+.flat-heritage-marker { opacity: .72; pointer-events: none; filter: sepia(.25) saturate(.68) hue-rotate(24deg); }
 
 .map-caption {
   text-align: center; color: var(--ink-faint); font-size: 12.5px; letter-spacing: 0.08em; margin-top: 10px;
@@ -2929,21 +2916,12 @@ body:has(.admin-page) .gesture-toggle { display: none !important; }
     top: calc(var(--mobile-nav-height) + 58px); left: var(--mobile-gutter); right: var(--mobile-gutter);
     width: auto; max-height: min(48svh, 440px); border-radius: 16px;
   }
-  .map-search-result-head button, .map-heritage-preview-close, .project-story-close,
+  .map-search-result-head button, .project-story-close,
   .district-story-back { min-width: 44px; min-height: 44px; }
   .explore.is-map-mode .map-caption { bottom: calc(28px + env(safe-area-inset-bottom)); padding: 0 16px; font-size: 9px; }
   .explore.is-map-mode .map-legend { bottom: env(safe-area-inset-bottom); gap: 10px; font-size: 9px; }
   .map-heritage-marker { width: 44px; height: 48px; transform: translate(-50%, -86%); }
   .map-heritage-marker-icon { inset: auto; width: 25px; height: 31px; }
-  .map-heritage-marker:hover, .map-heritage-marker:focus-visible, .map-heritage-marker.is-open { transform: translate(-50%, -91%) scale(1.05); }
-  .map-heritage-preview {
-    position: fixed !important; left: 10px !important; right: 10px !important; top: auto !important;
-    bottom: calc(10px + env(safe-area-inset-bottom)) !important; width: auto !important;
-    max-height: min(48svh, 430px); border-radius: 24px; padding: 15px;
-  }
-  .map-heritage-preview-list { grid-template-columns: repeat(2, minmax(0,1fr)); }
-  .map-heritage-preview-list article { font-size: 13px; }
-  .map-heritage-preview-enter { min-height: 44px; }
   .map-view.is-district-focus .map3d-wrap { transform: translateY(-8vh) scale(.86); }
   .map-view.is-district-focus.has-project-detail .map3d-wrap { transform: translateY(-12vh) scale(.8); }
   .map-view > .district-story, .district-focus .district-story, .project-story, .district-focus .project-story {
@@ -3177,7 +3155,6 @@ body:has(.admin-page) .gesture-toggle { display: none !important; }
   .home .hero-block { margin-top: 20px; }
   .home .hero-stats { gap: 5px; }
   .home .hero-stats b { font-size: 20px; }
-  .map-heritage-preview-list { grid-template-columns: 1fr 1fr; gap: 6px; }
   .passport td { padding-left: 94px; }
   .passport td::before { width: 68px; }
   .kb-stats { grid-template-columns: 1fr; }

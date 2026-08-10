@@ -269,7 +269,7 @@ export async function exploreView(root) {
     const panel = el('div', { class: 'slip-panel', role: 'status' }, [
       el('h4', { text: `${title} · 区域内容` }),
       el('p', { class: 'slip-empty', text: crafts.length ? `已接入 ${crafts.length} 项非遗资料` : '当前暂无接入项目' }),
-      el('p', { class: 'slip-note', text: crafts.length ? '点击地图标记预览项目，点击行政区进入地区' : '点击行政区仍可查看地区介绍' }),
+      el('p', { class: 'slip-note', text: crafts.length ? '标记仅表示非遗数量，点击行政区查看项目' : '点击行政区仍可查看地区介绍' }),
     ]);
     panel.addEventListener('mouseenter', () => clearTimeout(slipTimer));
     panel.addEventListener('mouseleave', scheduleSlipRemove);
@@ -478,63 +478,20 @@ export async function exploreView(root) {
   let focusPanel = null;
   let overviewOverlay = null;
   let overviewMarkers = [];
-  let overviewPreview = null;
-
-  function clearOverviewPreview() {
-    overviewPreview?.remove();
-    overviewPreview = null;
-    overviewMarkers.forEach((item) => item.el.classList.remove('is-open'));
-  }
-
-  function showOverviewPreview(nodeName, marker, crafts = nodeCrafts(nodeName)) {
-    clearOverviewPreview();
-    marker.classList.add('is-open');
-    overviewPreview = el('aside', { class: 'map-heritage-preview', 'aria-label': `${displayNodeName(nodeName)}非遗预览` }, [
-      el('button', { class: 'map-heritage-preview-close', type: 'button', text: '关闭', onclick: (event) => { event.stopPropagation(); clearOverviewPreview(); } }),
-      el('p', { class: 'map-heritage-preview-kicker', text: crafts.length === 1 ? displayNodeName(nodeName) : `${displayNodeName(nodeName)} · ${crafts.length} 项` }),
-      el('div', { class: 'map-heritage-preview-list' }, crafts.slice(0, 8).map((craft) => el('article', {}, [
-        craft.config.heroFrame
-          ? el('img', { src: craftAssetUrl(craft, craft.config.heroFrame), alt: `${craft.title}代表图片`, loading: 'lazy' })
-          : el('span', { class: 'map-heritage-preview-placeholder', text: '资料图待补充' }),
-        el('span', { text: craft.title }),
-      ]))),
-      crafts.length > 8 ? el('small', { text: `另有 ${crafts.length - 8} 项，进入地区后查看` }) : null,
-      el('button', { class: 'btn map-heritage-preview-enter', type: 'button', text: '进入地区查看', onclick: (event) => { event.stopPropagation(); enterFocus3D(nodeName); } }),
-    ]);
-    overviewPreview.addEventListener('click', (event) => event.stopPropagation());
-    overviewOverlay.appendChild(overviewPreview);
-    const markerRect = marker.getBoundingClientRect();
-    const hostRect = overviewOverlay.getBoundingClientRect();
-    const previewWidth = Math.min(330, Math.max(250, hostRect.width - 24));
-    const left = Math.max(12, Math.min(markerRect.left - hostRect.left + markerRect.width / 2 - previewWidth / 2, hostRect.width - previewWidth - 12));
-    const openBelow = markerRect.top - hostRect.top < hostRect.height * 0.44;
-    overviewPreview.style.width = `${previewWidth}px`;
-    overviewPreview.style.left = `${left}px`;
-    overviewPreview.style.top = openBelow
-      ? `${markerRect.bottom - hostRect.top + 10}px`
-      : `${Math.max(12, markerRect.top - hostRect.top - overviewPreview.offsetHeight - 10)}px`;
-  }
 
   function mountOverviewMarkers(wrap3d) {
-    overviewOverlay = el('div', { class: 'map-heritage-marker-layer', 'aria-label': '各地区非遗数量标记' });
+    overviewOverlay = el('div', { class: 'map-heritage-marker-layer', 'aria-hidden': 'true' });
     wrap3d.appendChild(overviewOverlay);
     for (const nodeName of map3d.districtNames.filter((name) => nodeCrafts(name).length)) {
       const crafts = nodeCrafts(nodeName);
-      crafts.forEach((craft, index) => {
-        const marker = el('button', {
-          class: 'map-heritage-marker', type: 'button',
-          'aria-label': `${displayNodeName(nodeName)} · ${craft.title}，点击预览`,
-        }, [el('span', { class: 'map-heritage-marker-icon', 'aria-hidden': 'true' })]);
-        marker.addEventListener('click', (event) => {
-          event.stopPropagation();
-          if (overviewPreview && marker.classList.contains('is-open')) clearOverviewPreview();
-          else showOverviewPreview(nodeName, marker, [craft]);
-        });
+      crafts.forEach((_craft, index) => {
+        const marker = el('span', { class: 'map-heritage-marker', 'data-district': nodeName }, [
+          el('span', { class: 'map-heritage-marker-icon' }),
+        ]);
         overviewOverlay.appendChild(marker);
         overviewMarkers.push({ el: marker, nodeName, index, total: crafts.length });
       });
     }
-    overviewOverlay.addEventListener('click', (event) => { if (event.target === overviewOverlay) clearOverviewPreview(); });
   }
 
   function exitFocus3D(silent, immediate = false) {
@@ -569,7 +526,6 @@ export async function exploreView(root) {
     });
     explorationHistory.push(graphId('region', activeDistrictId || nodeName));
     hideSlip(); slip?.remove(); slip = null; slipFor = null;
-    clearOverviewPreview();
     overviewOverlay?.setAttribute('hidden', '');
     map3d.focusDistrict(nodeName);
     setContributionDistrict(districtIds.length === 1 ? districtIds[0] : '');
@@ -646,7 +602,6 @@ export async function exploreView(root) {
             marker.el.style.left = `${p.x}px`;
             marker.el.style.top = `${p.y + surfaceOffset}px`;
             marker.el.style.opacity = p.behind ? '0' : '1';
-            marker.el.style.pointerEvents = p.behind ? 'none' : '';
           }
         },
       });
@@ -722,7 +677,7 @@ export async function exploreView(root) {
           dots.appendChild(c);
         }
         g.appendChild(dots);
-        crafts.forEach((craft, index) => {
+        crafts.forEach((_craft, index) => {
           const markerImage = document.createElementNS(SVG_NS, 'image');
           const columns = Math.min(crafts.length, 4);
           const column = index % columns;
@@ -733,7 +688,8 @@ export async function exploreView(root) {
           markerImage.setAttribute('width', '3.6');
           markerImage.setAttribute('height', '3.6');
           markerImage.setAttribute('class', 'flat-heritage-marker');
-          markerImage.setAttribute('aria-label', craft.title);
+          markerImage.setAttribute('aria-hidden', 'true');
+          markerImage.setAttribute('pointer-events', 'none');
           g.appendChild(markerImage);
         });
       }
