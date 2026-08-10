@@ -307,7 +307,7 @@ export const MATERIAL_STATES = {
 };
 
 // 粒子化三维模型（js/particlemodel.js 渲染）：原料模型 → 未开始态；成品模型 → 完成态
-// 首批四门工艺有原料与成品模型；5—8 的模型稍后接入。
+// 原料模型用于未开始态；仅有完成品的项目仍可在项目预览与完成态展示。
 export const CRAFT_MODEL_PATHS = {
   SHIH_0001: {
     raw: 'assets/models/crafts/bamboo-raw.glb',        // 竹子模型（原料）
@@ -316,7 +316,7 @@ export const CRAFT_MODEL_PATHS = {
   SHIH_0002: {
     raw: 'assets/models/crafts/paper-raw.glb',         // 剪纸原料（纸平面）
     rawTint: 0xD8CCAF,                                 // 未撕白纸（略深于砂底，保证可读）
-    finished: 'assets/models/crafts/paper-finished.web.glb?v=20260803',
+    finished: 'assets/models/crafts/nanqiao-torn-paper-finished.web.glb?v=20260810',
   },
   SHIH_0003: {
     raw: 'assets/models/crafts/cloth-raw.glb',         // 药斑布原料（布平面）
@@ -327,6 +327,12 @@ export const CRAFT_MODEL_PATHS = {
   SHIH_0004: {
     raw: 'assets/models/crafts/ivory-raw.glb',         // 象牙模型（原料）
     finished: 'assets/models/crafts/ivory-finished.web.glb?v=20260803',
+  },
+  SHIH_0005: {
+    finished: 'assets/models/crafts/chongming-handwoven-cloth-finished.web.glb?v=20260810',
+  },
+  SHIH_0006: {
+    finished: 'assets/models/crafts/shanghai-calendar-poster-finished.web.glb?v=20260810',
   },
   SHIH_0007: {
     // 目前仅提供完成品模型，原料态先复用同一模型，避免体验入口回退到平面。

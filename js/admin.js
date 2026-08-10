@@ -139,6 +139,27 @@ export const exportGraph = () => api('/api/admin/graph/export');
 export const previewGraphPatch = (payload) => api('/api/admin/graph/patch/preview', { method: 'POST', body: JSON.stringify(payload) });
 export const applyGraphPatch = (payload) => api('/api/admin/graph/patch/apply', { method: 'POST', body: JSON.stringify(payload) });
 export const saveCraftSteps = (id, steps) => save(`/api/admin/crafts/${encodeURIComponent(id)}/steps`, { steps });
+export async function uploadCraftStepImage(craftId, stepId, file) {
+  if (!(file instanceof File)) throw new Error('请选择图片文件。');
+  if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) throw new Error('仅支持 PNG、JPG 或 WebP 图片。');
+  if (file.size > 6 * 1024 * 1024) throw new Error('图片不能超过 6MB。');
+  try {
+    const payload = await api(`/api/admin/crafts/${encodeURIComponent(craftId)}/steps/${encodeURIComponent(stepId)}/image`, {
+      method: 'POST',
+      body: file,
+      headers: {
+        'Content-Type': file.type,
+        'X-File-Name': encodeURIComponent(file.name),
+      },
+    });
+    return payload.image;
+  } catch (error) {
+    if (error.status === 401) throw new Error('登录已过期，请重新登录。');
+    if (error.status === 413) throw new Error('图片不能超过 6MB。');
+    if (error.status === 415) throw new Error('仅支持 PNG、JPG 或 WebP 图片。');
+    throw new Error('图片上传失败，请稍后重试。');
+  }
+}
 
 export async function loadSubmissions(status = 'all') {
   const payload = await api(`/api/admin/submissions?status=${encodeURIComponent(status)}`);

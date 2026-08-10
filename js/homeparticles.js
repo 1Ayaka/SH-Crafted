@@ -193,8 +193,8 @@ export async function createHomeParticleField(canvas, sourceImage, options = {})
       maxSprites,
     );
     const hasFlower = spriteGroups.some((group) => group.kind === 'flower');
-    const flowerQuota = hasFlower ? (target >= 50 ? 3 : 2) : 0;
-    // 先绘制荷叶、最后绘制 2—3 朵荷花，避免花被叶片覆盖。
+    const flowerQuota = hasFlower ? 1 : 0;
+    // 荷花只保留左下的一朵作为视觉锚点；荷叶继续形成两侧水岸层次。
     const plannedKinds = [
       ...Array.from({ length: target - flowerQuota }, () => 'leaf'),
       ...Array.from({ length: flowerQuota }, () => 'flower'),
@@ -205,9 +205,8 @@ export async function createHomeParticleField(canvas, sourceImage, options = {})
       attempts += 1;
       const desiredKind = plannedKinds[next.length];
       const placedFlowerCount = next.filter((item) => item.kind === 'flower').length;
-      // 第一朵固定在左下，第二朵在右上；第三朵回到左下形成更清楚的主次。
       const bottomLeft = desiredKind === 'flower'
-        ? placedFlowerCount !== 1
+        ? true
         : Math.random() < 0.57;
       const angle = Math.random() * Math.PI * 2;
       // Bias gently toward the outer rings so each corner reads as a pond-bank
@@ -219,9 +218,7 @@ export async function createHomeParticleField(canvas, sourceImage, options = {})
       let nx = clamp(cluster.x + Math.cos(angle) * cluster.rx * radius, bottomLeft ? 0.012 : 0.675, bottomLeft ? 0.405 : 0.988);
       let ny = clamp(cluster.y + Math.sin(angle) * cluster.ry * radius, bottomLeft ? 0.66 : 0.135, bottomLeft ? 0.988 : 0.42);
       if (desiredKind === 'flower' && bottomLeft) {
-        const flowerSlot = placedFlowerCount === 0
-          ? { x: 0.135, y: 0.79 }
-          : { x: 0.245, y: 0.715 };
+        const flowerSlot = { x: 0.135, y: 0.79 };
         nx = flowerSlot.x + rand(-0.018, 0.018);
         ny = flowerSlot.y + rand(-0.016, 0.016);
       }
@@ -242,7 +239,7 @@ export async function createHomeParticleField(canvas, sourceImage, options = {})
         ? (feature ? rand(148, 188) : rand(isCoarse ? 98 : 108, isCoarse ? 142 : 154))
         : (feature ? rand(96, 132) : rand(isCoarse ? 42 : 48, isCoarse ? 84 : 96));
       const itemAlpha = group.kind === 'flower'
-        ? rand(feature ? 0.62 : 0.52, feature ? 0.76 : 0.66)
+        ? rand(feature ? 0.38 : 0.32, feature ? 0.5 : 0.43)
         : rand(0.18, feature ? 0.44 : 0.35);
       next.push({
         kind: group.kind,
@@ -256,7 +253,7 @@ export async function createHomeParticleField(canvas, sourceImage, options = {})
         vy: 0,
         size,
         alpha: bottomLeft && group.kind === 'flower'
-          ? Math.min(0.84, itemAlpha + 0.1)
+          ? Math.min(0.52, itemAlpha + 0.02)
           : (bottomLeft && group.kind === 'leaf' ? Math.min(0.58, itemAlpha + 0.14) : itemAlpha),
         phase: rand(0, Math.PI * 2),
         drift: rand(0.55, 1.35),

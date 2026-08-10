@@ -27,9 +27,10 @@ export function createGestureStatus() {
     el.setAttribute('role', 'status');
   }
 
-  function mount(parent) {
+  function mount(parent = document.body) {
     ensureElement();
-    if (!el.isConnected) parent.appendChild(el);
+    const host = parent?.appendChild ? parent : document.body;
+    if (!el.isConnected) host.appendChild(el);
   }
 
   function unmount() {

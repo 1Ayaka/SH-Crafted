@@ -1,6 +1,6 @@
 import { el } from '../ui.js';
 import { adminNotice } from '../editable.js';
-import { adminState, applyGraphPatch, deleteCrafts, exportGraph, importCraft, isAdmin, loadSubmissions, login, logout, previewGraphPatch, reviewSubmission, saveCraft, saveCraftSteps, setContentReviewed } from '../admin.js';
+import { adminState, applyGraphPatch, deleteCrafts, exportGraph, importCraft, isAdmin, loadSubmissions, login, logout, previewGraphPatch, reviewSubmission, saveCraft, saveCraftSteps, setContentReviewed, uploadCraftStepImage } from '../admin.js';
 import { allCrafts, craftAssetUrl, ensureCraftLoaded, setContentReviewedLocal } from '../data.js';
 import { loadCommunityStats } from '../community.js';
 import { DISTRICT_PROFILES } from '../config.js';
@@ -266,6 +266,7 @@ export async function adminSubmissionsView(root) {
         return;
       }
       submissions.forEach((submission) => {
+        const isGraph = submission.kind === 'graph';
         const note = el('textarea', { rows: '3', maxlength: '2000', placeholder: '审核说明（选填）' }, [submission.reviewer_note || '']);
         const actions = submission.status === 'pending'
           ? el('div', { class: 'admin-review-actions' }, [
@@ -278,7 +279,7 @@ export async function adminSubmissionsView(root) {
                 },
               }),
               el('button', {
-                class: 'btn btn-primary', type: 'button', text: '审核通过并上线', onclick: async (event) => {
+                class: 'btn btn-primary', type: 'button', text: isGraph ? '审核通过并更新星图' : '审核通过并上线', onclick: async (event) => {
                   if (!confirm(`确认“${submission.title}”内容可以公开展示并正式上线吗？`)) return;
                   event.currentTarget.disabled = true;
                   try { await reviewSubmission(submission.id, 'approve', note.value); location.reload(); }
@@ -289,28 +290,37 @@ export async function adminSubmissionsView(root) {
           : el('p', {
               class: `admin-review-result is-${submission.status}`,
               text: submission.status === 'approved'
-                ? (submission.publication_removed_at ? `已下线：${submission.published_craft_id}` : `已上线：${submission.published_craft_id}`)
+                ? (isGraph ? `已更新节点：${submission.published_graph_node_id || submission.target_node_id}` : (submission.publication_removed_at ? `已下线：${submission.published_craft_id}` : `已上线：${submission.published_craft_id}`))
                 : '已驳回',
             });
         list.appendChild(el('article', { class: 'admin-submission-card' }, [
           el('header', { class: 'admin-submission-heading' }, [
             el('div', {}, [
-              el('p', { class: 'admin-kicker', text: `${submission.kind === 'full' ? '完整条目' : '简单便签'} · ${submission.id}` }),
+              el('p', { class: 'admin-kicker', text: `${isGraph ? '知识星图共建' : submission.kind === 'full' ? '完整条目' : '简单便签'} · ${submission.id}` }),
               el('h2', { text: submission.title }),
             ]),
             el('span', { class: `admin-submission-status is-${submission.status}`, text: submission.status === 'pending' ? '待审核' : submission.status === 'approved' ? '已通过' : '已驳回' }),
           ]),
           el('dl', { class: 'admin-submission-meta' }, [
-            el('div', {}, [el('dt', { text: '地区' }), el('dd', { text: DISTRICT_PROFILES[submission.district_id]?.name || submission.district_id })]),
-            el('div', {}, [el('dt', { text: '类别' }), el('dd', { text: submission.category })]),
+            el('div', {}, [el('dt', { text: isGraph ? '目标节点' : '地区' }), el('dd', { text: isGraph ? submission.target_node_title : (DISTRICT_PROFILES[submission.district_id]?.name || submission.district_id) })]),
+            el('div', {}, [el('dt', { text: isGraph ? '补充类型' : '类别' }), el('dd', { text: isGraph ? ({ supplement: '补充资料', correction: '纠正摘要', relation: '补充关系', image: '补充图片' }[submission.contribution_type] || submission.contribution_type) : submission.category })]),
             el('div', {}, [el('dt', { text: '提交时间' }), el('dd', { text: new Date(submission.submitted_at).toLocaleString('zh-CN') })]),
             el('div', {}, [el('dt', { text: '投稿人' }), el('dd', { text: submission.contributor_name || '未填写' })]),
             el('div', {}, [el('dt', { text: '联系方式' }), el('dd', { text: submission.contributor_contact || '未填写' })]),
           ]),
           el('section', { class: 'admin-submission-copy' }, [el('h3', { text: '内容说明' }), el('p', { text: submission.summary })]),
+          isGraph && submission.relation ? el('section', { class: 'admin-submission-copy' }, [
+            el('h3', { text: '拟新增关系' }),
+            el('p', { text: `${submission.target_node_title} — ${submission.relation.relation} → ${submission.relation.related_node_title}` }),
+            el('p', { text: submission.relation.explanation }),
+          ]) : null,
           submission.history ? el('section', { class: 'admin-submission-copy' }, [el('h3', { text: '历史与来历' }), el('p', { text: submission.history })]) : null,
           submission.features ? el('section', { class: 'admin-submission-copy' }, [el('h3', { text: '特色与价值' }), el('p', { text: submission.features })]) : null,
-          submission.source_url ? el('a', { class: 'admin-submission-source', href: submission.source_url, target: '_blank', rel: 'noopener noreferrer', text: '打开投稿资料来源' }) : null,
+          submission.source_url ? el('a', { class: 'admin-submission-source', href: submission.source_url, target: '_blank', rel: 'noopener noreferrer', text: submission.source_title ? `打开来源：${submission.source_title}` : '打开投稿资料来源' }) : null,
+          isGraph && submission.images?.length ? el('section', { class: 'admin-submission-gallery' }, [
+            el('h3', { text: `节点图片（${submission.images.length}）` }),
+            el('div', {}, submission.images.map((image) => el('a', { href: image.image_url, target: '_blank', rel: 'noopener noreferrer' }, [el('img', { src: image.image_url, alt: image.title || submission.target_node_title, loading: 'lazy' })]))),
+          ]) : null,
           submission.cover_url ? el('img', { class: 'admin-submission-cover', src: submission.cover_url, alt: `${submission.title}投稿封面`, loading: 'lazy' }) : null,
           submission.gallery_urls?.length ? el('section', { class: 'admin-submission-gallery' }, [
             el('h3', { text: `资料图片（${submission.gallery_urls.length}）` }),
@@ -372,6 +382,7 @@ function stepDraft(step) {
     tools: [...(step.tools || [])],
     resource_visuals: (step.resource_visuals || []).map((visual) => ({ ...visual })),
     documentary_clips: (step.documentary_clips || []).map((clip) => ({ ...clip })),
+    step_image: step.step_image ? { ...step.step_image } : null,
     resource_groups: step.interactionRule.resource_groups.map((group) => ({
       ...group,
       options: [...group.options],
@@ -600,6 +611,8 @@ export async function adminCraftView(root, { id }) {
       material_transforms: [],
       tools: [],
       resource_visuals: [],
+      documentary_clips: [],
+      step_image: null,
       resource_groups: null,
       quick_fill: null,
       actions: [{ id: actionId, label: '执行当前工序' }],
@@ -802,6 +815,83 @@ export async function adminCraftView(root, { id }) {
     };
     renderOperations();
 
+    const stepImageEditor = el('section', { class: 'admin-step-image-editor' });
+    const renderStepImageEditor = () => {
+      const fileInput = el('input', {
+        class: 'admin-step-image-input', type: 'file', accept: 'image/png,image/jpeg,image/webp',
+        'aria-label': `上传“${step.name || `工序 ${activeIndex + 1}`}”的步骤图片`,
+      });
+      const status = el('p', { class: 'admin-step-image-status', role: 'status', 'aria-live': 'polite' });
+      const chooseButton = el('button', {
+        class: 'btn-ghost', type: 'button', text: step.step_image?.image_url ? '替换图片' : '上传图片',
+        onclick: () => fileInput.click(),
+      });
+      fileInput.addEventListener('change', async () => {
+        const file = fileInput.files?.[0];
+        if (!file) return;
+        chooseButton.disabled = true;
+        status.className = 'admin-step-image-status is-uploading';
+        status.textContent = '正在上传图片…';
+        try {
+          const image = await uploadCraftStepImage(craft.craftId, step.id, file);
+          step.step_image = {
+            ...image,
+            alt: `工序“${step.name || `工序 ${activeIndex + 1}`}”参考图`,
+          };
+          markDirty();
+          renderStepImageEditor();
+        } catch (error) {
+          chooseButton.disabled = false;
+          fileInput.value = '';
+          status.className = 'admin-step-image-status is-error';
+          status.textContent = error.message || '图片上传失败，请重试。';
+        }
+      });
+      const heading = el('div', { class: 'admin-section-heading' }, [
+        el('div', {}, [
+          el('h3', { text: '工作台步骤图片' }),
+          el('p', { text: '每道工序可上传一张截图；支持 PNG、JPG、WebP，单张不超过 6MB。图片会显示在用户工作台右下角。' }),
+        ]),
+        el('div', { class: 'admin-step-image-actions' }, [chooseButton, fileInput]),
+      ]);
+      if (!step.step_image?.image_url) {
+        stepImageEditor.replaceChildren(
+          heading,
+          el('div', { class: 'admin-step-image-empty' }, [
+            el('strong', { text: '当前工序尚未添加图片' }),
+            el('span', { text: '你可以稍后逐步上传截图。' }),
+          ]),
+          status,
+        );
+        return;
+      }
+      const preview = el('img', {
+        src: craftAssetUrl(craft, step.step_image.image_url),
+        alt: step.step_image.alt || `工序“${step.name || activeIndex + 1}”参考图`,
+        loading: 'lazy',
+      });
+      preview.addEventListener('error', () => {
+        status.className = 'admin-step-image-status is-error';
+        status.textContent = '图片暂时无法读取，请重新上传。';
+      }, { once: true });
+      stepImageEditor.replaceChildren(
+        heading,
+        el('div', { class: 'admin-step-image-preview' }, [
+          preview,
+          el('div', { class: 'admin-step-image-meta' }, [
+            el('strong', { text: step.step_image.original_name || '已上传的步骤图片' }),
+            step.step_image.size ? el('span', { text: `${(step.step_image.size / 1024 / 1024).toFixed(2)} MB` }) : null,
+          ]),
+          el('button', {
+            class: 'admin-step-image-remove', type: 'button', text: '移除图片',
+            onclick: () => { step.step_image = null; markDirty(); renderStepImageEditor(); },
+          }),
+        ]),
+        status,
+      );
+    };
+    renderStepImageEditor();
+
     const documentaryEditor = el('section', { class: 'admin-documentary-editor' });
     const defaultWorks = (craft.config?.works || []).slice(0, 8);
     const ensureClipImage = (work) => ({
@@ -906,6 +996,7 @@ export async function adminCraftView(root, { id }) {
         guideEditor,
       ]),
       el('div', { class: 'admin-field' }, [el('label', { text: '完成结果' }), result]),
+      stepImageEditor,
       documentaryEditor,
       el('div', { class: 'admin-resource-columns' }, [
         el('section', { class: 'admin-material-transform-section' }, [

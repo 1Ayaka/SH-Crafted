@@ -117,6 +117,8 @@ try {
     materialOutputInputs: document.querySelectorAll('input[aria-label$="完成后变为"]').length,
     operationInputs: document.querySelectorAll('.admin-operation-row > input').length,
     guideEditor: Boolean(document.querySelector('.admin-guide-editor[contenteditable="true"]')),
+    stepImageInput: Boolean(document.querySelector('.admin-step-image-input[accept*="image/png"]')),
+    stepImageEmpty: Boolean(document.querySelector('.admin-step-image-empty')),
     visualRows: document.querySelectorAll('.admin-visual-row').length,
     shapeOptions: document.querySelector('.admin-visual-row select')?.options.length || 0,
     saveButton: Boolean([...document.querySelectorAll('button')].find((button) => button.textContent.includes('保存全部工序')))
@@ -199,6 +201,7 @@ try {
   if (!dashboard.loggedIn || dashboard.cards !== 8) errors.push('管理员首页未显示 8 个项目');
   if (!dashboard.bulkToolbar || dashboard.protectedChecks < 8 || !dashboard.deleteDisabled) errors.push('批量删除工具条或原始 8 项删除保护未显示');
   if (!process.tabs || !process.addStep || !process.materialInputs || !process.materialOutputInputs || !process.operationInputs || !process.saveButton) errors.push('工序编辑器控件不完整或缺少逐材料升级映射');
+  if (!process.stepImageInput || !process.stepImageEmpty) errors.push('工序编辑器缺少步骤图片上传控件或空状态');
   if (!materialFlow.inheritedRows || !materialFlow.flowHelp || !materialFlow.removeButton || !materialFlow.heldOrUsable) errors.push('继承材料缺少本步使用/移出暂存控制');
   if (verifyWrite && !savePersisted) errors.push('逐材料升级映射点击保存后没有从服务器持久化读回');
   if (verifyWrite && !autoSavePersisted) errors.push('逐材料升级映射停止输入后没有自动保存并重新显示');

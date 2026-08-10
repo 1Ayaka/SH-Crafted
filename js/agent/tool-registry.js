@@ -1,5 +1,5 @@
 import { buildAgentContext } from './context-builder.js';
-import { expandGraphBranch, getGraphNode, isSupportedRelation, searchGraph } from './graph-adapter.js';
+import { expandGraphBranch, getGraphNode, heritageDetailTarget, isSupportedRelation, searchGraph } from './graph-adapter.js';
 
 const relationEnum = ['LOCATED_IN', 'BELONGS_TO_TRADITION', 'USES_MATERIAL'];
 const risk = { R0: 'R0', R1: 'R1', R2: 'R2', R3: 'R3' };
@@ -112,7 +112,7 @@ function validate(name, args) {
     if (typeof args.node_id === 'string' && !getGraphNode(args.node_id)) return fail('node_not_found', '没有找到这个公开节点。');
     if (typeof args.target_id === 'string' && !getGraphNode(args.target_id)) return fail('node_not_found', '没有找到这个公开节点。');
   }
-  if (name === 'open_heritage_detail' && !getGraphNode(args.heritage_id)) return fail('node_not_found', '没有找到这个非遗项目。');
+  if (name === 'open_heritage_detail' && !heritageDetailTarget(args.heritage_id)) return fail('node_not_found', '这个关系节点暂时没有对应的非遗详情页。');
   if (name === 'open_region' && !getGraphNode(args.region_id)) return fail('node_not_found', '没有找到这个地区节点。');
   return null;
 }

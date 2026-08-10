@@ -10,6 +10,7 @@ const edge = process.env['PROGRAMFILES(X86)']
   : 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'tanwuzhi-map-ui-'));
 const screenshots = {
+  overview: path.join(os.tmpdir(), 'tanwuzhi-map-markers.png'),
   center: path.join(os.tmpdir(), 'tanwuzhi-map-center.png'),
   passport: path.join(os.tmpdir(), 'tanwuzhi-passport.png'),
 };
@@ -88,6 +89,62 @@ try {
     adminVisible: Boolean(document.querySelector('.admin-entry-link, .admin-mode-link')),
   }))()`);
   const mapToolbarTop = await evaluate("document.querySelector('.toolbar').getBoundingClientRect().top");
+  await until("document.querySelectorAll('.map-heritage-marker').length > 0");
+  const overviewMarkers = await evaluate(`(() => ({
+    count: document.querySelectorAll('.map-heritage-marker').length,
+    labels: [...document.querySelectorAll('.map-heritage-marker')].map((node) => node.getAttribute('aria-label')),
+    visibleNumbers: [...document.querySelectorAll('.map-heritage-marker')].some((node) => /\d/.test(node.textContent)),
+    width: document.querySelector('.map-heritage-marker')?.getBoundingClientRect().width || 0,
+    iconMask: getComputedStyle(document.querySelector('.map-heritage-marker-icon')).webkitMaskImage,
+  }))()`);
+  const markerFollowing = await evaluate(`(async () => {
+    const system = window.__gestureSystem;
+    const context = system?.threeAdapter?.getActiveContext?.();
+    const markers = [...document.querySelectorAll('.map-heritage-marker')];
+    if (!context || !markers.length) return { available: false };
+    const centers = () => markers.map((node) => {
+      const rect = node.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    });
+    const beforeDrag = centers();
+    system.threeAdapter.dragStart(context);
+    system.threeAdapter.dragMove(context, 72, 14);
+    system.threeAdapter.dragEnd(context);
+    await new Promise((resolve) => setTimeout(resolve, 180));
+    const afterDrag = centers();
+    const dragDistances = afterDrag.map((point, index) => Math.hypot(
+      point.x - beforeDrag[index].x,
+      point.y - beforeDrag[index].y,
+    ));
+
+    const districtName = markers[0].getAttribute('aria-label').split(' · ')[0];
+    const beforeRise = centers()[0];
+    system.threeAdapter.hover(context, districtName);
+    await new Promise((resolve) => setTimeout(resolve, 420));
+    const afterRise = centers()[0];
+    system.threeAdapter.hoverClear(context);
+    return {
+      available: true,
+      movedCount: dragDistances.filter((distance) => distance > 3).length,
+      maxDragDistance: Math.max(...dragDistances),
+      riseDistance: Math.hypot(afterRise.x - beforeRise.x, afterRise.y - beforeRise.y),
+    };
+  })()`);
+  await evaluate("[...document.querySelectorAll('.map-zoom-controls button')].find((node) => node.textContent.includes('还原')).click()");
+  await wait(900);
+  await evaluate("document.querySelector('.map-heritage-marker').click()");
+  await until("document.querySelector('.map-heritage-preview .map-heritage-preview-list article')");
+  await until("[...document.querySelectorAll('.map-heritage-preview-list img')].every((image) => image.complete)");
+  const markerPreview = await evaluate(`(() => ({
+    visible: Boolean(document.querySelector('.map-heritage-preview')),
+    cards: document.querySelectorAll('.map-heritage-preview-list article').length,
+    hasName: Boolean(document.querySelector('.map-heritage-preview-list article span')),
+    hasImage: Boolean(document.querySelector('.map-heritage-preview-list img, .map-heritage-preview-placeholder')),
+    loadedImages: [...document.querySelectorAll('.map-heritage-preview-list img')].filter((image) => image.naturalWidth > 0).length,
+  }))()`);
+  const overviewShot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+  fs.writeFileSync(screenshots.overview, Buffer.from(overviewShot.data, 'base64'));
+  await evaluate("document.querySelector('.map-heritage-preview-close').click()");
 
   await evaluate(`(() => {
     const input = document.querySelector('.toolbar input[type="search"]');
@@ -112,6 +169,88 @@ try {
   await until("[...document.querySelectorAll('.map-search-result')].some((node) => node.textContent.includes('上海中心城区'))");
   await evaluate("[...document.querySelectorAll('.map-search-result')].find((node) => node.textContent.includes('上海中心城区')).click()");
   await until("document.querySelector('.district-story h2')?.textContent.includes('上海中心城区')");
+  await until("document.querySelector('.map3d-focus-overlay .craft-anchor-hit')");
+  const gestureBootstrap = await evaluate(`(async () => {
+    if (window.__gestureSystem) return { ready: true, source: 'app' };
+    try {
+      const { initGesture } = await import('/js/gesture/gesture-init.js');
+      initGesture();
+      return { ready: Boolean(window.__gestureSystem), source: 'test-bootstrap' };
+    } catch (error) {
+      return { ready: false, error: error?.stack || String(error) };
+    }
+  })()`);
+  const gestureCraftHit = await evaluate(`(() => {
+    const resolver = window.__gestureSystem?.targetResolver;
+    const buttons = [...document.querySelectorAll('.map3d-focus-overlay .craft-anchor-hit')];
+    const button = buttons.find((candidate) => {
+      const bounds = candidate.getBoundingClientRect();
+      const visible = document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
+      return visible === candidate || candidate.contains(visible);
+    });
+    const rect = button?.getBoundingClientRect();
+    if (!button || !resolver || !rect) return {
+      available: false,
+      buttonCount: buttons.length,
+      visibleButton: Boolean(button),
+      resolverReady: Boolean(resolver),
+    };
+    const exact = resolver.resolve(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    const probes = [
+      [rect.left - 12, rect.top + rect.height / 2],
+      [rect.right + 12, rect.top + rect.height / 2],
+      [rect.left + rect.width / 2, rect.top - 12],
+      [rect.left + rect.width / 2, rect.bottom + 12],
+    ];
+    const expanded = probes
+      .map(([x, y]) => resolver.resolve(x, y))
+      .find((target) => target?.gestureExpanded && target?.element?.closest?.('.craft-anchor-hit') === button) || null;
+    const exactButton = exact?.element?.closest?.('.craft-anchor-hit');
+    if (exactButton === button) exactButton.click();
+    return {
+      available: true,
+      exact: exactButton === button,
+      expanded: expanded?.element?.closest?.('.craft-anchor-hit') === button,
+      exactLayer: exact?.layer || '',
+      expandedLayer: expanded?.layer || '',
+      clicked: exactButton === button,
+    };
+  })()`);
+  if (gestureCraftHit.clicked) await until("document.querySelector('.project-story')");
+  const gestureCraftOpened = gestureCraftHit.clicked
+    ? await evaluate("Boolean(document.querySelector('.project-story'))")
+    : false;
+  if (gestureCraftOpened) {
+    await evaluate("document.querySelector('.project-story-close')?.click()");
+    await until("!document.querySelector('.project-story')");
+  }
+  const gestureLongPressRotation = await evaluate(`(async () => {
+    const { createPointerGestureStateMachine } = await import('/js/gesture/pointer-gesture-state-machine.js');
+    const system = window.__gestureSystem;
+    const canvas = document.querySelector('.map3d-canvas');
+    const context = system?.threeAdapter?.getActiveContext?.();
+    if (!system || !canvas || !context) return { available: false };
+    const machine = createPointerGestureStateMachine({
+      clickSlopPx: 34, holdSlopPx: 42, longPressMs: 520,
+      postHoldDragThresholdPx: 6, smoothing: 1,
+    });
+    machine.start({ x: 100, y: 100 }, 0);
+    const premature = machine.move({ x: 120, y: 100 }, 200);
+    const hold = machine.move({ x: 120, y: 100 }, 540);
+    if (hold.some((event) => event.type === 'long-press-start')) system.threeAdapter.dragStart(context);
+    const drag = machine.move({ x: 130, y: 100 }, 580);
+    drag.filter((event) => event.type === 'drag-move')
+      .forEach((event) => system.threeAdapter.dragMove(context, event.dx, event.dy));
+    const end = machine.end({ x: 132, y: 100 }, 620);
+    if (end.events.some((event) => event.type === 'drag-end')) system.threeAdapter.dragEnd(context);
+    return {
+      available: true,
+      prematureSafe: !premature.some((event) => event.type === 'drag-start'),
+      held: hold.some((event) => event.type === 'long-press-start'),
+      dragged: drag.some((event) => event.type === 'drag-move'),
+      rotation: canvas.dataset.mapRotation || '',
+    };
+  })()`);
   const center = await evaluate(`(() => ({
     heading: document.querySelector('.district-story h2')?.textContent,
     text: document.querySelector('.district-story')?.textContent,
@@ -140,6 +279,9 @@ try {
   const result = {
     nav,
     homeNav,
+    overviewMarkers,
+    markerFollowing,
+    markerPreview,
     search: { visible: search.visible, hasCraft: search.text.includes('嘉定竹刻') },
     toolbarTop: { map: mapToolbarTop, list: listToolbarTop },
     toolbarShift: Math.abs(listToolbarTop - mapToolbarTop),
@@ -151,17 +293,26 @@ try {
       backBelowHeading: center.backBelowHeading,
     },
     reset,
+    gestureBootstrap,
+    gestureCraftHit: { ...gestureCraftHit, opened: gestureCraftOpened },
+    gestureLongPressRotation,
     passport: { heading: passport.heading, rows: passport.rows },
     screenshots,
   };
   const errors = [];
   if (nav.labels.join('|') !== '地图探索|知识星图|数据护照') errors.push('地图页公开导航顺序不正确');
-  if (homeNav.join('|') !== '地图探索|工艺互动|知识星图|数据护照') errors.push('首页公开导航顺序不正确');
+  if (homeNav.join('|') !== '地图探索|知识星图|数据护照') errors.push('首页公开导航顺序不正确或仍有冗余入口');
   if (nav.adminVisible) errors.push('公开导航仍显示管理入口');
+  if (overviewMarkers.count !== 8 || overviewMarkers.visibleNumbers || overviewMarkers.width > 34 || !overviewMarkers.labels.every((label) => label.includes('·')) || !decodeURIComponent(overviewMarkers.iconMask).includes('地图,图钉,标记,标点.png')) errors.push('地图未按“一项非遗一个小标记”规则或指定图案渲染');
+  if (!markerFollowing.available || markerFollowing.movedCount < 6 || markerFollowing.maxDragDistance < 8 || markerFollowing.riseDistance < 1) errors.push('非遗标记未持续跟随地图旋转或区块抬升');
+  if (!markerPreview.visible || !markerPreview.cards || !markerPreview.hasName || !markerPreview.hasImage || markerPreview.loadedImages < 1) errors.push('点击地图标记后未显示非遗名称与图片预览');
   if (!result.search.visible || !result.search.hasCraft || !listHasMatch) errors.push('地图或列表搜索不可用');
   if (result.toolbarShift > 3) errors.push(`地图/列表切换时工具条位移 ${result.toolbarShift}px`);
   if (center.heading !== '上海中心城区' || !result.center.listsFiveDistricts) errors.push('中心城区五区聚合不完整');
   if (!center.collapsedSections || !center.backBelowHeading) errors.push('地区面板折叠或返回按钮布局不正确');
+  if (!gestureBootstrap.ready || gestureBootstrap.source !== 'app') errors.push(`页面手势系统未正常初始化：${gestureBootstrap.error || gestureBootstrap.source || 'unknown'}`);
+  if (!gestureCraftHit.available || !gestureCraftHit.exact || !gestureCraftOpened) errors.push('手势无法稳定命中并打开地图上的非遗图片');
+  if (!gestureLongPressRotation.available || !gestureLongPressRotation.prematureSafe || !gestureLongPressRotation.held || !gestureLongPressRotation.dragged || !gestureLongPressRotation.rotation) errors.push('地图长按所有权或旋转链路未生效');
   if (!reset) errors.push('地图还原未退出地区聚焦');
   if (passport.heading !== '数据护照' || passport.rows < 1) errors.push('数据护照未正常打开');
   console.log(JSON.stringify({ ...result, errors }, null, 2));

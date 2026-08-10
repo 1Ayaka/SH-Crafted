@@ -1126,13 +1126,26 @@ export async function createMap3D(container, hooks) {
   function districtAnchorWorld(name, index, total) {
     const d = districts.get(name);
     if (!d) return null;
-    const c = d.bbox.getCenter(new THREE.Vector3());
-    const s = d.bbox.getSize(new THREE.Vector3());
-    const spread = total > 1 ? 0.36 : 0;
-    const offset = total > 1 ? (index / (total - 1) - 0.5) * 2 * spread : 0;
-    // Anchor directly on the district's top face. It must not inherit the
-    // waterfall sprite size: doing so pushed project cards far above the map.
-    return new THREE.Vector3(c.x + offset * s.x, d.bbox.max.y + maxDim * 0.0025, c.z);
+    // Store the anchor in district-local coordinates, then resolve its current
+    // world position on every frame. A cached world vector drifts away as soon
+    // as the district rises or a parent map transform changes.
+    d.anchorLocals ||= new Map();
+    const key = `${index}:${total}`;
+    let local = d.anchorLocals.get(key);
+    if (!local) {
+      const c = d.bbox.getCenter(new THREE.Vector3());
+      const s = d.bbox.getSize(new THREE.Vector3());
+      const spread = total > 1 ? 0.36 : 0;
+      const offset = total > 1 ? (index / (total - 1) - 0.5) * 2 * spread : 0;
+      // d.bbox is captured in world coordinates, so convert the initial point
+      // once and let the live object matrix own all subsequent movement.
+      local = new THREE.Vector3(c.x + offset * s.x, d.bbox.max.y + maxDim * 0.0025, c.z);
+      d.node.updateWorldMatrix(true, false);
+      d.node.worldToLocal(local);
+      d.anchorLocals.set(key, local);
+    }
+    d.node.updateWorldMatrix(true, false);
+    return d.node.localToWorld(local.clone());
   }
   function districtLabelWorld(name) {
     const d = districts.get(name);

@@ -55,13 +55,15 @@ export function createGestureController({
   let lastGestureType = null;
   let lastGestureAt = 0;
   let handConfidence = 0;
+  let lifecycleGeneration = 0;
 
   const config = () => effectiveConfig(settings);
   const pointerGesture = createPointerGestureStateMachine({
-    dragThresholdPx: config().dragThresholdPx ?? 10,
-    stationarySlopPx: config().stationarySlopPx ?? 8,
-    longPressMs: config().longPressMs ?? 560,
-    smoothing: config().dragSmoothing ?? 0.30,
+    clickSlopPx: config().clickSlopPx,
+    holdSlopPx: config().holdSlopPx,
+    postHoldDragThresholdPx: config().postHoldDragThresholdPx,
+    longPressMs: config().longPressMs,
+    smoothing: config().dragSmoothing,
   });
   const palmDrag = createDirectDragSession({
     smoothing: config().palmDragSmoothing ?? 0.58,
@@ -346,6 +348,8 @@ export function createGestureController({
       throw new Error('INSECURE_CONTEXT');
     }
 
+    const runGeneration = ++lifecycleGeneration;
+    const isCurrentRun = () => !destroyed && runGeneration === lifecycleGeneration;
     transition(GESTURE_STATES.REQUESTING_PERMISSION);
 
     try {
@@ -358,6 +362,8 @@ export function createGestureController({
         mirrored: true,
         edgeInsetX: effConfig.edgeInsetX,
         edgeInsetY: effConfig.edgeInsetY,
+        screenOffsetXRatio: effConfig.screenOffsetXRatio,
+        screenOffsetYRatio: effConfig.screenOffsetYRatio,
       });
       smoother = createGestureSmoother();
       metrics = createGestureMetrics();
@@ -370,12 +376,14 @@ export function createGestureController({
       // 启动摄像头
       transition(GESTURE_STATES.CAMERA_STARTING);
       const videoInfo = await camera.start();
+      if (!isCurrentRun()) return;
       mapper.setVideoSize(videoInfo.videoWidth, videoInfo.videoHeight);
 
       // 启动 Worker
       transition(GESTURE_STATES.LOADING_MODEL);
       workerClient = createWorkerClient({
         onReady: () => {
+          if (!isCurrentRun()) return;
           if (machine.can(GESTURE_STATES.CALIBRATING)) {
             transition(GESTURE_STATES.CALIBRATING);
           }
@@ -386,6 +394,7 @@ export function createGestureController({
         onError: onWorkerError,
       });
       await workerClient.init();
+      if (!isCurrentRun()) return;
 
       // 简易校准（记录初始手部位置）
       transition(GESTURE_STATES.CALIBRATING);
@@ -408,6 +417,7 @@ export function createGestureController({
         }, 200);
         setTimeout(() => clearInterval(interval), 2100);
       });
+      if (!isCurrentRun()) return;
 
       // 过渡到活跃状态
       transition(GESTURE_STATES.SEARCHING_HAND);
@@ -419,7 +429,9 @@ export function createGestureController({
       settings.firstTimeCompleted = true;
       persist();
     } catch (error) {
-      if (destroyed) return;
+      // stop() invalidates the generation immediately. A late camera/worker
+      // completion must never resurrect a user-disabled gesture session.
+      if (!isCurrentRun()) return;
       releaseResources();
       onNotice?.(errorMessage(error));
       transition(GESTURE_STATES.ERROR, { error: error?.message || error?.code || 'GESTURE_START_FAILED' });
@@ -452,6 +464,7 @@ export function createGestureController({
   }
 
   function stop() {
+    lifecycleGeneration++;
     if (machine.state() !== GESTURE_STATES.DISABLED) {
       transition(GESTURE_STATES.DISABLED, { reason: 'user_stop' });
     }

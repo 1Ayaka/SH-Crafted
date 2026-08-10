@@ -9,7 +9,7 @@ const LAYERS = Object.freeze({
   EMPTY: { priority: 5, label: 'empty' },
 });
 
-export function createTargetResolver({ hitSlopPx = 28 } = {}) {
+export function createTargetResolver({ hitSlopPx = 28, threeHitSlopPx = 24 } = {}) {
   const threeContexts = new Map();   // name → { raycaster, camera, targets, rendererDomElement }
   const domTargets = new Map();      // id → { element, rect, handlers }
   const gestures = new Map();        // id → { element, action, enabled }
@@ -18,6 +18,7 @@ export function createTargetResolver({ hitSlopPx = 28 } = {}) {
   let agentPanelSelector = null;     // Agent 面板选择器
   let domHitTester = null;           // 动态 DOM 热区命中器（例如滚动区域）
   let gestureHitSlopPx = Math.max(0, Math.min(64, Number(hitSlopPx) || 28));
+  let gestureThreeHitSlopPx = Math.max(0, Math.min(48, Number(threeHitSlopPx) || 24));
 
   // ---- 注册 ----
 
@@ -134,6 +135,18 @@ export function createTargetResolver({ hitSlopPx = 28 } = {}) {
     };
   }
 
+  function resolveExactDom(screenX, screenY, scope = null) {
+    const hit = document.elementFromPoint(screenX, screenY);
+    const element = hit?.closest?.('button, a, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], summary');
+    if (!element || (scope && !scope.contains(element)) || !isUsableInteractiveElement(element)) return null;
+    return {
+      layer: LAYERS.DOM_FALLBACK.label,
+      element,
+      rect: element.getBoundingClientRect(),
+      screen: { x: screenX, y: screenY },
+    };
+  }
+
   function resolveThreeScene(screenX, screenY) {
     // 遍历所有注册的 Three.js 场景，优先使用活跃场景
     const contexts = [];
@@ -155,12 +168,31 @@ export function createTargetResolver({ hitSlopPx = 28 } = {}) {
       const ndcY = -((screenY - rect.top) / rect.height) * 2 + 1;
 
       const targets = ctx.getTargets?.() || ctx.targets || [];
-      const hits = ctx.raycaster && ctx.camera && targets.length
-        ? (() => {
-          ctx.raycaster.setFromCamera({ x: ndcX, y: ndcY }, ctx.camera);
-          return ctx.raycaster.intersectObjects(targets, false);
-        })()
-        : [];
+      let hits = [];
+      let hitScreen = { x: screenX, y: screenY };
+      if (ctx.raycaster && ctx.camera && targets.length) {
+        // Exact ray first. If it misses, sample a small screen-space ring.
+        // This makes thin district geometry usable without changing visual
+        // meshes or letting a distant object steal an exact hit.
+        const offsets = [
+          [0, 0],
+          [-1, 0], [1, 0], [0, -1], [0, 1],
+          [-0.7, -0.7], [0.7, -0.7], [-0.7, 0.7], [0.7, 0.7],
+        ];
+        for (const [ox, oy] of offsets) {
+          const sampleX = screenX + ox * gestureThreeHitSlopPx;
+          const sampleY = screenY + oy * gestureThreeHitSlopPx;
+          if (!isInsideRect(sampleX, sampleY, rect)) continue;
+          const sampleNdcX = ((sampleX - rect.left) / rect.width) * 2 - 1;
+          const sampleNdcY = -((sampleY - rect.top) / rect.height) * 2 + 1;
+          ctx.raycaster.setFromCamera({ x: sampleNdcX, y: sampleNdcY }, ctx.camera);
+          hits = ctx.raycaster.intersectObjects(targets, false);
+          if (hits.length) {
+            hitScreen = { x: sampleX, y: sampleY };
+            break;
+          }
+        }
+      }
 
       if (hits.length > 0) {
         const hit = hits[0];
@@ -179,6 +211,8 @@ export function createTargetResolver({ hitSlopPx = 28 } = {}) {
           distance: hit.distance,
           ndc: { x: ndcX, y: ndcY },
           screen: { x: screenX, y: screenY },
+          hitScreen,
+          gestureExpanded: hitScreen.x !== screenX || hitScreen.y !== screenY,
         };
       }
 
@@ -345,7 +379,12 @@ export function createTargetResolver({ hitSlopPx = 28 } = {}) {
       };
     }
 
-    // 手势专用扩展命中区：标准按钮和链接的外围也可以被食指指针命中。
+    // 浏览器实际最上层的精确控件永远优先。此前全页扫描后按控件面积
+    // 排序，会让附近的小按钮抢走非遗图片等较大的真实命中目标。
+    const exactDomResult = resolveExactDom(screenX, screenY);
+    if (exactDomResult) return exactDomResult;
+
+    // 仅在没有精确控件时使用手势扩展命中区。
     const expandedDomResult = resolveExpandedDom(screenX, screenY);
     if (expandedDomResult) return expandedDomResult;
 

@@ -12,7 +12,7 @@ import { createVoiceSessionManager } from './server/voice/voice-session-manager.
 import { createReadStream } from 'node:fs';
 import { chmod, copyFile, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { dirname, extname, join, normalize } from 'node:path';
+import { dirname, extname, isAbsolute, join, normalize, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildContentSeed } from './scripts/content-seed.mjs';
 import { createUnifiedContentStore } from './server/unified-content-store.mjs';
@@ -71,6 +71,8 @@ const configuredCommunityStorePath = env('COMMUNITY_STORE_PATH').trim();
 const COMMUNITY_STORE_PATH = normalize(configuredCommunityStorePath || join(ROOT, '.content', 'community.json'));
 const configuredContentDbPath = env('CONTENT_DB_PATH').trim();
 const CONTENT_DB_PATH = normalize(configuredContentDbPath || join(dirname(CONTENT_STORE_PATH), 'content.db'));
+const configuredContentUploadDir = env('CONTENT_UPLOAD_DIR').trim();
+const CONTENT_UPLOAD_DIR = normalize(configuredContentUploadDir || join(dirname(CONTENT_DB_PATH), 'uploads'));
 const CONTENT_SEED = await buildContentSeed();
 const sessions = new Map();
 const loginAttempts = new Map();
@@ -303,7 +305,43 @@ async function loadApiKey() {
   return env('DEEPSEEK_API_KEY').trim() || null;
 }
 const DEEPSEEK_KEY = await loadApiKey();
-console.log(`DeepSeek 代理：${DEEPSEEK_KEY ? '已配置密钥（/api/agent 可用）' : '未配置密钥（/api/agent 将返回 503，前端自动降级）'}`);
+const AGENT_LOCAL_ONLY = env('AGENT_LOCAL_ONLY', 'false').toLowerCase() === 'true';
+let agentUpstreamDisabledReason = '';
+console.log(`智能体应答：${AGENT_LOCAL_ONLY ? '本地检索模式' : DEEPSEEK_KEY ? 'DeepSeek 优先、本地检索兜底' : '本地检索模式（未配置 DeepSeek 密钥）'}`);
+
+function compactKnowledgeText(value, max = 210) {
+  const clean = String(value || '').replace(/\s+/g, ' ').replace(/\[(?:ext_|content_)[^\]]+\]/gi, '').trim();
+  if (clean.length <= max) return clean;
+  const sentence = clean.slice(0, max).replace(/[，、；：]?[^，。！？；]*$/, '');
+  return `${sentence || clean.slice(0, max)}……`;
+}
+
+function buildLocalAgentReply(userMsg, context = {}, knowledge = []) {
+  const craft = context.craft || {};
+  const reviewed = Boolean(context.content_reviewed || context.ui_context?.content_reviewed);
+  const useful = knowledge.filter((item) => item?.text).slice(0, 2);
+  const subject = craft.title || useful[0]?.title || '这个问题';
+  const parts = [];
+  if (useful.length) {
+    parts.push(`关于**${subject}**，现有资料可以先从这一点理解：${compactKnowledgeText(useful[0].text)}`);
+    if (useful[1]) parts.push(`另一条相关记录补充道：${compactKnowledgeText(useful[1].text, 150)}`);
+    const sourceNames = [...new Set(useful.flatMap((item) => (item.sources || []).map((source) => source.publisher || source.title)).filter(Boolean))].slice(0, 2);
+    if (sourceNames.length) parts.push(`这些信息可在${sourceNames.join('、')}的资料中继续核对。`);
+    if (!reviewed && useful.some((item) => item.review_status !== 'verified_external')) parts.push('其中项目整理内容仍待人工复核，适合先作为理解线索。');
+  } else {
+    const contextual = [craft.summary, ...(craft.claims || [])].filter(Boolean).slice(0, 2).map((item) => compactKnowledgeText(item, 170));
+    if (contextual.length) parts.push(`关于**${subject}**，当前项目资料记录了：${contextual.join('；')}`);
+    else parts.push(`我暂时没有在项目知识库中找到能直接回答“${compactKnowledgeText(userMsg, 52)}”的可靠条目。为了不把猜测说成事实，我先不补造细节。`);
+  }
+  const wantsExploration = /(想看|打开|还有哪些|带我探索|接下来|继续看|推荐|了解什么|去哪看)/.test(userMsg);
+  if (wantsExploration) {
+    const candidates = (context.exploration_candidates || context.ui_context?.visible_nodes || [])
+      .filter((item) => item?.title && item.title !== subject).slice(0, 2).map((item) => item.title);
+    if (candidates.length) parts.push(`如果想继续探索，可以从**${candidates.join('**或**')}**展开，看看它与地区、材料或传统之间的关系。`);
+    else parts.push('如果想继续探索，可以进入知识星图，从当前节点的地区、材料或传统关系逐层展开。');
+  }
+  return parts.join('\n\n');
+}
 
 // 由前端上下文组装系统提示：小蕉人设 + 资料约束 + 证据引用规则
 function buildSystemPrompt(ctx = {}) {
@@ -392,6 +430,24 @@ function readJsonBody(req, maxBytes = 64 * 1024) {
   });
 }
 
+function readBufferBody(req, maxBytes = 6 * 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > maxBytes) {
+        reject(new Error('body_too_large'));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
 const makeRevision = () => `${Date.now().toString(36)}-${randomBytes(5).toString('hex')}`;
 const cleanText = (value, max = 5000) => String(value ?? '').replace(/\r\n/g, '\n').trim().slice(0, max);
 const cleanList = (value, maxItems = 40) => [...new Set((Array.isArray(value) ? value : [])
@@ -412,6 +468,7 @@ function cleanPublicUrl(value) {
 function cleanImageSource(value) {
   const source = cleanText(value, 8_000_000);
   if (!source) return '';
+  if (/^\/content-uploads\/steps\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.(?:png|jpe?g|webp)$/i.test(source)) return source;
   if (/^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/i.test(source)) return source;
   return cleanPublicUrl(source);
 }
@@ -584,6 +641,19 @@ function normalizeDocumentaryClips(value) {
   })).filter((item) => item.video_url || item.image_url);
 }
 
+function normalizeStepImage(value) {
+  if (!value || typeof value !== 'object') return null;
+  const imageUrl = cleanImageSource(value.image_url || value.url || '');
+  if (!imageUrl) return null;
+  return {
+    image_url: imageUrl,
+    alt: cleanText(value.alt, 240),
+    original_name: cleanText(value.original_name, 240),
+    mime_type: ['image/png', 'image/jpeg', 'image/webp'].includes(value.mime_type) ? value.mime_type : '',
+    size: Math.max(0, Math.min(6 * 1024 * 1024, Math.trunc(Number(value.size) || 0))),
+  };
+}
+
 function cleanMediaSource(value) {
   const source = cleanText(value, 8000);
   if (!source) return '';
@@ -657,6 +727,36 @@ function normalizeSubmission(body) {
     steps,
     contributor_name: cleanText(body?.contributor_name, 100),
     contributor_contact: cleanText(body?.contributor_contact, 200),
+  };
+}
+
+const GRAPH_CONTRIBUTION_TYPES = new Set(['supplement', 'correction', 'relation', 'image']);
+function normalizeGraphSubmission(body) {
+  const targetNodeId = cleanText(body?.target_node_id, 180);
+  const target = (editableContent.graph_nodes || []).find((node) => node.id === targetNodeId) || getGraphNodeServer(targetNodeId);
+  if (!target || !GRAPH_NODE_TYPES.has(target.type)) throw new Error('graph_target_not_found');
+  const contributionType = cleanText(body?.contribution_type, 30);
+  if (!GRAPH_CONTRIBUTION_TYPES.has(contributionType)) throw new Error('invalid_contribution_type');
+  const statement = cleanText(body?.statement, 6000);
+  if (statement.length < 20) throw new Error('statement_too_short');
+  const sourceTitle = cleanText(body?.source_title, 300);
+  const sourceUrl = cleanPublicUrl(body?.source_url);
+  if (!sourceTitle || !sourceUrl) throw new Error('source_required');
+  const images = normalizeGraphImages(body?.images);
+  if (contributionType === 'image' && !images.length) throw new Error('image_required');
+  const relatedType = cleanText(body?.related_node_type, 30);
+  const relatedTitle = cleanText(body?.related_node_title, 160);
+  const relation = cleanText(body?.relation, 50);
+  if (contributionType === 'relation') {
+    if (!['region', 'tradition', 'material'].includes(relatedType) || !relatedTitle || !GRAPH_RELATIONS.has(relation)) throw new Error('invalid_graph_relation');
+    if (graphRelationType(relatedType) !== relation) throw new Error('relation_type_mismatch');
+  }
+  return {
+    kind: 'graph', title: `补充：${target.title}`, category: '知识星图', summary: statement,
+    target_node_id: targetNodeId, target_node_title: target.title, target_node_type: target.type,
+    contribution_type: contributionType, statement, source_title: sourceTitle, source_url: sourceUrl, images,
+    relation: contributionType === 'relation' ? { relation, related_node_type: relatedType, related_node_title: relatedTitle, explanation: cleanText(body?.relation_explanation, 3000) || statement } : null,
+    contributor_name: cleanText(body?.contributor_name, 100), contributor_contact: cleanText(body?.contributor_contact, 200),
   };
 }
 
@@ -1060,6 +1160,7 @@ function normalizeSteps(craftId, incoming, previous) {
       quick_fill: normalizeQuickFill(quickFillInput, resourceGroups.flatMap((group) => group.options), actions, correct),
       evidence_ids: cleanList(old.evidence_ids || value?.evidence_ids, 30),
       documentary_clips: normalizeDocumentaryClips(hasOwn(value, 'documentary_clips') ? value.documentary_clips : old.documentary_clips),
+      step_image: normalizeStepImage(hasOwn(value, 'step_image') ? value.step_image : old.step_image),
       review_status: old.review_status || 'edited_by_admin',
     };
   });
@@ -1178,7 +1279,7 @@ async function handleCommunityApi(req, res, urlPath) {
     try {
       const body = await readJsonBody(req, 8 * 1024 * 1024);
       if (cleanText(body.website, 200)) { jsonResponse(res, 400, { error: 'invalid_submission' }, responseHeaders); return; }
-      const normalized = normalizeSubmission(body);
+      const normalized = body?.kind === 'graph' ? normalizeGraphSubmission(body) : normalizeSubmission(body);
       attempt.count += 1;
       submissionAttempts.set(ip, attempt);
       const id = `SUB_${Date.now().toString(36)}_${randomBytes(5).toString('hex')}`;
@@ -1190,6 +1291,8 @@ async function handleCommunityApi(req, res, urlPath) {
           reviewed_at: null,
           reviewer_note: '',
           published_craft_id: null,
+          published_graph_node_id: null,
+          published_graph_edge_id: null,
           ...normalized,
         });
       });
@@ -1273,6 +1376,92 @@ async function publishSubmission(submission) {
   return craftId;
 }
 
+async function publishGraphSubmission(submission) {
+  let publishedNodeId = submission.target_node_id;
+  let publishedEdgeId = null;
+  await saveContent('', (next) => {
+    syncGraphFromContent(next);
+    const target = next.graph_nodes.find((node) => node.id === submission.target_node_id);
+    if (!target) throw new Error('graph_target_not_found');
+    target.community_knowledge = Array.isArray(target.community_knowledge) ? target.community_knowledge : [];
+    if (target.community_knowledge.some((item) => item.submission_id === submission.id)) return;
+    const approvedAt = new Date().toISOString();
+    target.community_knowledge.push({
+      submission_id: submission.id, contribution_type: submission.contribution_type,
+      statement: submission.statement, source_title: submission.source_title, source_url: submission.source_url,
+      approved_at: approvedAt,
+    });
+    if (submission.contribution_type === 'correction') {
+      target.revision_history = Array.isArray(target.revision_history) ? target.revision_history : [];
+      if (target.summary) target.revision_history.push({ summary: target.summary, replaced_at: approvedAt, submission_id: submission.id });
+      target.summary = submission.statement;
+    } else if (!target.summary && submission.contribution_type === 'supplement') target.summary = submission.statement;
+    if (submission.contribution_type === 'image') {
+      target.images = [...(Array.isArray(target.images) ? target.images : []), ...(submission.images || [])]
+        .filter((item, index, all) => all.findIndex((other) => other.image_url === item.image_url) === index).slice(0, 12);
+      if (!target.overview_image && target.images[0]) target.overview_image = target.images[0].image_url;
+    }
+    if (submission.contribution_type === 'relation' && submission.relation) {
+      const related = submission.relation;
+      const existingRelated = next.graph_nodes.find((node) => node.type === related.related_node_type
+        && cleanText(node.title, 160).normalize('NFKC') === related.related_node_title.normalize('NFKC'));
+      const relatedNodeId = existingRelated?.id || stableGraphRelationNodeId(related.related_node_type, related.related_node_title);
+      publishedNodeId = target.id;
+      if (!next.graph_nodes.some((node) => node.id === relatedNodeId)) next.graph_nodes.push({
+        id: relatedNodeId, type: related.related_node_type, title: related.related_node_title,
+        aliases: [related.related_node_title], summary: related.explanation, source_title: submission.source_title,
+        source_url: submission.source_url, review_status: 'approved_community', published: true,
+        community_knowledge: [{ submission_id: submission.id, contribution_type: 'relation', statement: related.explanation, source_title: submission.source_title, source_url: submission.source_url, approved_at: approvedAt }],
+      });
+      publishedEdgeId = graphEdgeId(target.id, related.relation, relatedNodeId);
+      if (!next.graph_edges.some((edge) => edge.id === publishedEdgeId)) next.graph_edges.push({
+        id: publishedEdgeId, from: target.id, relation: related.relation, to: relatedNodeId,
+        relationship_summary: related.explanation, source_title: submission.source_title, source_url: submission.source_url,
+        origin: 'community_review', review_status: 'approved_community', published: true, submission_id: submission.id,
+      });
+    }
+  });
+  return { nodeId: publishedNodeId, edgeId: publishedEdgeId };
+}
+
+const STEP_IMAGE_TYPES = Object.freeze({
+  'image/png': { extension: '.png', matches: (buffer) => buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) },
+  'image/jpeg': { extension: '.jpg', matches: (buffer) => buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff },
+  'image/webp': { extension: '.webp', matches: (buffer) => buffer.length >= 12 && buffer.subarray(0, 4).toString('ascii') === 'RIFF' && buffer.subarray(8, 12).toString('ascii') === 'WEBP' },
+});
+
+async function handleStepImageUpload(req, res, craftId, stepId) {
+  try {
+    const craftExists = editableContent.crafts.some((craft) => craft.id === craftId);
+    if (!craftExists) { jsonResponse(res, 404, { error: 'craft_not_found' }); return; }
+    if (!/^[A-Za-z0-9_-]{1,120}$/.test(stepId)) { jsonResponse(res, 400, { error: 'invalid_step_id' }); return; }
+    const mimeType = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+    const imageType = STEP_IMAGE_TYPES[mimeType];
+    if (!imageType) { jsonResponse(res, 415, { error: 'unsupported_image_type' }); return; }
+    const buffer = await readBufferBody(req);
+    if (!buffer.length) { jsonResponse(res, 400, { error: 'empty_image' }); return; }
+    if (!imageType.matches(buffer)) { jsonResponse(res, 400, { error: 'invalid_image_content' }); return; }
+    const craftDirectory = join(CONTENT_UPLOAD_DIR, 'steps', craftId);
+    await mkdir(craftDirectory, { recursive: true });
+    const fileName = `${stepId}-${Date.now().toString(36)}-${randomBytes(8).toString('hex')}${imageType.extension}`;
+    await writeFile(join(craftDirectory, fileName), buffer, { flag: 'wx' });
+    let originalName = '';
+    try { originalName = decodeURIComponent(String(req.headers['x-file-name'] || '')); } catch { originalName = ''; }
+    jsonResponse(res, 201, {
+      ok: true,
+      image: {
+        image_url: `/content-uploads/steps/${craftId}/${fileName}`,
+        alt: '',
+        original_name: cleanText(originalName, 240),
+        mime_type: mimeType,
+        size: buffer.length,
+      },
+    });
+  } catch (error) {
+    jsonResponse(res, error?.message === 'body_too_large' ? 413 : 400, { error: error?.message || 'image_upload_failed' });
+  }
+}
+
 async function handleAdminApi(req, res, urlPath) {
   if (!validWriteOrigin(req)) { jsonResponse(res, 403, { error: 'invalid_origin' }); return; }
   if (urlPath === '/api/admin/login' && req.method === 'POST') {
@@ -1326,6 +1515,12 @@ async function handleAdminApi(req, res, urlPath) {
   if (urlPath === '/api/admin/logout' && req.method === 'POST') {
     sessions.delete(session.token);
     jsonResponse(res, 200, { authenticated: false }, { 'Set-Cookie': sessionCookie(req, '', 0) });
+    return;
+  }
+
+  const stepImageUploadMatch = urlPath.match(/^\/api\/admin\/crafts\/([A-Za-z0-9_-]+)\/steps\/([A-Za-z0-9_-]+)\/image$/);
+  if (stepImageUploadMatch && req.method === 'POST') {
+    await handleStepImageUpload(req, res, stepImageUploadMatch[1], stepImageUploadMatch[2]);
     return;
   }
 
@@ -1485,6 +1680,7 @@ async function handleAdminApi(req, res, urlPath) {
         result: cleanText(step?.result, 1000), materials: cleanList(step?.materials, 30), tools: cleanList(step?.tools, 20),
         actions: cleanList(step?.actions, 15).map((label, actionIndex) => ({ id: `${craftId}_step_${String(index + 1).padStart(2, '0')}_action_${actionIndex + 1}`, label })),
         documentary_clips: normalizeDocumentaryClips(step?.documentary_clips),
+        step_image: normalizeStepImage(step?.step_image),
       })) : [];
       const imported = await saveContent(cleanText(body.revision, 100), (next) => {
         const current = next.crafts.find((craft) => craft.id === craftId);
@@ -1546,7 +1742,8 @@ async function handleAdminApi(req, res, urlPath) {
       const submission = communityState.submissions.find((item) => item.id === submissionReviewMatch[1]);
       if (!submission) { jsonResponse(res, 404, { error: 'submission_not_found' }); return; }
       if (submission.status !== 'pending') { jsonResponse(res, 409, { error: 'submission_already_reviewed', revision: communityState.revision }); return; }
-      const publishedCraftId = action === 'approved' ? await publishSubmission(submission) : null;
+      const graphPublication = action === 'approved' && submission.kind === 'graph' ? await publishGraphSubmission(submission) : null;
+      const publishedCraftId = action === 'approved' && submission.kind !== 'graph' ? await publishSubmission(submission) : null;
       // 点击量会持续推进社区数据的全局 revision；审核只锁定这一条投稿的
       // pending 状态，避免访客恰好点击项目时让管理员的审核表单无故冲突。
       const updated = await saveCommunity('', (next) => {
@@ -1560,11 +1757,15 @@ async function handleAdminApi(req, res, urlPath) {
         target.reviewed_at = new Date().toISOString();
         target.reviewer_note = cleanText(body.reviewer_note, 2000);
         target.published_craft_id = publishedCraftId;
+        target.published_graph_node_id = graphPublication?.nodeId || null;
+        target.published_graph_edge_id = graphPublication?.edgeId || null;
       });
       jsonResponse(res, 200, {
         ok: true,
         status: action,
         published_craft_id: publishedCraftId,
+        published_graph_node_id: graphPublication?.nodeId || null,
+        published_graph_edge_id: graphPublication?.edgeId || null,
         revision: updated.revision,
         content_revision: editableContent.revision,
       });
@@ -1768,13 +1969,28 @@ async function handleAgentApi(req, res, { protocol = false } = {}) {
     res.end(JSON.stringify(obj));
   };
   if (req.method !== 'POST') { json(405, { error: 'method_not_allowed' }); return; }
-  if (!DEEPSEEK_KEY) { json(503, { error: 'no_api_key' }); return; }
+  let parsedPayload = null;
+  let parsedUserMsg = '';
+  let parsedKnowledge = [];
   try {
       const payload = await readJsonBody(req);
+      parsedPayload = payload;
       const userMsg = String(payload.messages?.at(-1)?.content || '').slice(0, 2000);
+      parsedUserMsg = userMsg;
       if (!userMsg) { json(400, { error: 'empty_message' }); return; }
       const craftId = /^SHIH_\d{4}$/.test(String(payload.context?.craft?.id || '')) ? payload.context.craft.id : null;
       const retrievedKnowledge = searchKnowledge(userMsg, craftId, 8);
+      parsedKnowledge = retrievedKnowledge;
+      const localResponse = (reason) => {
+        const content = buildLocalAgentReply(userMsg, payload.context || {}, retrievedKnowledge);
+        const shared = { knowledge: retrievedKnowledge, mode: 'local-retrieval', degraded_reason: reason || null };
+        if (protocol) json(200, { type: 'assistant_message', assistant_message: content, ...shared, session_state: { context_revision: payload.context?.context_revision || 'unknown' } });
+        else json(200, { content, ...shared });
+      };
+      if (AGENT_LOCAL_ONLY || !DEEPSEEK_KEY || agentUpstreamDisabledReason) {
+        localResponse(AGENT_LOCAL_ONLY ? 'local_only' : agentUpstreamDisabledReason || 'no_api_key');
+        return;
+      }
       const system = buildSystemPrompt({ ...(payload.context || {}), retrieved_knowledge: retrievedKnowledge });
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 25000);
@@ -1797,18 +2013,67 @@ async function handleAgentApi(req, res, { protocol = false } = {}) {
         }),
       });
       clearTimeout(timer);
-      if (!upstream.ok) { json(502, { error: `upstream_${upstream.status}` }); return; }
+      if (!upstream.ok) {
+        if ([401, 403].includes(upstream.status)) agentUpstreamDisabledReason = `upstream_${upstream.status}`;
+        localResponse(`upstream_${upstream.status}`);
+        return;
+      }
       const data = await upstream.json();
       const content = data?.choices?.[0]?.message?.content || '';
-      if (!content) { json(502, { error: 'empty_upstream' }); return; }
+      if (!content) { localResponse('empty_upstream'); return; }
       if (protocol) {
         json(200, { type: 'assistant_message', assistant_message: content, knowledge: retrievedKnowledge, session_state: { context_revision: payload.context?.context_revision || 'unknown' } });
       } else {
-        json(200, { content, knowledge: retrievedKnowledge });
+        json(200, { content, knowledge: retrievedKnowledge, mode: 'model' });
       }
     } catch (err) {
-      json(err?.name === 'AbortError' ? 504 : 502, { error: err?.name === 'AbortError' ? 'timeout' : 'proxy_error' });
+      if (['invalid_json', 'body_too_large'].includes(err?.message)) {
+        json(err.message === 'body_too_large' ? 413 : 400, { error: err.message });
+        return;
+      }
+      if (parsedPayload && parsedUserMsg) {
+        const reason = err?.name === 'AbortError' ? 'timeout' : 'proxy_error';
+        const content = buildLocalAgentReply(parsedUserMsg, parsedPayload.context || {}, parsedKnowledge);
+        const shared = { knowledge: parsedKnowledge, mode: 'local-retrieval', degraded_reason: reason };
+        if (protocol) json(200, { type: 'assistant_message', assistant_message: content, ...shared, session_state: { context_revision: parsedPayload.context?.context_revision || 'unknown' } });
+        else json(200, { content, ...shared });
+        return;
+      }
+      json(502, { error: 'proxy_error' });
     }
+}
+
+async function serveContentUpload(req, res, urlPath) {
+  if (!['GET', 'HEAD'].includes(req.method || 'GET')) {
+    res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8', Allow: 'GET, HEAD' }).end('Method Not Allowed');
+    return;
+  }
+  const uploadPath = urlPath.slice('/content-uploads/'.length);
+  if (!/^steps\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.(?:png|jpe?g|webp)$/i.test(uploadPath)) {
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('404 Not Found');
+    return;
+  }
+  const target = normalize(join(CONTENT_UPLOAD_DIR, uploadPath));
+  const targetRelative = relative(CONTENT_UPLOAD_DIR, target);
+  if (!targetRelative || targetRelative.startsWith('..') || isAbsolute(targetRelative)) {
+    res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Forbidden');
+    return;
+  }
+  const targetStat = await stat(target).catch(() => null);
+  if (!targetStat?.isFile()) {
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('404 Not Found');
+    return;
+  }
+  const extension = extname(target).toLowerCase();
+  const headers = {
+    'Content-Type': MIME[extension] || 'application/octet-stream',
+    'Cache-Control': 'public, max-age=31536000, immutable',
+    'Content-Length': targetStat.size,
+    'X-Content-Type-Options': 'nosniff',
+  };
+  if (req.method === 'HEAD') { res.writeHead(200, headers).end(); return; }
+  res.writeHead(200, headers);
+  createReadStream(target).on('error', () => res.destroy()).pipe(res);
 }
 
 const server = http.createServer(async (req, res) => {
@@ -1828,6 +2093,7 @@ const server = http.createServer(async (req, res) => {
     if (urlPath.startsWith('/api/admin/')) { await handleAdminApi(req, res, urlPath); return; }
     if (urlPath === '/api/kb/search') { await handleKnowledgeSearchApi(req, res); return; }
     if (urlPath === '/api/agent') { await handleAgentApi(req, res); return; }
+    if (urlPath.startsWith('/content-uploads/')) { await serveContentUpload(req, res, urlPath); return; }
     if (['scripts', 'deploy', 'docs', 'node_modules'].includes(urlPath.split('/').filter(Boolean)[0])) {
       res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('404 Not Found');
       return;

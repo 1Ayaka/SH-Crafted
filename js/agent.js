@@ -11,10 +11,13 @@ import { createVoiceController } from './voice/voice-controller.js';
 import { VOICE_STATES } from './voice/voice-state-machine.js';
 import { createCatMascot } from './mascot/cat-mascot.js';
 import { createCompanionDialogue } from './mascot/companion-dialogue.js';
+import { createRelationshipStore } from './mascot/relationship-store.js';
+import { sanitizeAgentText } from './agent/response-sanitizer.js';
 
 // 用户提供小蕉头像后，只需把这里改成站内图片路径；空值时保留微信式头像位且不显示破图。
 const JIAO_AVATAR_URL = '';
 const reviewVisible = () => !isContentReviewed();
+const relationship = createRelationshipStore();
 
 const CAT_DIALOG_SURFACE_SELECTORS = [
   '.modal-mask .modal',
@@ -84,7 +87,7 @@ const panel = {
   context: { page: 'home', current_step_id: null, inventory_states: [], recent_actions: [], failure_count: 0 },
   onToggle: null,
   nodes: {},
-  modelStatus: 'unknown',   // unknown | ok | down
+  modelStatus: 'unknown',   // unknown | ok | local | down
   degradedNoted: false,     // 降级提示只显示一次
   generation: 0,
   requests: new Set(),
@@ -100,7 +103,15 @@ const panel = {
   companion: null,
   lastCompanionStep: '',
   lastCompanionAction: '',
+  relationshipUnsubscribe: null,
+  fabMascot: null,
 };
+
+function recordRelationship(type, options) {
+  const result = relationship.record(type, options);
+  if (type === 'question' && result.changed && result.value.level >= 2) panel.fabMascot?.play('celebrate', { duration: 1250 });
+  return result.value;
+}
 
 function mascotStateForVoice(voiceState = panel.voiceStatus) {
   if (['REQUESTING_PERMISSION', 'WAKE_LISTENING', 'AWAKENED', 'LISTENING', 'TRANSCRIBING'].includes(voiceState)) return 'listening';
@@ -422,12 +433,12 @@ function explorationPlan(query, craft = null) {
       title: node.title,
       type: node.type,
       action,
-      label: node.type === 'heritage' ? '探索非遗项目' : '打开关系星图',
+      label: action === 'open_heritage_detail' ? '探索非遗项目' : '打开关系星图',
     });
   };
   for (const [index, result] of results.entries()) {
     if (result.type === 'heritage') {
-      add(result, 'open_heritage_detail');
+      add(result, result.detail_available ? 'open_heritage_detail' : 'open_node');
       if (index === 0) {
         relationsForNode(result.id).slice(0, 4).forEach((edge) => add(getGraphNode(edge.target_id), 'open_node'));
       }
@@ -436,7 +447,7 @@ function explorationPlan(query, craft = null) {
       add(result, 'open_node');
       if (index === 0) {
         const related = heritageForGraphTarget(result.id, { excludeId: result.id }).nodes || [];
-        related.slice(0, 4).forEach((node) => add(node, 'open_heritage_detail'));
+        related.slice(0, 4).forEach((node) => add(node, node.detail_available ? 'open_heritage_detail' : 'open_node'));
       }
     }
   }
@@ -506,7 +517,7 @@ function appendKnowledgeHits(nodes, craft, hits, title = '统一知识库命中�
   const hitNodes = [];
   for (const hit of hits.slice(0, 3)) {
     hitNodes.push(el('p', {}, [
-      el('span', { text: `${String(hit.text || '').slice(0, 240)}${String(hit.text || '').length > 240 ? '…' : ''} ` }),
+      el('span', { text: `${sanitizeAgentText(String(hit.text || '').slice(0, 240))}${String(hit.text || '').length > 240 ? '…' : ''} ` }),
       reviewVisible() ? (hit.authority_tier
         ? el('span', { class: hit.review_status === 'verified_external' ? 'tag tag-verified' : 'tag tag-review', text: `${hit.authority_tier}级·${hit.review_status === 'verified_external' ? '已核验' : '待审核'}` })
         : el('span', { class: 'tag tag-review', text: '待审核' })) : null,
@@ -531,12 +542,7 @@ function appendKnowledgeHits(nodes, craft, hits, title = '统一知识库命中�
 }
 
 function modelAnswerNode(line) {
-  let text = String(line || '').trim()
-    .replace(/^```(?:markdown|md|text)?\s*/i, '')
-    .replace(/```$/g, '')
-    .replace(/【(?:ext|fact|chunk)_[^】]+】/gi, '（资料）')
-    .replace(/\[(?:ext|fact|chunk)_[^\]]+\]/gi, '（资料）')
-    .replace(/^【AI生成】\s*/i, '');
+  let text = sanitizeAgentText(line).replace(/^【AI生成】\s*/i, '');
   if (isContentReviewed()) text = text.replace(/【?待审核】?/g, '').replace(/AI生成/g, '').replace(/\s{2,}/g, ' ').trim();
   if (!text) return null;
   const parts = [];
@@ -560,7 +566,7 @@ function cleanModelContent(value) {
       text = typeof parsed === 'string' ? parsed : (parsed.answer || parsed.content || parsed.message || '');
     } catch { /* 模型偶尔只返回半截 JSON，按普通文本继续清洗 */ }
   }
-  return text;
+  return sanitizeAgentText(text);
 }
 
 function refreshNotice() {
@@ -568,6 +574,8 @@ function refreshNotice() {
   if (!n) return;
   n.textContent = panel.modelStatus === 'ok'
     ? `已接入模型应答：优先使用项目资料${reviewVisible() ? '，未确认内容标注待审核' : ''}；相关纪录片片段会在合适时出现。`
+    : panel.modelStatus === 'local'
+      ? `当前使用本地知识库应答${reviewVisible() ? '，未确认内容标注待审核' : ''}；无需外部模型也可以继续对话。`
     : panel.modelStatus === 'down'
       ? `模型不可用，已切换检索式应答${reviewVisible() ? '，未确认内容标注待审核' : ''}。`
       : `优先模型应答，不可用时自动降级为检索式应答${reviewVisible() ? '，未确认内容标注待审核' : ''}。`;
@@ -628,7 +636,10 @@ function retrievalAnswer(query, craft, claims, evidence, externalFacts, knowledg
 
 async function answer(query, { showUser = true, allowTools = true } = {}) {
   const craft = panel.craft;
-  if (showUser) addMsg('user', [el('span', { text: query })], '我');
+  if (showUser) {
+    addMsg('user', [el('span', { text: query })], '我');
+    recordRelationship('question');
+  }
 
   // 导航与语音控制优先通过白名单工具执行；无法识别为站内操作时，
   // 才继续使用原有知识检索/模型问答链路。
@@ -693,7 +704,7 @@ async function answer(query, { showUser = true, allowTools = true } = {}) {
         const modelResult = await askModel(query, { evidence, externalFacts }, controller.signal);
         if (!requestIsCurrent(generation, controller)) return;
         thinking?.remove();
-        panel.modelStatus = 'ok';
+        panel.modelStatus = modelResult.mode === 'local-retrieval' ? 'local' : 'ok';
         refreshNotice();
         const nodes = cleanModelContent(modelResult.content).split(/\n+/).filter((line) => line.trim()).map(modelAnswerNode).filter(Boolean);
         if (evidence.length) {
@@ -793,7 +804,11 @@ function render() {
     interactive: true,
     autonomous: true,
     surfaceProvider: catWalkSurfaces,
-    onBehavior: (type, detail) => { if (!panel.open) companion?.respond(type, detail); },
+    relationshipProvider: () => relationship.snapshot(),
+    onBehavior: (type, detail) => {
+      if (['tap', 'grab', 'wake'].includes(type)) recordRelationship(type);
+      if (!panel.open) companion?.respond(type, detail);
+    },
   });
   const fab = el('button', {
     class: 'agent-fab', 'aria-label': '唤出小蕉智能讲解', title: '小蕉 · 智能讲解',
@@ -842,10 +857,14 @@ function render() {
     },
   });
   const headMascot = createCatMascot({ className: 'cat-mascot-head' });
+  const relationshipDots = el('span', { class: 'ap-relationship-dots', role: 'img', 'aria-label': '你和小蕉的相处状态，共五个阶段' },
+    Array.from({ length: 5 }, () => el('i', { 'aria-hidden': 'true' })));
+  const relationshipText = el('span', { class: 'ap-relationship-text' });
+  const relationshipView = el('div', { class: 'ap-relationship' }, [relationshipDots, relationshipText]);
   const panelEl = el('aside', { class: 'agent-panel', role: 'dialog', 'aria-modal': 'false', 'aria-label': '小蕉智能体面板' }, [
     el('div', { class: 'ap-head' }, [
       headMascot.element,
-      el('h3', { text: '小蕉' }),
+      el('div', { class: 'ap-identity' }, [el('h3', { text: '小蕉' }), relationshipView]),
       el('button', { class: 'ap-close', text: '×', 'aria-label': '收起小蕉', onclick: () => api.close() }),
     ]),
     el('div', { class: 'ap-voice-controls' }, [voiceStatus, voiceFeedback, voiceTranscript, wakeButton, micButton]),
@@ -864,8 +883,16 @@ function render() {
   document.body.append(fab, panelEl);
   panel.mascots.push(fabMascot, headMascot);
   panel.activeMascots = [fabMascot, headMascot];
+  panel.fabMascot = fabMascot;
   panel.companion = companion;
-  panel.nodes = { fab, panel: panelEl, log, ctxLine, input, voiceStatus, voiceFeedback, voiceTranscript, wakeButton, micButton };
+  panel.nodes = { fab, panel: panelEl, log, ctxLine, input, voiceStatus, voiceFeedback, voiceTranscript, wakeButton, micButton, relationshipDots, relationshipText };
+  panel.relationshipUnsubscribe?.();
+  panel.relationshipUnsubscribe = relationship.subscribe((value) => {
+    relationshipDots.dataset.level = String(value.level);
+    relationshipDots.setAttribute('aria-label', `${value.label}，五个阶段中当前为第${value.level}阶段`);
+    [...relationshipDots.children].forEach((dot, index) => dot.classList.toggle('is-awake', index < value.points));
+    relationshipText.textContent = value.label;
+  });
   refreshNotice();
   updateVoiceStatus();
   setMascotState(mascotStateForVoice());
@@ -891,6 +918,9 @@ const api = {
     panel.nodes.fab?.remove();
     panel.nodes.panel?.remove();
     panel.nodes = {};
+    panel.relationshipUnsubscribe?.();
+    panel.relationshipUnsubscribe = null;
+    panel.fabMascot = null;
     panel.open = false;
     panel.craft = null;
     panel.onToggle = null;
@@ -910,6 +940,7 @@ const api = {
     if (!panel.nodes.panel) render();
     const openedAt = performance.now();
     panel.open = true;
+    recordRelationship('panel_open');
     panel.companion?.hide();
     setMascotState('awake');
     setTimeout(() => { if (panel.open && mascotStateForVoice() === 'idle') setMascotState('idle'); }, 650);

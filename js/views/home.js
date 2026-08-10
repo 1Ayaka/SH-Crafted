@@ -22,7 +22,6 @@ export function topNav(active) {
     ]),
     el('nav', {}, [
       el('a', { href: '#/explore', class: active === 'explore' ? 'active' : '', text: '地图探索' }),
-      active === 'explore' ? null : el('a', { href: '#/explore', class: active === 'craft' ? 'active' : '', text: '工艺互动' }),
       el('a', { href: '#/graph', class: active === 'graph' ? 'active graph-nav-link' : 'graph-nav-link', text: '知识星图' }),
       el('a', { href: '#/passport', class: active === 'passport' ? 'active' : '', text: '数据护照' }),
       editing ? el('button', { class: 'admin-nav-logout', type: 'button', text: '退出', onclick: () => logout() }) : null,

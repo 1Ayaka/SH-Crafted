@@ -1,3 +1,5 @@
+import { chooseCompanionBehavior, nextCompanionBehaviorDelay } from './behavior-brain.js';
+
 const ASSET_ROOT = 'assets/mascot/cat/';
 const RIG_URL = `${ASSET_ROOT}rig.json`;
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -67,7 +69,7 @@ const HEAD = 'hip/chest/head';
 const EAR_LEFT = 'hip/chest/head/jaw/earL1';
 const EAR_RIGHT = 'hip/chest/head/jaw/earR1';
 const HANG_BASE_ANGLE = -1.18;
-const RESTING_STATES = new Set(['sleeping', 'fallen']);
+const RESTING_STATES = new Set(['sleeping', 'deep_sleeping', 'fallen']);
 const FAB_CANVAS_BELOW_PX = 180;
 const FAB_WALK_FOOT_OFFSET_PX = 220;
 const FAB_SURFACE_REFRESH_MS = 240;
@@ -98,13 +100,15 @@ function stateTargets(state, time, movement, transient) {
     set(HEAD, -HANG_BASE_ANGLE - movement.angle);
     return target;
   }
-  if (state === 'walking') {
-    const step = Math.sin(time * 8.4);
-    LEGS.forEach((id, index) => set(id, step * (index % 2 ? -0.3 : 0.3)));
+  if (state === 'walking' || state === 'zoomies') {
+    const pace = state === 'zoomies' ? 13.8 : 8.4;
+    const stride = state === 'zoomies' ? 0.42 : 0.3;
+    const step = Math.sin(time * pace);
+    LEGS.forEach((id, index) => set(id, step * (index % 2 ? -stride : stride)));
     FEET.forEach((id, index) => set(id, -step * (index % 2 ? -0.18 : 0.18)));
-    set('hip/chest', Math.sin(time * 16.8) * 0.024);
-    set(HEAD, Math.sin(time * 8.4 + 0.7) * 0.035);
-  } else if (state === 'sleeping') {
+    set('hip/chest', Math.sin(time * pace * 2) * (state === 'zoomies' ? 0.045 : 0.024));
+    set(HEAD, Math.sin(time * pace + 0.7) * (state === 'zoomies' ? 0.06 : 0.035));
+  } else if (state === 'sleeping' || state === 'deep_sleeping') {
     set(LEGS[0], -1.28); set(LEGS[1], -1.42);
     set(LEGS[2], 1.34); set(LEGS[3], 1.2);
     set(FEET[0], 0.18); set(FEET[1], 0.12);
@@ -116,6 +120,19 @@ function stateTargets(state, time, movement, transient) {
     set('hip/tail1', -0.72 + Math.sin(time * 0.9) * 0.025);
     set('hip/tail1/tail2', -0.3);
     set('hip/tail1/tail2/tail3', -0.12);
+  } else if (state === 'stretching') {
+    set(LEGS[0], -0.82); set(LEGS[1], -0.96);
+    set(LEGS[2], 0.38); set(LEGS[3], 0.26);
+    set(FEET[0], 0.2); set(FEET[1], 0.16);
+    set('hip/chest', 0.13);
+    set(HEAD, -0.1);
+    set('hip/tail1', -0.34 + Math.sin(time * 2.2) * 0.08);
+  } else if (state === 'jumping') {
+    LEGS.forEach((id, index) => set(id, index < 2 ? -0.54 : 0.76));
+    FEET.forEach((id, index) => set(id, index < 2 ? 0.22 : -0.18));
+    set('hip/chest', -0.055);
+    set(HEAD, 0.07);
+    set('hip/tail1', -0.45 + Math.sin(time * 5) * 0.1);
   } else if (state === 'fallen') {
     set(LEGS[0], -1.12); set(LEGS[1], -1.48);
     set(LEGS[2], 1.46); set(LEGS[3], 1.08);
@@ -145,7 +162,7 @@ function stateTargets(state, time, movement, transient) {
   }
 
   const earCycle = time % 8.4;
-  if (earCycle < 0.62 && !['sleeping', 'fallen'].includes(state)) {
+  if (earCycle < 0.62 && !['sleeping', 'deep_sleeping', 'fallen'].includes(state)) {
     const flick = Math.sin((earCycle / 0.62) * Math.PI * 3) * 0.13;
     add(EAR_LEFT, flick);
     add(EAR_RIGHT, -flick * 0.78);
@@ -158,13 +175,26 @@ function stateTargets(state, time, movement, transient) {
     set(EAR_RIGHT, 0.1 - wiggle);
     add('hip/tail1', Math.sin(time * 15) * 0.28);
     add('hip/tail1/tail2', Math.sin(time * 15 - 0.65) * 0.2);
+  } else if (transient === 'look_around') {
+    const glance = Math.sin(time * 11.5);
+    set(HEAD, glance * 0.2);
+    set(EAR_LEFT, -0.08 + glance * 0.08);
+    set(EAR_RIGHT, 0.08 + glance * 0.08);
+  } else if (transient === 'tail_happy' || transient === 'celebrate') {
+    const happy = Math.sin(time * (transient === 'celebrate' ? 13 : 10));
+    set('hip/tail1', happy * 0.38);
+    set('hip/tail1/tail2', Math.sin(time * 10 - 0.6) * 0.3);
+    set('hip/tail1/tail2/tail3', Math.sin(time * 10 - 1.15) * 0.22);
+    set('hip/tail1/tail2/tail3/tail4', Math.sin(time * 10 - 1.7) * 0.16);
+    add(EAR_LEFT, happy * 0.055);
+    add(EAR_RIGHT, -happy * 0.055);
   }
   return target;
 }
 
 function stateOffsets(state) {
   const offsets = new Map();
-  if (state === 'sleeping') {
+  if (state === 'sleeping' || state === 'deep_sleeping') {
     // Lowering the root moves the full body, all limbs and the tail together.
     offsets.set('hip', { x: 0, y: 112 });
     offsets.set('hip/chest', { x: -5, y: 2 });
@@ -179,13 +209,19 @@ function stateOffsets(state) {
   return offsets;
 }
 
-export function createCatMascot({ className = '', interactive = false, animate = true, autonomous = interactive, onBehavior = null, surfaceProvider = null } = {}) {
+export function createCatMascot({ className = '', interactive = false, animate = true, autonomous = interactive, onBehavior = null, surfaceProvider = null, relationshipProvider = null } = {}) {
   const root = document.createElement('span');
   root.className = `cat-mascot ${className}`.trim();
   root.setAttribute('role', 'img');
   root.setAttribute('aria-label', '小蕉，探物志智能体小猫');
   const canvas = document.createElement('canvas');
   root.appendChild(canvas);
+  const hitbox = interactive ? document.createElement('span') : null;
+  if (hitbox) {
+    hitbox.className = 'cat-mascot-hitbox';
+    hitbox.setAttribute('aria-hidden', 'true');
+    root.appendChild(hitbox);
+  }
   const context = canvas.getContext('2d', { alpha: true });
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   let assets = null;
@@ -197,7 +233,7 @@ export function createCatMascot({ className = '', interactive = false, animate =
   let transient = '';
   let transientUntil = 0;
   let behaviorUntil = 0;
-  let nextAutonomyAt = performance.now() + randomBetween(6500, 10500);
+  let nextAutonomyAt = performance.now() + randomBetween(3200, 6200);
   let walkingDirection = -1;
   let dragging = false;
   let pointerId = null;
@@ -206,6 +242,7 @@ export function createCatMascot({ className = '', interactive = false, animate =
   let suppressClickUntil = 0;
   let walkSurface = null;
   let lastSurfaceRefreshAt = 0;
+  let jumpMotion = null;
   const movement = { x: 0, y: 0, vx: 0, vy: 0, angle: 0, angularVelocity: 0 };
   const gaze = { x: 0, y: 0, targetX: 0, targetY: 0 };
   const boneState = new Map();
@@ -213,7 +250,13 @@ export function createCatMascot({ className = '', interactive = false, animate =
   const notify = (type, detail = {}) => onBehavior?.(type, { state: effectiveState(), ...detail });
   const effectiveState = () => dragging ? 'grabbed' : (motionState !== 'idle' ? motionState : externalState);
   const applyPosition = () => { root.style.translate = `${movement.x}px ${movement.y}px`; };
-  const scheduleAutonomy = (delay = randomBetween(6500, 11000)) => { nextAutonomyAt = performance.now() + delay; };
+  const relationshipLevel = () => {
+    try {
+      const value = relationshipProvider?.();
+      return clamp(Number(value?.level ?? value) || 1, 1, 5);
+    } catch { return 1; }
+  };
+  const scheduleAutonomy = (delay = nextCompanionBehaviorDelay(relationshipLevel())) => { nextAutonomyAt = performance.now() + delay; };
   const startTransient = (name, duration) => { transient = name; transientUntil = performance.now() + duration; };
 
   const hostElement = () => root.closest('.agent-fab');
@@ -324,32 +367,123 @@ export function createCatMascot({ className = '', interactive = false, animate =
     return { min: 18 - baseLeft, max: innerWidth - 18 - width - baseLeft };
   };
 
+  const beginJump = (now, duration, targetSurface = null) => {
+    const rect = root.getBoundingClientRect();
+    const startCenter = rect.left + rect.width / 2;
+    const startFootY = currentTrackTop() + movement.y;
+    const limit = bounds();
+    const targetCenter = targetSurface
+      ? clamp((targetSurface.left + targetSurface.right) / 2, startCenter - 360, startCenter + 360)
+      : startCenter + walkingDirection * Math.min(54, Math.max(18, (limit.max - limit.min) * 0.12));
+    const targetFootY = targetSurface?.top ?? currentTrackTop();
+    jumpMotion = {
+      startedAt: now,
+      duration: Math.max(420, duration),
+      startX: movement.x,
+      targetX: clamp(movement.x + targetCenter - startCenter, limit.min, limit.max),
+      startY: movement.y,
+      targetY: movement.y + targetFootY - startFootY,
+      startCenter,
+      targetCenter,
+      targetFootY,
+      targetSurface,
+      arc: targetSurface ? clamp(Math.abs(startFootY - targetFootY) * 0.32 + 74, 74, 150) : 66,
+    };
+    walkingDirection = targetCenter < startCenter ? -1 : 1;
+    motionState = 'jumping';
+    behaviorUntil = now + jumpMotion.duration;
+    notify(targetSurface ? 'platform_jump' : 'joy_jump', { surface: targetSurface?.id || walkSurface?.id || 'bottom' });
+  };
+
+  const beginAutonomousBehavior = (decision, now) => {
+    const duration = Number.isFinite(decision.duration) ? decision.duration : 0;
+    if (decision.id === 'look_around' || decision.id === 'tail_happy') {
+      startTransient(decision.id, duration);
+      notify(decision.id);
+      scheduleAutonomy(duration + nextCompanionBehaviorDelay(relationshipLevel()));
+      return;
+    }
+    if (decision.id === 'walk' || decision.id === 'zoomies') {
+      motionState = decision.id === 'zoomies' ? 'zoomies' : 'walking';
+      walkingDirection = Math.random() > 0.35 ? -1 : 1;
+      behaviorUntil = now + duration;
+      notify(decision.id);
+      return;
+    }
+    if (decision.id === 'nap' || decision.id === 'deep_sleep') {
+      motionState = decision.id === 'deep_sleep' ? 'deep_sleeping' : 'sleeping';
+      movement.vx = 0;
+      behaviorUntil = decision.untilWake ? Infinity : now + duration;
+      notify(decision.id === 'deep_sleep' ? 'deep_sleep' : 'sleep');
+      return;
+    }
+    if (decision.id === 'stretch') {
+      motionState = 'stretching';
+      behaviorUntil = now + duration;
+      notify('stretch');
+      return;
+    }
+    if (decision.id === 'platform_jump' || decision.id === 'joy_jump') {
+      beginJump(now, duration, decision.targetSurface);
+      return;
+    }
+    scheduleAutonomy();
+  };
+
   const updateMotion = (now, delta) => {
     if (transient && now >= transientUntil) transient = '';
     if (externalState !== 'idle' && motionState !== 'falling' && motionState !== 'fallen') {
       motionState = 'idle';
       scheduleAutonomy();
     }
-    if (motionState === 'walking') {
+    if (motionState === 'walking' || motionState === 'zoomies') {
       const limit = bounds();
-      movement.vx = walkingDirection * (reducedMotion ? 12 : 34);
+      const speed = motionState === 'zoomies' ? 82 : 34;
+      movement.vx = walkingDirection * (reducedMotion ? 12 : speed);
       movement.x += movement.vx * delta;
       if (movement.x <= limit.min || movement.x >= limit.max) {
         movement.x = clamp(movement.x, limit.min, limit.max);
         walkingDirection *= -1;
       }
       if (now >= behaviorUntil) {
-        motionState = 'sleeping';
+        const wasZoomies = motionState === 'zoomies';
+        motionState = 'idle';
         movement.vx = 0;
-        behaviorUntil = now + randomBetween(4500, 7500);
-        notify('sleep');
+        notify(wasZoomies ? 'settle' : 'pause');
+        scheduleAutonomy();
       }
-    } else if (motionState === 'sleeping') {
+    } else if (motionState === 'sleeping' || motionState === 'deep_sleeping') {
+      movement.vx = 0;
+      if (motionState === 'sleeping' && now >= behaviorUntil) {
+        motionState = 'idle';
+        notify('wake');
+        scheduleAutonomy();
+      }
+    } else if (motionState === 'stretching') {
       movement.vx = 0;
       if (now >= behaviorUntil) {
         motionState = 'idle';
-        notify('wake');
-        scheduleAutonomy(randomBetween(7000, 12000));
+        notify('settle');
+        scheduleAutonomy();
+      }
+    } else if (motionState === 'jumping' && jumpMotion) {
+      const progress = clamp((now - jumpMotion.startedAt) / jumpMotion.duration, 0, 1);
+      const eased = progress * progress * (3 - 2 * progress);
+      movement.x = jumpMotion.startX + (jumpMotion.targetX - jumpMotion.startX) * eased;
+      movement.y = jumpMotion.startY + (jumpMotion.targetY - jumpMotion.startY) * eased - Math.sin(progress * Math.PI) * jumpMotion.arc;
+      movement.vx = (jumpMotion.targetX - jumpMotion.startX) / Math.max(0.001, jumpMotion.duration / 1000);
+      if (progress >= 1) {
+        const completed = jumpMotion;
+        jumpMotion = null;
+        movement.vx = 0;
+        if (completed.targetSurface) {
+          setWalkSurface(completed.targetSurface, { worldCenter: completed.targetCenter, worldFootY: completed.targetFootY });
+        } else {
+          movement.y = 0;
+        }
+        motionState = 'idle';
+        notify('land_jump', { surface: completed.targetSurface?.id || walkSurface?.id || 'bottom' });
+        scheduleAutonomy();
       }
     } else if (motionState === 'falling') {
       movement.vy += (reducedMotion ? 600 : 1500) * delta;
@@ -380,10 +514,15 @@ export function createCatMascot({ className = '', interactive = false, animate =
         }
       }
     } else if (autonomous && externalState === 'idle' && !dragging && now >= nextAutonomyAt) {
-      motionState = 'walking';
-      walkingDirection = Math.random() > 0.25 ? -1 : 1;
-      behaviorUntil = now + randomBetween(4500, 8000);
-      notify('walk');
+      const surfaces = surfaceCandidates();
+      const decision = chooseCompanionBehavior({
+        level: relationshipLevel(),
+        surfaces,
+        currentSurfaceId: walkSurface?.id || '',
+        currentTop: currentTrackTop(),
+        reducedMotion,
+      });
+      beginAutonomousBehavior(decision, now);
     }
     applyPosition();
   };
@@ -507,6 +646,12 @@ export function createCatMascot({ className = '', interactive = false, animate =
       const localTop = canvas.offsetTop + visual.minY * cssScaleY;
       const localBottom = canvas.offsetTop + visual.maxY * cssScaleY;
       root.dataset.visualBounds = [localLeft, localTop, localRight, localBottom].map((value) => value.toFixed(2)).join(',');
+      if (hitbox) {
+        hitbox.style.left = `${localLeft}px`;
+        hitbox.style.top = `${localTop}px`;
+        hitbox.style.width = `${Math.max(1, localRight - localLeft)}px`;
+        hitbox.style.height = `${Math.max(1, localBottom - localTop)}px`;
+      }
     }
     root.dataset.ready = 'true';
     root.dataset.state = state;
@@ -570,6 +715,10 @@ export function createCatMascot({ className = '', interactive = false, animate =
     movement.x = nextX;
     movement.y = nextY;
     movedDuringPress ||= Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 7;
+    if (movedDuringPress && !pointerStart.grabNotified) {
+      pointerStart.grabNotified = true;
+      notify('grab');
+    }
     if (movedDuringPress) suppressClickUntil = performance.now() + 500;
     applyPosition();
     event.preventDefault();
@@ -582,6 +731,9 @@ export function createCatMascot({ className = '', interactive = false, animate =
     document.removeEventListener('pointermove', pointerMove);
     document.removeEventListener('pointerup', pointerUp);
     document.removeEventListener('pointercancel', pointerUp);
+    const passthroughTarget = !movedDuringPress && pointerStart?.passthroughTarget?.isConnected
+      ? pointerStart.passthroughTarget
+      : null;
     if (movedDuringPress) {
       const rect = root.getBoundingClientRect();
       const worldCenter = rect.left + rect.width / 2;
@@ -593,6 +745,8 @@ export function createCatMascot({ className = '', interactive = false, animate =
       movement.vy = Math.max(45, movement.vy * 0.35);
       movement.vx *= 0.18;
       notify('drop', { surface: target?.id || 'bottom' });
+    } else if (passthroughTarget) {
+      suppressClickUntil = performance.now() + 500;
     } else {
       startTransient('tap', 620);
       suppressClickUntil = performance.now() + 220;
@@ -600,13 +754,32 @@ export function createCatMascot({ className = '', interactive = false, animate =
     }
     pointerStart = null;
     requestDraw();
+    if (passthroughTarget) queueMicrotask(() => passthroughTarget.isConnected && passthroughTarget.click());
+  };
+  const interactiveUnderPointer = (x, y) => {
+    const host = hostElement();
+    const selector = 'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [role="button"]';
+    return (document.elementsFromPoint?.(x, y) || [])
+      .filter((node) => !host?.contains(node))
+      .map((node) => node.closest?.(selector))
+      .find((node) => node?.isConnected && !node.matches('[aria-disabled="true"]')) || null;
   };
   const pointerDown = (event) => {
     if (!interactive || event.button !== 0) return;
+    const wakingFromDeepSleep = motionState === 'deep_sleeping';
     pointerId = event.pointerId;
-    pointerStart = { x: event.clientX, y: event.clientY, worldX: movement.x, worldY: movement.y };
+    const passthroughTarget = interactiveUnderPointer(event.clientX, event.clientY);
+    pointerStart = {
+      x: event.clientX,
+      y: event.clientY,
+      worldX: movement.x,
+      worldY: movement.y,
+      passthroughTarget,
+      grabNotified: !passthroughTarget,
+    };
     movedDuringPress = false;
     dragging = true;
+    jumpMotion = null;
     motionState = 'idle';
     movement.vx = 0;
     movement.vy = 0;
@@ -614,7 +787,8 @@ export function createCatMascot({ className = '', interactive = false, animate =
     document.addEventListener('pointermove', pointerMove);
     document.addEventListener('pointerup', pointerUp);
     document.addEventListener('pointercancel', pointerUp);
-    notify('grab');
+    if (wakingFromDeepSleep) notify('wake', { reason: 'interaction' });
+    if (!passthroughTarget) notify('grab');
     requestDraw();
     event.preventDefault();
   };
@@ -626,10 +800,11 @@ export function createCatMascot({ className = '', interactive = false, animate =
     gaze.targetX = dx * 5 * (walkingDirection < 0 ? -1 : 1);
     gaze.targetY = dy * 3;
   };
-  const playMotion = (type, { duration } = {}) => {
+  const playMotion = (type, { duration, targetSurface } = {}) => {
     if (type === 'reset') {
       externalState = 'idle';
       motionState = 'idle';
+      jumpMotion = null;
       movement.x = 0; movement.y = 0; movement.vx = 0; movement.vy = 0; movement.angle = 0;
       boneState.clear();
       refreshWalkSurface(performance.now());
@@ -638,16 +813,37 @@ export function createCatMascot({ className = '', interactive = false, animate =
     } else if (type === 'tap') {
       startTransient('tap', duration || 620);
       notify('tap');
+    } else if (type === 'look_around' || type === 'tail_happy' || type === 'celebrate') {
+      startTransient(type, duration || (type === 'look_around' ? 1250 : 1700));
+      notify(type);
     } else if (type === 'walk') {
       externalState = 'idle';
       motionState = 'walking';
       behaviorUntil = performance.now() + (duration || 5200);
       notify('walk');
+    } else if (type === 'zoomies') {
+      externalState = 'idle';
+      motionState = 'zoomies';
+      behaviorUntil = performance.now() + (duration || 3200);
+      notify('zoomies');
     } else if (type === 'sleep') {
       externalState = 'idle';
       motionState = 'sleeping';
       behaviorUntil = performance.now() + (duration || 5200);
       notify('sleep');
+    } else if (type === 'deep_sleep') {
+      externalState = 'idle';
+      motionState = 'deep_sleeping';
+      behaviorUntil = Infinity;
+      notify('deep_sleep');
+    } else if (type === 'stretch') {
+      externalState = 'idle';
+      motionState = 'stretching';
+      behaviorUntil = performance.now() + (duration || 1900);
+      notify('stretch');
+    } else if (type === 'joy_jump' || type === 'platform_jump') {
+      externalState = 'idle';
+      beginJump(performance.now(), duration || 760, type === 'platform_jump' ? targetSurface : null);
     } else if (type === 'drop') {
       externalState = 'idle';
       motionState = 'falling';
@@ -667,6 +863,7 @@ export function createCatMascot({ className = '', interactive = false, animate =
     setState(next) {
       externalState = next || 'idle';
       if (externalState !== 'idle') {
+        jumpMotion = null;
         motionState = 'idle';
         movement.x = externalState === 'awake' ? 0 : movement.x;
         movement.y = 0;

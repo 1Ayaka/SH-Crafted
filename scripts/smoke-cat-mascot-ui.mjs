@@ -105,11 +105,13 @@ try {
       const rect = bubble.getBoundingClientRect();
       resolve({ placement: bubble.dataset.placement, gap: anchor.top - rect.bottom, background: getComputedStyle(bubble).backgroundColor });
       bubble.classList.remove('is-visible');
-    }, 180);
+    }, 260);
   }))()`);
   assert.equal(lowerScreenBubble.placement, 'above', 'Bubble should stay above a mascot in the lower half of the viewport');
   assert.ok(lowerScreenBubble.gap >= 16 && lowerScreenBubble.gap <= 20, `Lower bubble gap is unstable: ${lowerScreenBubble.gap}`);
   assert.match(lowerScreenBubble.background, /0\.6\)/, 'Bubble background should use 60% opacity');
+  await evaluate("document.querySelector('.cat-mascot-fab')?.dispatchEvent(new CustomEvent('mascot-command', { detail: { type: 'reset' } }))");
+  await wait(80);
 
   const componentLanding = await evaluate(`(() => new Promise((resolve) => {
     const mascot = document.querySelector('.cat-mascot-fab');
@@ -214,6 +216,37 @@ try {
   assert.ok(['falling', 'fallen'].includes(released.state), 'Released mascot did not fall toward the page bottom');
   await wait(2400);
 
+  const overlapTarget = await evaluate(`(() => {
+    const mascot = document.querySelector('.cat-mascot-fab');
+    const outer = mascot.getBoundingClientRect();
+    const visual = mascot.dataset.visualBounds.split(',').map(Number);
+    const scaleX = outer.width / mascot.offsetWidth;
+    const scaleY = outer.height / mascot.offsetHeight;
+    const centerX = outer.left + ((visual[0] + visual[2]) / 2) * scaleX;
+    const centerY = outer.top + ((visual[1] + visual[3]) / 2) * scaleY;
+    const button = document.createElement('button');
+    button.id = 'mascot-overlap-target';
+    button.textContent = '重叠按钮测试';
+    Object.assign(button.style, { position: 'fixed', left: (centerX - 58) + 'px', top: (centerY - 24) + 'px', width: '116px', height: '48px', zIndex: '499' });
+    button.addEventListener('click', () => { button.dataset.clicks = String(Number(button.dataset.clicks || 0) + 1); });
+    document.body.appendChild(button);
+    const hitbox = mascot.querySelector('.cat-mascot-hitbox')?.getBoundingClientRect();
+    return { x: centerX, y: centerY, hitbox: hitbox ? { width: hitbox.width, height: hitbox.height } : null };
+  })()`);
+  assert.ok(overlapTarget.hitbox?.width > 0 && overlapTarget.hitbox?.height > 0, 'Mascot visible hitbox was not created');
+  assert.ok(overlapTarget.hitbox.width < interactionStart.mascot.width || overlapTarget.hitbox.height < interactionStart.mascot.height, 'Mascot hitbox still covers the full transparent root box');
+  await mouse('mousePressed', overlapTarget.x, overlapTarget.y, 1);
+  await mouse('mouseReleased', overlapTarget.x, overlapTarget.y);
+  await wait(120);
+  const overlapClick = await evaluate(`(() => {
+    const button = document.querySelector('#mascot-overlap-target');
+    const result = { clicks: Number(button?.dataset.clicks || 0), panelOpen: document.querySelector('.agent-panel')?.classList.contains('open') || false };
+    button?.remove();
+    return result;
+  })()`);
+  assert.equal(overlapClick.clicks, 1, 'Clicking a button beneath the mascot should activate the button once');
+  assert.equal(overlapClick.panelOpen, false, 'Click-through to an underlying button should not activate the mascot');
+
   const gestureDrag = await evaluate(`(() => new Promise((resolve) => {
     const mascot = document.querySelector('.cat-mascot-fab');
     const rect = mascot.getBoundingClientRect();
@@ -242,23 +275,47 @@ try {
         const afterX = mascot.getBoundingClientRect().x;
         const direction = mascot.dataset.direction;
         const canvasTransform = mascot.querySelector('canvas').style.transform;
-        setTimeout(() => resolve({ walking, sleeping: mascot.dataset.state, poseMode: mascot.dataset.poseMode, beforeX, afterX, direction, canvasTransform }), 360);
+        setTimeout(() => resolve({ walking, settled: mascot.dataset.state, beforeX, afterX, direction, canvasTransform }), 360);
       }, 140);
     });
   }))()`);
   assert.equal(commanded.walking, 'walking', 'Mascot did not enter autonomous walking state');
-  assert.equal(commanded.sleeping, 'sleeping', 'Mascot did not enter sleeping state');
-  assert.equal(commanded.poseMode, 'ragdoll-flat', 'Sleeping pose should use the reusable flat ragdoll pose');
+  assert.equal(commanded.settled, 'idle', 'Mascot did not settle after a commanded walk');
   assert.ok(commanded.direction === 'right' ? commanded.afterX > commanded.beforeX : commanded.afterX < commanded.beforeX, 'Mascot body faces a direction that disagrees with its movement');
   assert.equal(commanded.canvasTransform, commanded.direction === 'left' ? 'scaleX(-1)' : '', 'Mascot sprite orientation disagrees with walking direction');
-  await wait(750);
+  await evaluate("document.querySelector('.cat-mascot-fab')?.dispatchEvent(new CustomEvent('mascot-command', { detail: { type: 'sleep', duration: 1500 } }))");
+  await wait(180);
   assert.equal((await layout()).state, 'sleeping', 'Mascot did not remain in its resting pose');
+  assert.equal(await evaluate("document.querySelector('.cat-mascot-fab')?.dataset.poseMode"), 'ragdoll-flat', 'Sleeping pose should use the reusable flat ragdoll pose');
   await screenshot(screenshots.sleeping);
-  await wait(500);
 
-  const tapLayout = await layout();
-  const tapX = tapLayout.mascot.x + tapLayout.mascot.width / 2;
-  const tapY = tapLayout.mascot.y + tapLayout.mascot.height / 2;
+  const lookAround = await evaluate(`new Promise((resolve) => {
+    const mascot = document.querySelector('.cat-mascot-fab');
+    mascot?.dispatchEvent(new CustomEvent('mascot-command', { detail: { type: 'look_around', duration: 700 } }));
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve(mascot?.dataset.transient)));
+  })`);
+  assert.equal(lookAround, 'look_around', 'Mascot did not perform its rapid look-around behavior');
+  const happyTail = await evaluate(`new Promise((resolve) => {
+    const mascot = document.querySelector('.cat-mascot-fab');
+    mascot?.dispatchEvent(new CustomEvent('mascot-command', { detail: { type: 'tail_happy', duration: 700 } }));
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve(mascot?.dataset.transient)));
+  })`);
+  assert.equal(happyTail, 'tail_happy', 'Mascot did not perform its happy tail behavior');
+  await evaluate("document.querySelector('.cat-mascot-fab')?.dispatchEvent(new CustomEvent('mascot-command', { detail: { type: 'joy_jump', duration: 620 } }))");
+  await wait(100);
+  assert.equal((await layout()).state, 'jumping', 'Mascot did not enter its joyful jump state');
+  await wait(650);
+  await evaluate("document.querySelector('.cat-mascot-fab')?.dispatchEvent(new CustomEvent('mascot-command', { detail: { type: 'deep_sleep' } }))");
+  await wait(650);
+  assert.equal((await layout()).state, 'deep_sleeping', 'Deep sleep should persist until interaction');
+
+  const tapPoint = await evaluate(`(() => {
+    const rect = document.querySelector('.cat-mascot-fab .cat-mascot-hitbox')?.getBoundingClientRect();
+    return rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null;
+  })()`);
+  assert.ok(tapPoint, 'Mascot visible hitbox is unavailable for tap interaction');
+  const tapX = tapPoint.x;
+  const tapY = tapPoint.y;
   await mouse('mouseMoved', 60, 80);
   await wait(150);
   const gaze = await evaluate("document.querySelector('.cat-mascot-fab')?.dataset.gaze");
@@ -273,6 +330,7 @@ try {
   }))()`);
   assert.equal(tapFeedback.transient, 'tap', 'Clicking the mascot did not wiggle its ears');
   assert.equal(tapFeedback.bubble, true, 'Clicking the mascot did not show a short dialogue bubble');
+  assert.notEqual((await layout()).state, 'deep_sleeping', 'Clicking the mascot should wake it from deep sleep');
   await screenshot(screenshots.bubble);
   const continueRect = await evaluate(`(() => {
     const rect = document.querySelector('.mascot-bubble button')?.getBoundingClientRect();
@@ -296,6 +354,14 @@ try {
   assert.equal(continuationImmediate.noticeRemoved, true, 'Model notice should be removed from the panel');
   assert.equal(continuationImmediate.voiceNoteRemoved, true, 'Long voice notice should be removed from the panel');
   assert.equal(continuationImmediate.readingControlRemoved, true, 'Reading control should be removed from the panel');
+  const relationshipView = await evaluate(`(() => ({
+    dots: document.querySelectorAll('.ap-relationship-dots i').length,
+    awake: document.querySelectorAll('.ap-relationship-dots i.is-awake').length,
+    text: document.querySelector('.ap-relationship-text')?.textContent || '',
+  }))()`);
+  assert.equal(relationshipView.dots, 5, 'Relationship state should render exactly five points');
+  assert.ok(relationshipView.awake >= 1 && relationshipView.awake <= 5, 'Relationship state has an invalid number of active points');
+  assert.ok(relationshipView.text.includes('小蕉') || relationshipView.text.includes('你和小蕉'), 'Relationship state should use a natural-language description');
   await wait(4500);
   const continuationResult = await evaluate(`(() => ({
     messages: document.querySelectorAll('.ap-msg.agent').length,

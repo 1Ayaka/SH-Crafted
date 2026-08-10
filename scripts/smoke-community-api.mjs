@@ -129,6 +129,30 @@ try {
   const content = await json('/api/content');
   if (!content.payload.crafts.some((craft) => craft.id === craftId)) throw new Error('approved craft was not published');
   if (!content.payload.craft_steps.some((step) => step.craft_id === craftId)) throw new Error('approved steps were not published');
+
+  const graphSubmission = await json('/api/community/submissions', {
+    method: 'POST', cookie: visitorA,
+    body: {
+      kind: 'graph', target_node_id: 'heritage:SHIH_0001', contribution_type: 'relation',
+      statement: '该项目与自动化测试材料存在可由公开来源核对的材料使用关系。',
+      source_title: '自动化测试公开来源', source_url: 'https://example.org/graph-source',
+      related_node_type: 'material', related_node_title: '自动化测试材料', relation: 'USES_MATERIAL',
+      relation_explanation: '来源明确记录该项目制作中使用自动化测试材料，本提交用于验证关系审核闭环。',
+      contributor_name: '星图测试投稿人', contributor_contact: 'graph@example.invalid', website: '',
+    },
+  });
+  const pendingGraph = await json('/api/admin/submissions?status=pending', { cookie: adminCookie });
+  const graphRecord = pendingGraph.payload.submissions.find((item) => item.id === graphSubmission.payload.submission_id);
+  if (!graphRecord || graphRecord.kind !== 'graph' || graphRecord.contributor_contact !== 'graph@example.invalid') throw new Error('graph submission is absent from admin review');
+  const approvedGraph = await json(`/api/admin/submissions/${graphSubmission.payload.submission_id}/review`, {
+    method: 'PUT', cookie: adminCookie,
+    body: { action: 'approve', reviewer_note: '星图关系来源核对通过', revision: pendingGraph.payload.revision },
+  });
+  if (approvedGraph.payload.published_graph_node_id !== 'heritage:SHIH_0001' || !approvedGraph.payload.published_graph_edge_id) throw new Error('graph approval did not report published IDs');
+  const graphContent = await json('/api/content');
+  const graphTarget = graphContent.payload.graph_nodes.find((node) => node.id === 'heritage:SHIH_0001');
+  if (!graphTarget?.community_knowledge?.some((item) => item.submission_id === graphSubmission.payload.submission_id)) throw new Error('approved graph knowledge was not attached to target node');
+  if (!graphContent.payload.graph_edges.some((edge) => edge.id === approvedGraph.payload.published_graph_edge_id && edge.origin === 'community_review')) throw new Error('approved graph relation was not published');
   const nativeFetch = globalThis.fetch;
   globalThis.fetch = (input, options) => nativeFetch(
     typeof input === 'string' && !/^[a-z]+:/i.test(input) ? new URL(input, `${base}/`).href : input,

@@ -14,7 +14,7 @@ import { createGesturePermission } from './gesture-permission.js';
 import { createGestureHelp } from './gesture-help.js';
 import { createGestureHandOverlay } from './gesture-hand-overlay.js';
 import { createVirtualPointer } from './virtual-pointer.js';
-import { loadGestureSettings, effectiveConfig } from './gesture-settings.js';
+import { loadGestureSettings, saveGestureSettings, effectiveConfig } from './gesture-settings.js';
 
 let instance = null;
 
@@ -29,6 +29,7 @@ export function initGesture({ onVoiceStateChange } = {}) {
   const actionRegistry = createActionRegistry();
   const targetResolver = createTargetResolver({
     hitSlopPx: effectiveConfig(loadGestureSettings()).hitSlopPx,
+    threeHitSlopPx: effectiveConfig(loadGestureSettings()).threeHitSlopPx,
   });
   const threeAdapter = createThreeTargetAdapter();
   const domAdapter = createDomTargetAdapter();
@@ -45,6 +46,7 @@ export function initGesture({ onVoiceStateChange } = {}) {
   let pendingClickTarget = null;
   let longPressActive = false;
   let voiceState = 'DISABLED';
+  let toggleRequestGeneration = 0;
   const viewContexts = new Map();
   const PERMISSION_KEY = 'sh-crafted.gesture-permission-acknowledged';
   let permissionAcknowledged = false;
@@ -209,7 +211,6 @@ export function initGesture({ onVoiceStateChange } = {}) {
           pendingClickTarget = null;
           longPressActive = false;
           virtualPointer.down(resolved, event.screenX, event.screenY);
-          beginSceneDrag(resolved);
           cursor.setPinching(true);
           handOverlay.setAction('pinching');
           break;
@@ -238,9 +239,11 @@ export function initGesture({ onVoiceStateChange } = {}) {
           longPressActive = true;
           cursor.setLongPress(true);
           handOverlay.setAction('longpress');
-          // 长按是“抓住”的确认点。若目标是 Three 场景且此前尚未建立
-          // 拖拽上下文，在这里补一次 dragStart，保证长按本身可接管旋转。
-          if (!currentDragTarget) beginSceneDrag(currentPressTarget);
+          // 只有锁定在 Three 画布上的长按才能取得场景拖拽所有权。
+          // DOM 控件（尤其地图上的非遗图片）永远不会穿透旋转后方地图。
+          if (currentPressTarget?.layer === 'three_scene' && !currentDragTarget) {
+            beginSceneDrag(currentPressTarget);
+          }
           const longPressElement = interactiveElement(currentPressTarget);
           longPressElement?.classList?.add('is-gesture-longpress');
           longPressElement?.dispatchEvent?.(new CustomEvent('gesturelongpress', { bubbles: true, detail: { source: 'gesture' } }));
@@ -268,16 +271,8 @@ export function initGesture({ onVoiceStateChange } = {}) {
         }
 
         case 'air-drag-start': {
-          if (currentPressTarget?.layer === 'three_scene') {
+          if (currentPressTarget?.layer === 'three_scene' && longPressActive) {
             if (!currentDragTarget) beginSceneDrag(currentPressTarget);
-            handOverlay.setAction('dragging');
-          } else if (!currentDragTarget && threeAdapter.getActiveContext?.()) {
-            currentDragTarget = {
-              layer: 'three_canvas_fallback',
-              context: threeAdapter.getActiveContext(),
-              name: threeAdapter.getActiveContext(),
-            };
-            threeAdapter.dragStartActive();
             handOverlay.setAction('dragging');
           }
           break;
@@ -295,6 +290,8 @@ export function initGesture({ onVoiceStateChange } = {}) {
           pendingClickTarget = null;
           longPressActive = false;
           virtualPointer.down(resolved, event.screenX, event.screenY);
+          // 张掌是明确的直接操作手势，仍可立即接管 Three 画布；DOM
+          // 目标则由虚拟指针独占，不允许兜底到画布。
           beginSceneDrag(resolved);
           cursor.setPinching(true);
           handOverlay.setAction('palmpress');
@@ -425,12 +422,15 @@ export function initGesture({ onVoiceStateChange } = {}) {
       try { localStorage.setItem(PERMISSION_KEY, 'true'); } catch { /* 降级 */ }
       const firstStart = !loadGestureSettings().firstTimeCompleted;
       void controller.start().then(() => {
+        if (controller.state() === 'DISABLED') return;
+        saveGestureSettings({ enabled: true });
         cursor.setOpacity(1);
         handOverlay.showGuide();
         if (firstStart) help.show();
       }).catch(() => {});
     },
     onDecline: () => {
+      saveGestureSettings({ enabled: false });
       toggle.setState('DISABLED');
       status.setText('手势未开启；你仍可以使用鼠标、键盘或语音。');
     },
@@ -438,17 +438,21 @@ export function initGesture({ onVoiceStateChange } = {}) {
 
   toggle.mount();
   toggle.setOnToggle(async (enabled) => {
+    const requestGeneration = ++toggleRequestGeneration;
     if (enabled) {
       try {
         if (controller.state() === 'SUSPENDED') await controller.resume();
         else if (!permissionAcknowledged) permission.show();
         else await controller.start();
+        if (requestGeneration !== toggleRequestGeneration || controller.state() === 'DISABLED') return;
+        saveGestureSettings({ enabled: true });
         cursor.setOpacity(1);
         handOverlay.showGuide();
       } catch (err) {
         status.setText(err?.message || '手势暂时不可用，请检查摄像头权限。');
       }
     } else {
+      saveGestureSettings({ enabled: false });
       permission.dismiss();
       controller.stop();
       virtualPointer.cancel();

@@ -14,7 +14,7 @@ import { registerPage, unregisterPage, consumeEnter, transitionTo } from '../tra
 import { saveCraft, saveDistrict, saveSiteTexts } from '../admin.js';
 import { mountEditableModule } from '../editable.js';
 import { claimInheritor, engagementFor, inheritorButtonText, recordCraftView } from '../community.js';
-import { graphId, parseGraphId } from '../agent/graph-adapter.js';
+import { graphId, heritageDetailTarget, parseGraphId } from '../agent/graph-adapter.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -267,13 +267,8 @@ export async function exploreView(root) {
     slip?.remove();
     const panel = el('div', { class: 'slip-panel', role: 'status' }, [
       el('h4', { text: `${title} · 区域内容` }),
-      ...(crafts.length ? crafts.map((c) => el('div', {
-        class: 'slip-item',
-      }, [
-        el('span', { class: 'cn', text: c.title }),
-        c.config.districtVerified ? null : el('span', { class: 'tag tag-pending', text: '地区待核对' }),
-      ])) : [el('p', { class: 'slip-empty', text: '当前暂无接入项目' })]),
-      el('p', { class: 'slip-note', text: '点击地图中的行政区，进入地区后再选择项目' }),
+      el('p', { class: 'slip-empty', text: crafts.length ? `已接入 ${crafts.length} 项非遗资料` : '当前暂无接入项目' }),
+      el('p', { class: 'slip-note', text: crafts.length ? '点击地图标记预览项目，点击行政区进入地区' : '点击行政区仍可查看地区介绍' }),
     ]);
     panel.addEventListener('mouseenter', () => clearTimeout(slipTimer));
     panel.addEventListener('mouseleave', scheduleSlipRemove);
@@ -438,7 +433,7 @@ export async function exploreView(root) {
       el('span', { class: 'craft-anchor-visual' }, [
         cv,
         craft.config.heroFrame
-          ? el('img', { src: craftAssetUrl(craft, craft.config.heroFrame), alt: `${craft.title}代表图片`, loading: 'lazy' })
+          ? el('img', { src: craftAssetUrl(craft, craft.config.heroFrame), alt: `${craft.title}代表图片`, decoding: 'async' })
           : el('span', { class: 'craft-anchor-placeholder', text: '社区条目' }),
       ]),
       el('span', { class: 'anchor-name', text: craft.title }),
@@ -468,6 +463,66 @@ export async function exploreView(root) {
   let focusOverlay = null;
   let focusAnchors = [];   // { el, world, field }
   let focusPanel = null;
+  let overviewOverlay = null;
+  let overviewMarkers = [];
+  let overviewPreview = null;
+
+  function clearOverviewPreview() {
+    overviewPreview?.remove();
+    overviewPreview = null;
+    overviewMarkers.forEach((item) => item.el.classList.remove('is-open'));
+  }
+
+  function showOverviewPreview(nodeName, marker, crafts = nodeCrafts(nodeName)) {
+    clearOverviewPreview();
+    marker.classList.add('is-open');
+    overviewPreview = el('aside', { class: 'map-heritage-preview', 'aria-label': `${displayNodeName(nodeName)}非遗预览` }, [
+      el('button', { class: 'map-heritage-preview-close', type: 'button', text: '关闭', onclick: (event) => { event.stopPropagation(); clearOverviewPreview(); } }),
+      el('p', { class: 'map-heritage-preview-kicker', text: crafts.length === 1 ? displayNodeName(nodeName) : `${displayNodeName(nodeName)} · ${crafts.length} 项` }),
+      el('div', { class: 'map-heritage-preview-list' }, crafts.slice(0, 8).map((craft) => el('article', {}, [
+        craft.config.heroFrame
+          ? el('img', { src: craftAssetUrl(craft, craft.config.heroFrame), alt: `${craft.title}代表图片`, loading: 'lazy' })
+          : el('span', { class: 'map-heritage-preview-placeholder', text: '资料图待补充' }),
+        el('span', { text: craft.title }),
+      ]))),
+      crafts.length > 8 ? el('small', { text: `另有 ${crafts.length - 8} 项，进入地区后查看` }) : null,
+      el('button', { class: 'btn map-heritage-preview-enter', type: 'button', text: '进入地区查看', onclick: (event) => { event.stopPropagation(); enterFocus3D(nodeName); } }),
+    ]);
+    overviewPreview.addEventListener('click', (event) => event.stopPropagation());
+    overviewOverlay.appendChild(overviewPreview);
+    const markerRect = marker.getBoundingClientRect();
+    const hostRect = overviewOverlay.getBoundingClientRect();
+    const previewWidth = Math.min(330, Math.max(250, hostRect.width - 24));
+    const left = Math.max(12, Math.min(markerRect.left - hostRect.left + markerRect.width / 2 - previewWidth / 2, hostRect.width - previewWidth - 12));
+    const openBelow = markerRect.top - hostRect.top < hostRect.height * 0.44;
+    overviewPreview.style.width = `${previewWidth}px`;
+    overviewPreview.style.left = `${left}px`;
+    overviewPreview.style.top = openBelow
+      ? `${markerRect.bottom - hostRect.top + 10}px`
+      : `${Math.max(12, markerRect.top - hostRect.top - overviewPreview.offsetHeight - 10)}px`;
+  }
+
+  function mountOverviewMarkers(wrap3d) {
+    overviewOverlay = el('div', { class: 'map-heritage-marker-layer', 'aria-label': '各地区非遗数量标记' });
+    wrap3d.appendChild(overviewOverlay);
+    for (const nodeName of map3d.districtNames.filter((name) => nodeCrafts(name).length)) {
+      const crafts = nodeCrafts(nodeName);
+      crafts.forEach((craft, index) => {
+        const marker = el('button', {
+          class: 'map-heritage-marker', type: 'button',
+          'aria-label': `${displayNodeName(nodeName)} · ${craft.title}，点击预览`,
+        }, [el('span', { class: 'map-heritage-marker-icon', 'aria-hidden': 'true' })]);
+        marker.addEventListener('click', (event) => {
+          event.stopPropagation();
+          if (overviewPreview && marker.classList.contains('is-open')) clearOverviewPreview();
+          else showOverviewPreview(nodeName, marker, [craft]);
+        });
+        overviewOverlay.appendChild(marker);
+        overviewMarkers.push({ el: marker, nodeName, index, total: crafts.length });
+      });
+    }
+    overviewOverlay.addEventListener('click', (event) => { if (event.target === overviewOverlay) clearOverviewPreview(); });
+  }
 
   function exitFocus3D(silent, immediate = false) {
     activeDistrictId = null;
@@ -483,6 +538,7 @@ export async function exploreView(root) {
     focusPanel = null;
     removePanelWithMotion(closingFocusPanel, immediate);
     mapViewEl?.classList.remove('is-district-focus');
+    overviewOverlay?.removeAttribute('hidden');
     if (!silent) map3d?.exitFocus();
   }
 
@@ -500,6 +556,8 @@ export async function exploreView(root) {
     });
     explorationHistory.push(graphId('region', activeDistrictId || nodeName));
     hideSlip(); slip?.remove(); slip = null; slipFor = null;
+    clearOverviewPreview();
+    overviewOverlay?.setAttribute('hidden', '');
     map3d.focusDistrict(nodeName);
     setContributionDistrict(districtIds.length === 1 ? districtIds[0] : '');
     mapViewEl.classList.add('is-district-focus');
@@ -524,7 +582,9 @@ export async function exploreView(root) {
       focusAnchors.push({
         el: cluster.el,
         field: cluster.field,
-        world: map3d.districtAnchorWorld(nodeName, i, visibleCrafts.length),
+        nodeName,
+        index: i,
+        total: visibleCrafts.length,
       });
     });
     if (crafts.length > visibleCrafts.length) focusOverlay.appendChild(el('p', {
@@ -559,11 +619,21 @@ export async function exploreView(root) {
           // 锚点的底缘贴住区块顶面；卡片本身向上展开，避免悬浮在地图上方。
           const surfaceOffset = Math.max(4, Math.min(8, wrap3d.clientHeight * 0.012));
           for (const a of focusAnchors) {
-            if (!a.world) continue;
-            const p = project(a.world);
+            const world = map3d.districtAnchorWorld(a.nodeName, a.index, a.total);
+            if (!world) continue;
+            const p = project(world);
             a.el.style.left = `${p.x}px`;
             a.el.style.top = `${p.y + surfaceOffset}px`;
             a.el.style.opacity = p.behind ? '0' : '1';
+          }
+          for (const marker of overviewMarkers) {
+            const world = map3d.districtAnchorWorld(marker.nodeName, marker.index, marker.total);
+            if (!world) continue;
+            const p = project(world);
+            marker.el.style.left = `${p.x}px`;
+            marker.el.style.top = `${p.y + surfaceOffset}px`;
+            marker.el.style.opacity = p.behind ? '0' : '1';
+            marker.el.style.pointerEvents = p.behind ? 'none' : '';
           }
         },
       });
@@ -573,6 +643,7 @@ export async function exploreView(root) {
         return;
       }
       map3d = instance;
+      mountOverviewMarkers(wrap3d);
       if (mode !== 'map') map3d.setActive(false);
       registerGestureMap3D();
       wrap3d.querySelector('.map3d-loading')?.remove();
@@ -638,6 +709,20 @@ export async function exploreView(root) {
           dots.appendChild(c);
         }
         g.appendChild(dots);
+        crafts.forEach((craft, index) => {
+          const markerImage = document.createElementNS(SVG_NS, 'image');
+          const columns = Math.min(crafts.length, 4);
+          const column = index % columns;
+          const row = Math.floor(index / columns);
+          markerImage.setAttribute('href', 'assets/地图,图钉,标记,标点.png');
+          markerImage.setAttribute('x', d.x + d.w / 2 + (column - (columns - 1) / 2) * 3.1 - 1.8);
+          markerImage.setAttribute('y', d.y + 3.2 + row * 3.4);
+          markerImage.setAttribute('width', '3.6');
+          markerImage.setAttribute('height', '3.6');
+          markerImage.setAttribute('class', 'flat-heritage-marker');
+          markerImage.setAttribute('aria-label', craft.title);
+          g.appendChild(markerImage);
+        });
       }
 
       const label = document.createElementNS(SVG_NS, 'text');
@@ -938,10 +1023,10 @@ export async function exploreView(root) {
     async openNode({ node_id }) {
       const parsed = parseGraphId(node_id);
       if (parsed?.type === 'heritage') {
-        const craft = craftRecords.find((item) => item.craftId === parsed.rawId);
-        if (!craft) throw Object.assign(new Error('没有找到这个项目。'), { code: 'node_not_found' });
-        selectedCraft = craft;
-        transitionTo(`#/craft/${encodeURIComponent(craft.craftId)}`);
+        const craftId = heritageDetailTarget(node_id);
+        if (!craftId) { transitionTo(`#/graph/${encodeURIComponent(node_id)}`); return { ok: true, node_id }; }
+        selectedCraft = craftRecords.find((item) => item.craftId === craftId) || null;
+        transitionTo(`#/craft/${encodeURIComponent(craftId)}`);
         return { ok: true, node_id };
       }
       if (parsed?.type === 'region') return this.openRegion({ region_id: node_id });

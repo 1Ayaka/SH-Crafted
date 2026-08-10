@@ -67,6 +67,7 @@ function craftNode(craft) {
   return {
     id: graphId('heritage', craft.craftId),
     raw_id: craft.craftId,
+    detail_available: true,
     type: 'heritage',
     title: craft.title,
     aliases: [craft.title, craft.config?.craftName].filter(Boolean),
@@ -126,7 +127,24 @@ export function graphNodes() {
     images: relation.images || [],
     public: true,
   })));
-  cachedNodes = [...persisted, ...crafts, ...districts, ...graphRelations, ...GRAPH_SEED_NODES, ...CURATED_GRAPH_NODES].filter((node) => {
+  const detailNodes = new Map(crafts.map((node) => [node.id, node]));
+  // Some legacy/curated graph seeds use a different ID for the same named
+  // heritage project. Resolve those aliases to the canonical craft package
+  // so exploration links can still open the detail page.
+  const detailNodesByTitle = new Map(crafts
+    .filter((node) => node.type === 'heritage' && node.title)
+    .map((node) => [String(node.title).trim(), node]));
+  cachedNodes = [...persisted, ...crafts, ...districts, ...graphRelations, ...GRAPH_SEED_NODES, ...CURATED_GRAPH_NODES]
+    .map((node) => {
+      const detail = detailNodes.get(node.id)
+        || (node.type === 'heritage' && detailNodesByTitle.get(String(node.title || '').trim()));
+      return detail ? {
+        ...node,
+        raw_id: detail.raw_id,
+        detail_available: true,
+        canonical_id: detail.id,
+      } : node;
+    }).filter((node) => {
     if (seen.has(node.id)) return false;
     const titleKey = node.type === 'heritage' ? String(node.title || '').trim() : '';
     if (titleKey && seenHeritageTitles.has(titleKey)) return false;
@@ -203,7 +221,13 @@ export function searchGraph(query, { types = [...TYPE_SET], limit = 8 } = {}) {
       summary: node.summary,
       score: Number(score.toFixed(3)),
       raw_id: node.raw_id,
+      detail_available: Boolean(node.detail_available),
     }));
+}
+
+export function heritageDetailTarget(id) {
+  const node = getGraphNode(id);
+  return node?.type === 'heritage' && node.detail_available && node.raw_id ? node.raw_id : null;
 }
 
 export function relationLabel(relation) {

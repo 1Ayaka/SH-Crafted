@@ -34,8 +34,16 @@ export function createCameraManager({ onFrame, onError } = {}) {
     };
 
     try {
-      stream = await navigator.mediaDevices.getUserMedia(videoConstraints);
+      const acquiredStream = await navigator.mediaDevices.getUserMedia(videoConstraints);
+      // destroy()/stop() may run while the permission prompt is still open.
+      // Never attach a stream that arrived after the user switched gestures off.
+      if (destroyed) {
+        acquiredStream?.getTracks?.().forEach((track) => track.stop());
+        throw new Error('camera_manager_destroyed');
+      }
+      stream = acquiredStream;
     } catch (error) {
+      if (destroyed || error?.message === 'camera_manager_destroyed') throw error;
       const name = error.name || 'UnknownError';
       onError?.({ code: name, message: error.message || '摄像头访问失败', recoverable: name === 'NotAllowedError' });
       throw error;

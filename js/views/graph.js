@@ -5,12 +5,13 @@ import { transitionTo } from '../transitions.js';
 import { createHeritageGraphOverviewState, createHeritageGraphState, openGraphBranch, selectGraphNode } from '../heritage-graph.js';
 import { mountHeritageGraph } from '../heritage-graph-3d.js';
 import { isContentReviewed } from '../data.js';
+import { openGraphContribution } from '../graph-contribution.js';
 import {
   getGraphNode,
   graphId,
   graphNodes,
   heritageForGraphTarget,
-  parseGraphId,
+  heritageDetailTarget,
 } from '../agent/graph-adapter.js';
 
 const TYPE_LABELS = { heritage: '非遗项目', region: '地区', tradition: '传统', material: '材料' };
@@ -74,7 +75,31 @@ export async function graphView(root, params = {}) {
     zoomControls,
     el('p', { class: 'heritage-graph-hint', text: state.mode === 'overview' ? '拖拽浏览 · 点击非遗节点进入具体探索' : '拖拽旋转 · 滚轮或按钮缩放 · 点击星点查看资料' }),
   ]);
-  const wrap = el('section', { class: 'view graph-page' }, [topNav('graph'), shell]);
+  const navigation = topNav('graph');
+  navigation.id = 'graph-page-navigation';
+  const navigationToggle = el('button', {
+    class: 'graph-nav-fold-toggle', type: 'button', text: '菜单',
+    'aria-controls': navigation.id, 'aria-expanded': 'false',
+  });
+  const setNavigationExpanded = (expanded) => {
+    const next = Boolean(expanded);
+    navigation.classList.toggle('is-expanded', next);
+    const page = navigation.closest('.graph-page');
+    page?.classList.toggle('is-nav-expanded', next);
+    if (next) page?.style.setProperty('--graph-nav-height', `${navigation.getBoundingClientRect().height}px`);
+    navigationToggle.setAttribute('aria-expanded', String(next));
+    navigationToggle.textContent = next ? '收起' : '菜单';
+    [...navigation.children].forEach((child) => {
+      if (child === navigationToggle) return;
+      child.inert = !next;
+      child.setAttribute('aria-hidden', String(!next));
+    });
+  };
+  navigationToggle.addEventListener('click', () => setNavigationExpanded(!navigation.classList.contains('is-expanded')));
+  navigation.appendChild(navigationToggle);
+  setNavigationExpanded(false);
+  shell.addEventListener('pointerdown', () => setNavigationExpanded(false));
+  const wrap = el('section', { class: 'view graph-page' }, [navigation, shell]);
   root.appendChild(wrap);
 
   function renderTrail(context) {
@@ -98,6 +123,14 @@ export async function graphView(root, params = {}) {
       selected.images?.length ? el('div', { class: 'heritage-graph-image-gallery', 'aria-label': `${selected.title}图片` }, selected.images.slice(0, 8).map((image) => el('figure', { class: 'heritage-graph-image-card' }, [el('img', { src: image.image_url || image.url, alt: image.title || selected.title, loading: 'lazy' }), image.title || image.description ? el('figcaption', { text: image.title || image.description }) : null]))) : null,
       el('p', { class: selected.summary ? '' : 'is-muted', text: selected.summary || '该节点的详细摘要与来源正在整理中。' }),
     );
+    if (selected.community_knowledge?.length) info.appendChild(el('section', { class: 'heritage-graph-community-knowledge' }, [
+      el('h4', { text: '社区审核补充' }),
+      ...selected.community_knowledge.slice(-4).reverse().map((item) => el('article', {}, [
+        el('p', { text: item.statement }),
+        item.source_url ? el('a', { href: item.source_url, target: '_blank', rel: 'noopener noreferrer', text: `来源：${item.source_title || '打开资料'}` }) : null,
+        el('small', { text: '社区提交 · 管理员审核通过' }),
+      ])),
+    ]));
     if (context.previous_node && context.previous_node.id !== selected.id) {
       info.appendChild(el('div', { class: 'heritage-graph-relationship-note' }, [
         el('strong', { text: `与上一节点“${context.previous_node.title}”的联系` }),
@@ -108,10 +141,15 @@ export async function graphView(root, params = {}) {
     if (context.mode === 'branch' && selected.type === 'heritage' && selected.id !== context.current_root?.id) {
       info.appendChild(el('button', { class: 'btn btn-primary heritage-graph-root-button', type: 'button', text: '以此项目继续探索', onclick: () => { explorer.setRoot(selected); renderUI(); } }));
     }
-    if (selected.type === 'heritage') info.appendChild(el('a', {
+    const detailCraftId = heritageDetailTarget(selected.id);
+    if (detailCraftId) info.appendChild(el('a', {
       class: 'btn-ghost heritage-graph-back-button',
-      href: `#/craft/${encodeURIComponent(parseGraphId(selected.id).rawId)}`,
+      href: `#/craft/${encodeURIComponent(detailCraftId)}`,
       text: '打开项目详情',
+    }));
+    info.appendChild(el('button', {
+      class: 'btn-ghost heritage-graph-contribute-button', type: 'button', text: '补充这个节点',
+      onclick: () => openGraphContribution(selected),
     }));
     const visible = context.mode === 'branch' ? context.visible_nodes : context.current_root ? [context.current_root] : [];
     if (visible.length) {
@@ -171,7 +209,12 @@ export async function graphView(root, params = {}) {
     async openNode({ node_id }) { location.hash = `#/graph/${encodeURIComponent(node_id)}`; return { ok: true, node_id }; },
     async setRootNode({ node_id }) { const node = getGraphNode(node_id); const result = explorer.setRoot(node); renderUI(); return { ok: result.ok, node_id }; },
     async expandBranch({ relation }) { const result = explorer.branch(relation); renderUI(); return result.ok ? { ok: true } : { ok: true, message: '当前资料中没有找到这条关系。' }; },
-    async openHeritageDetail({ heritage_id }) { const parsed = parseGraphId(heritage_id); transitionTo(`#/craft/${encodeURIComponent(parsed.rawId)}`); return { ok: true }; },
+    async openHeritageDetail({ heritage_id }) {
+      const craftId = heritageDetailTarget(heritage_id);
+      if (!craftId) return { ok: false, error: { code: 'node_not_found', message: '这个节点暂时没有对应的非遗详情页。' } };
+      transitionTo(`#/craft/${encodeURIComponent(craftId)}`);
+      return { ok: true };
+    },
     async openRegion({ region_id }) { return this.openNode({ node_id: region_id }); },
     async goBack() { const result = explorer.goBack(); if (!result.ok) transitionTo('#/explore'); else renderUI(); return { ok: true }; },
     async returnToRoot() { explorer.returnRoot(); renderUI(); return { ok: true }; },
@@ -199,7 +242,15 @@ export async function graphView(root, params = {}) {
   const onGestureReady = () => registerGesture();
   document.addEventListener('sh-crafted:gesture-ready', onGestureReady);
 
-  const onKey = (event) => { if (event.key === 'Escape') void agentHost.goBack(); };
+  const onKey = (event) => {
+    if (event.key !== 'Escape') return;
+    if (navigation.classList.contains('is-expanded')) {
+      setNavigationExpanded(false);
+      navigationToggle.focus();
+      return;
+    }
+    void agentHost.goBack();
+  };
   document.addEventListener('keydown', onKey);
   return {
     cleanup() {

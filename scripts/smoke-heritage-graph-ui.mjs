@@ -252,8 +252,35 @@ try {
     selectedTitle: document.querySelector('.graph-page .heritage-graph-info h3')?.textContent || '',
     logoHref: document.querySelector('.graph-page .topnav .brand')?.getAttribute('href') || '',
     graphNav: Boolean(document.querySelector('.graph-page .graph-nav-link.active')),
+    navCollapsed: Boolean(document.querySelector('.graph-page > .topnav:not(.is-expanded)')),
+    navTransform: document.querySelector('.graph-page > .topnav') ? getComputedStyle(document.querySelector('.graph-page > .topnav')).transform : '',
+    navToggleVisible: Boolean(document.querySelector('.graph-nav-fold-toggle')),
+    shellTop: document.querySelector('.heritage-graph-page-shell') ? getComputedStyle(document.querySelector('.heritage-graph-page-shell')).top : '',
     keyboardNodes: document.querySelectorAll('.graph-page .heritage-graph-keyboard-list button').length,
   }))()`);
+  const contributionForm = await evaluate(`(() => {
+    const trigger = document.querySelector('.heritage-graph-contribute-button');
+    trigger?.click();
+    const form = document.querySelector('.graph-contribution-form');
+    const result = {
+      trigger: Boolean(trigger), form: Boolean(form),
+      targetNamed: form?.textContent.includes('牙雕与篾丝编织传统') || false,
+      types: form?.querySelectorAll('[name="contribution_type"] option').length || 0,
+      statement: Boolean(form?.querySelector('[name="statement"][minlength="20"]')),
+      source: Boolean(form?.querySelector('[name="source_title"][required]') && form?.querySelector('[name="source_url"][required]')),
+      consent: Boolean(form?.querySelector('.community-consent input[required]')),
+    };
+    document.querySelector('.modal .m-close')?.click();
+    return result;
+  })()`);
+  const navigationFold = await evaluate(`(() => {
+    const navigation = document.querySelector('.graph-page > .topnav');
+    const toggle = document.querySelector('.graph-nav-fold-toggle');
+    toggle?.click();
+    const expanded = navigation?.classList.contains('is-expanded') && toggle?.getAttribute('aria-expanded') === 'true';
+    toggle?.click();
+    return { expanded, collapsedAgain: !navigation?.classList.contains('is-expanded') && toggle?.getAttribute('aria-expanded') === 'false' };
+  })()`);
   const gestureOverlay = await evaluate(`(async () => {
     const { createGestureHandOverlay } = await import('/js/gesture/gesture-hand-overlay.js');
     const overlay = createGestureHandOverlay();
@@ -309,6 +336,8 @@ try {
   })()`);
   standalone.browserErrors = browserErrors;
   const errors = [];
+  if (!standalone.navCollapsed || standalone.navTransform === 'none' || !standalone.navToggleVisible || standalone.shellTop !== '0px') errors.push('独立星图顶部菜单未默认向上折叠或星图未全屏铺开');
+  if (!navigationFold.expanded || !navigationFold.collapsedAgain) errors.push('独立星图顶部菜单无法可靠展开并再次收起');
   if (!root.canvas || root.ringCount < 6 || root.nodeCount < 4) errors.push('根星图、六层天环或三门户未完成渲染');
   if (root.nodeMaterial !== 'white-translucent') errors.push('星图节点未使用纯白半透明材质');
   if (root.lineLengthMode !== 'stable-id-random') errors.push('星图连线未使用稳定随机长度布局');
@@ -319,6 +348,7 @@ try {
   if (!standalone.page || !standalone.canvas || standalone.selectedTitle !== '牙雕与篾丝编织传统') errors.push('独立星图路由未定位到指定稳定节点');
   if (standalone.logoHref !== '#/' || !standalone.graphNav) errors.push('Logo 初始页路由或知识星图导航入口不正确');
   if (standalone.keyboardNodes < 1) errors.push('独立星图没有提供键盘等价节点入口');
+  if (!contributionForm.trigger || !contributionForm.form || !contributionForm.targetNamed || contributionForm.types !== 4 || !contributionForm.statement || !contributionForm.source || !contributionForm.consent) errors.push('知识星图节点共建入口或规范化表单不完整');
   if (!gestureOverlay.canvasVisible || gestureOverlay.pointState !== '持续按住 · 长按' || !gestureOverlay.guideExists) errors.push('虚拟手骨架或动作引导未正确挂载');
   if (!virtualPointer.canvasTested || !['pointermove', 'pointerdown', 'pointerup', 'mousemove', 'mousedown', 'mouseup'].every((type) => virtualPointer.events.includes(type))) errors.push('虚拟鼠标没有派发完整事件链');
   if (!virtualPointer.expandedButtonHit) errors.push('按钮手势扩展命中区未生效');
@@ -327,7 +357,7 @@ try {
   if (!mapGesture.expected || mapGesture.hovered !== mapGesture.expected || mapGesture.selected !== mapGesture.expected) errors.push('地图手势没有命中、悬停或选择同一地区');
   if (!mapGesture.directDrag || !(mapGesture.dragDistance > 0.01)) errors.push('张掌直接拖拽没有改变地图相机位置');
   if (!modelGesture.changed || !modelGesture.released) errors.push('张掌直接拖拽没有旋转或释放完成品模型');
-  console.log(JSON.stringify({ root, hoveredNode, graphDragDistance, branchNodeCount, disposed, standalone, gestureWorker, mapGesture, modelGesture, gestureOverlay, virtualPointer, screenshotPath, errors }, null, 2));
+  console.log(JSON.stringify({ root, hoveredNode, graphDragDistance, branchNodeCount, disposed, standalone, contributionForm, navigationFold, gestureWorker, mapGesture, modelGesture, gestureOverlay, virtualPointer, screenshotPath, errors }, null, 2));
   if (errors.length) process.exitCode = 1;
 } finally {
   try { ws?.close(); } catch { /* Ignore close errors. */ }

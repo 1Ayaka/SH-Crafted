@@ -7,6 +7,7 @@ import { createCoordinateMapper } from '../js/gesture/coordinate-mapper.js';
 import { createInputCoordinator } from '../js/interaction/input-coordinator.js';
 import { createDirectDragSession } from '../js/gesture/direct-drag-session.js';
 import { createThreeTargetAdapter } from '../js/interaction/three-target-adapter.js';
+import { createCameraManager } from '../js/gesture/camera-manager.js';
 
 const events = [];
 const classifier = createGestureClassifier({ onGesture: (event) => events.push(event) });
@@ -67,43 +68,45 @@ assert.ok(depthPinchEvents.some((event) => event.type === 'pinch' && event.phase
 assert.ok(depthPinchEvents.some((event) => event.type === 'pinch' && event.phase === 'end'), '捏合松开应结束原始捏合周期');
 assert.ok(depthPinchEvents.some((event) => event.type === 'pinch' && event.manipulationCoords), '捏合事件应包含稳定操作锚点');
 
-const pointerClick = createPointerGestureStateMachine({ dragThresholdPx: 10, stationarySlopPx: 8, longPressMs: 560, smoothing: 1 });
+const pointerClick = createPointerGestureStateMachine({ clickSlopPx: 34, holdSlopPx: 42, longPressMs: 520, smoothing: 1 });
 pointerClick.start({ x: 100, y: 100 }, 0);
-pointerClick.move({ x: 105, y: 104 }, 120);
-const clickOutcome = pointerClick.end({ x: 106, y: 105 }, 180);
-assert.equal(clickOutcome.type, 'click', '阈值内的自然手抖不应取消点击');
+pointerClick.move({ x: 121, y: 112 }, 120);
+const clickOutcome = pointerClick.end({ x: 126, y: 116 }, 180);
+assert.equal(clickOutcome.type, 'click', '摄像头放大后的自然手抖不应取消点击');
 assert.equal(clickOutcome.wasClick, true);
 
-const pointerDrag = createPointerGestureStateMachine({ dragThresholdPx: 10, stationarySlopPx: 8, longPressMs: 560, smoothing: 1 });
-pointerDrag.start({ x: 100, y: 100 }, 0);
-const dragStartEvents = pointerDrag.move({ x: 112, y: 100 }, 120);
-assert.ok(dragStartEvents.some((event) => event.type === 'drag-start'), '超过像素阈值应立即进入拖拽');
-const dragMoveEvents = pointerDrag.move({ x: 124, y: 106 }, 150);
-assert.ok(dragMoveEvents.some((event) => event.type === 'drag-move' && event.dx === 12 && event.dy === 6), '拖拽应输出逐帧像素增量');
-const dragOutcome = pointerDrag.end({ x: 124, y: 106 }, 180);
-assert.equal(dragOutcome.type, 'drag-end');
-assert.ok(dragOutcome.events.some((event) => event.type === 'drag-end'), '释放应输出拖拽结束事件');
+const prematureSceneDrag = createPointerGestureStateMachine({ clickSlopPx: 34, holdSlopPx: 42, longPressMs: 520, smoothing: 1 });
+prematureSceneDrag.start({ x: 100, y: 100 }, 0);
+const prematureMove = prematureSceneDrag.move({ x: 138, y: 100 }, 120);
+assert.ok(!prematureMove.some((event) => event.type === 'drag-start'), '长按前的移动不得穿透为场景拖拽');
+const canceledOutcome = prematureSceneDrag.end({ x: 138, y: 100 }, 180);
+assert.equal(canceledOutcome.type, 'cancel', '明显移动过的短按应安全取消而不是误点或旋转');
 
-const pointerHoldDrag = createPointerGestureStateMachine({ dragThresholdPx: 10, stationarySlopPx: 8, longPressMs: 560, smoothing: 1 });
+const pointerHoldDrag = createPointerGestureStateMachine({ clickSlopPx: 34, holdSlopPx: 42, longPressMs: 520, postHoldDragThresholdPx: 6, smoothing: 1 });
 pointerHoldDrag.start({ x: 100, y: 100 }, 0);
-const holdStart = pointerHoldDrag.move({ x: 104, y: 103 }, 600);
+const holdStart = pointerHoldDrag.move({ x: 124, y: 112 }, 540);
 assert.ok(holdStart.some((event) => event.type === 'long-press-start'));
-const holdToDrag = pointerHoldDrag.move({ x: 115, y: 103 }, 650);
-assert.ok(holdToDrag.some((event) => event.type === 'long-press-end'));
+const holdToDrag = pointerHoldDrag.move({ x: 132, y: 112 }, 580);
 assert.ok(holdToDrag.some((event) => event.type === 'drag-start'));
+assert.ok(holdToDrag.some((event) => event.type === 'drag-move'), '长按确认后的首段移动不得丢失');
+assert.ok(!holdToDrag.some((event) => event.type === 'long-press-end'), '开始旋转时应继续持有长按所有权');
 assert.equal(pointerHoldDrag.state(), POINTER_GESTURE_STATES.DRAGGING);
+const dragOutcome = pointerHoldDrag.end({ x: 140, y: 118 }, 620);
+assert.equal(dragOutcome.type, 'drag-end');
+assert.ok(dragOutcome.events.some((event) => event.type === 'drag-end'));
+assert.ok(dragOutcome.events.some((event) => event.type === 'long-press-end'), '释放时应一次性结束拖拽和长按');
 
-const movingPointer = createPointerGestureStateMachine({ dragThresholdPx: 10, stationarySlopPx: 8, longPressMs: 560, smoothing: 1 });
+const movingPointer = createPointerGestureStateMachine({ clickSlopPx: 34, holdSlopPx: 42, longPressMs: 520, smoothing: 1 });
 movingPointer.start({ x: 100, y: 100 }, 0);
-const movingEvents = movingPointer.move({ x: 111, y: 100 }, 300);
-assert.ok(movingEvents.some((event) => event.type === 'drag-start'), '移动超过 10px 应优先进入拖拽');
-assert.ok(!movingEvents.some((event) => event.type === 'long-press-start'), '已移动的按下状态不得误报长按');
+const movingEvents = movingPointer.move({ x: 145, y: 100 }, 300);
+assert.ok(!movingEvents.some((event) => event.type === 'drag-start'), '未长按时不应旋转场景');
+assert.ok(!movingEvents.some((event) => event.type === 'long-press-start'));
 
-const nonStationaryHold = createPointerGestureStateMachine({ dragThresholdPx: 10, stationarySlopPx: 8, longPressMs: 560, smoothing: 1 });
+const nonStationaryHold = createPointerGestureStateMachine({ clickSlopPx: 34, holdSlopPx: 42, longPressMs: 520, smoothing: 1 });
 nonStationaryHold.start({ x: 100, y: 100 }, 0);
-nonStationaryHold.move({ x: 109, y: 100 }, 180);
+nonStationaryHold.move({ x: 146, y: 100 }, 180);
 nonStationaryHold.move({ x: 100, y: 100 }, 600);
-assert.equal(nonStationaryHold.state(), POINTER_GESTURE_STATES.PRESSED, '超过静止窗口位移后不应误触发长按');
+assert.equal(nonStationaryHold.state(), POINTER_GESTURE_STATES.PRESSED, '离开长按容差区后即使回到原点也不应误触发长按');
 
 const coordinator = createInputCoordinator();
 assert.equal(coordinator.isGestureTypeAllowed('pinch-start'), true);
@@ -182,6 +185,23 @@ assert.ok(edgeMapper.landmarkToScreen(0.1, 0.1).x <= 1, '摄像头安全区左�
 assert.ok(edgeMapper.landmarkToScreen(0.9, 0.9).x >= 999, '摄像头安全区右边缘应映射到屏幕右边缘');
 assert.ok(Math.abs(edgeMapper.landmarkToScreen(0.5, 0.5).x - 500) < 1, '摄像头中心映射应保持稳定');
 
+const offsetMapper = createCoordinateMapper({
+  viewportWidth: 1000,
+  viewportHeight: 800,
+  videoWidth: 1000,
+  videoHeight: 800,
+  mirrored: false,
+  edgeInsetX: 0,
+  edgeInsetY: 0,
+  screenOffsetXRatio: -0.018,
+  screenOffsetYRatio: -0.022,
+});
+assert.deepEqual(
+  offsetMapper.landmarkToScreen(0.5, 0.5),
+  { x: 482, y: 382.4 },
+  '最终手势锚点应按视口比例轻微左移、上移',
+);
+
 const machine = createGestureStateMachine();
 for (const state of [
   GESTURE_STATES.REQUESTING_PERMISSION,
@@ -204,6 +224,28 @@ globalThis.document = {
   querySelector: () => null,
   elementFromPoint: () => null,
 };
+
+// If the user switches gestures off while the browser permission prompt is
+// still pending, a late stream must be stopped instead of reopening gestures.
+let resolvePendingMedia;
+let lateTrackStopped = false;
+Object.defineProperty(globalThis, 'navigator', {
+  configurable: true,
+  value: {
+    mediaDevices: {
+      getUserMedia: () => new Promise((resolve) => { resolvePendingMedia = resolve; }),
+    },
+  },
+});
+const pendingCamera = createCameraManager();
+const pendingCameraStart = pendingCamera.start();
+pendingCamera.destroy();
+resolvePendingMedia({
+  getTracks: () => [{ stop: () => { lateTrackStopped = true; } }],
+});
+await assert.rejects(pendingCameraStart, /camera_manager_destroyed/);
+assert.equal(lateTrackStopped, true, '关闭后才返回的摄像头流必须立即停止');
+
 const { createTargetResolver } = await import('../js/interaction/target-resolver.js');
 const resolver = createTargetResolver();
 const mesh = { uuid: 'mesh-1', userData: { node: { id: 'heritage:test' } } };

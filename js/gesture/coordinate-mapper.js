@@ -9,6 +9,8 @@ export function createCoordinateMapper(options = {}) {
   let mirrored = options.mirrored !== undefined ? options.mirrored : true;
   let edgeInsetX = Math.max(0, Math.min(0.24, Number(options.edgeInsetX ?? 0.10)));
   let edgeInsetY = Math.max(0, Math.min(0.24, Number(options.edgeInsetY ?? 0.10)));
+  let screenOffsetXRatio = Math.max(-0.12, Math.min(0.12, Number(options.screenOffsetXRatio ?? 0)));
+  let screenOffsetYRatio = Math.max(-0.12, Math.min(0.12, Number(options.screenOffsetYRatio ?? 0)));
 
   const api = {
     // 更新视口尺寸（resize 时调用）
@@ -31,6 +33,11 @@ export function createCoordinateMapper(options = {}) {
     setEdgeInsets(x, y = x) {
       edgeInsetX = Math.max(0, Math.min(0.24, Number(x ?? edgeInsetX)));
       edgeInsetY = Math.max(0, Math.min(0.24, Number(y ?? edgeInsetY)));
+    },
+
+    setScreenOffset(xRatio, yRatio = xRatio) {
+      screenOffsetXRatio = Math.max(-0.12, Math.min(0.12, Number(xRatio ?? screenOffsetXRatio)));
+      screenOffsetYRatio = Math.max(-0.12, Math.min(0.12, Number(yRatio ?? screenOffsetYRatio)));
     },
 
     // 设置/清除校准数据
@@ -99,6 +106,10 @@ export function createCoordinateMapper(options = {}) {
         y = ((y / viewportHeight - edgeInsetY) / usable) * viewportHeight;
       }
 
+      // 最终视觉锚点微调使用视口比例，保证不同分辨率下体感一致。
+      x += viewportWidth * screenOffsetXRatio;
+      y += viewportHeight * screenOffsetYRatio;
+
       // Clamp
       x = Math.max(0, Math.min(viewportWidth, x));
       y = Math.max(0, Math.min(viewportHeight, y));
@@ -130,7 +141,10 @@ export function createCoordinateMapper(options = {}) {
 
     // 获取当前配置（调试用）
     _debug() {
-      return { viewportWidth, viewportHeight, videoWidth, videoHeight, mirrored, calibration, edgeInsetX, edgeInsetY };
+      return {
+        viewportWidth, viewportHeight, videoWidth, videoHeight, mirrored, calibration,
+        edgeInsetX, edgeInsetY, screenOffsetXRatio, screenOffsetYRatio,
+      };
     },
   };
 

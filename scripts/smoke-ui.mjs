@@ -187,6 +187,17 @@ try {
         !document.querySelector('.wb-bg.show')
         && !detailBackground?.classList.contains('dimmed')
       ),
+      stepImagePanel: Boolean(document.querySelector('.wb-step-image')),
+      stepImagePlaceholder: document.querySelector('.wb-step-image-media')?.textContent.includes('待补充') || false,
+      stepImageBelowActions: (() => {
+        const actions = document.querySelector('.action-palette')?.getBoundingClientRect();
+        const image = document.querySelector('.wb-step-image')?.getBoundingClientRect();
+        return Boolean(actions && image && image.top >= actions.bottom - 1);
+      })(),
+      stepImageFlat: (() => {
+        const image = document.querySelector('.wb-step-image')?.getBoundingClientRect();
+        return Boolean(image && image.width > image.height);
+      })(),
     };
   })()`);
   await wait(850);
@@ -352,7 +363,7 @@ try {
   }))()`);
   await screenshot(screenshots.complete);
 
-  await evaluate("document.querySelector('.heritage-graph-entry')?.click()");
+  await evaluate("(document.querySelector('.heritage-graph-entry') || document.querySelector('.wb-complete .pm-stage, .wb-complete .pz-wrap'))?.click()");
   await wait(1800);
   const graph = await evaluate(`(() => {
     const canvas = document.querySelector('.heritage-graph-canvas');
@@ -383,7 +394,7 @@ try {
     await evaluate("document.querySelector('.wb-idle .pm-load-button')?.click()");
     await wait(5200);
     modelCoverage[craftId] = await evaluate(`(() => {
-      const active = document.querySelector('#app > .route-mount');
+      const active = document.querySelector('#app');
       return ({
       canvas: Boolean(active?.querySelector('.wb-idle .pm-canvas')),
       loading: Boolean(active?.querySelector('.wb-idle .pm-loading')),
@@ -436,10 +447,10 @@ try {
       '闵行区': 'minhang', '青浦区': 'qingpu',
     };
     const occupied = new Set(allCrafts().map((craft) => craft.config.districtId));
-    for (let row = 0; row < 11; row += 1) {
-      for (let col = 0; col < 17; col += 1) {
-        const x = rect.left + rect.width * (0.2 + col / 16 * 0.64);
-        const y = rect.top + rect.height * (0.22 + row / 10 * 0.66);
+    for (let row = 0; row < 21; row += 1) {
+      for (let col = 0; col < 31; col += 1) {
+        const x = rect.left + rect.width * (0.06 + col / 30 * 0.88);
+        const y = rect.top + rect.height * (0.08 + row / 20 * 0.84);
         const ndcX = ((x - rect.left) / rect.width) * 2 - 1;
         const ndcY = -((y - rect.top) / rect.height) * 2 + 1;
         const target = system.threeAdapter.raycast('map3d', ndcX, ndcY);
@@ -448,13 +459,14 @@ try {
         if (target && districtId && !occupied.has(districtId)) {
           system.threeAdapter.hover('map3d', target.group, target.mesh);
           await new Promise((resolve) => setTimeout(resolve, 80));
-          return { x, y, title };
+          system.threeAdapter.click('map3d', target.group, target.mesh);
+          return { x, y, title, clicked: true };
         }
       }
     }
     return null;
   })()`);
-  if (noProjectHit) {
+  if (noProjectHit && !noProjectHit.clicked) {
     await evaluate(`(() => {
       const canvas = document.querySelector('.map3d-canvas');
       canvas?.dispatchEvent(new MouseEvent('click', {
@@ -592,7 +604,7 @@ try {
   }
   if (mapOverview.particleStyle !== 'removed') errors.push('地图页粒子未移除');
   if (mapOverview.edgeStyle !== 'subtle-jade-mineral') errors.push('行政区边缘线未切换为淡玉色样式');
-  if (mapOverview.waterLayer !== 'removed') errors.push('地图水面仍未移除');
+  if (mapOverview.waterLayer !== 'subtle-flowing-ink-sea') errors.push('地图水墨海面层未生效');
   if (!mapOverview.districtCount || mapOverview.clickableDistrictCount !== mapOverview.districtCount) errors.push('仍有行政区无法点击');
   if (!mapFocus.noProjectHit || !mapFocus.panelVisible || !mapFocus.zeroProjectPanel || !mapFocus.focusClass) errors.push('无项目行政区无法通过真实地图交互进入');
   if (mapFocus.districtPanelAnimation !== 'districtStoryIn') errors.push('地区介绍面板未使用滑入动画');
@@ -600,7 +612,7 @@ try {
   if (!mapFocus.focusScaleApplied) errors.push('行政区聚焦缩放样式未生效');
   if (!mapFocus.inheritButtonCentered) errors.push('成为传承人按钮未居中');
   if (!homeParticles.visible || !homeParticles.ready || homeParticles.spriteCount < 12 || homeParticles.fieldType !== 'lotus-sprites' || !homeParticles.assetKinds.includes('leaf') || !homeParticles.assetKinds.includes('flower')) errors.push('首页荷花荷叶精灵未完成构建');
-  if (homeParticles.flowerCount < 2 || homeParticles.flowerCount > 3 || homeParticles.flowerCount + homeParticles.leafCount !== homeParticles.spriteCount) errors.push('首页荷花数量未限制为 2—3 朵，或其余精灵未全部使用荷叶');
+  if (homeParticles.flowerCount !== 1 || homeParticles.flowerCount + homeParticles.leafCount !== homeParticles.spriteCount) errors.push('首页荷花未限制为一朵，或其余精灵未全部使用荷叶');
   if (homeParticles.bottomLeftFlowerCount < 1) errors.push('首页左下角没有稳定生成可见荷花');
   if (homeParticles.layout !== 'corner-clusters') errors.push('首页荷花荷叶未限制在左下与右上角落构图');
   if (homeParticles.sourceLayer !== 'wash' || homeParticles.interaction !== 'ripple-return-burst') errors.push('首页粒子采样层或交互模式不正确');
@@ -617,6 +629,7 @@ try {
   if (!workbench.backpackScrollStable) errors.push('点击左侧靠下材料后，背包滚动位置发生跳动');
   if (!workbench.materialPointerDrag || !workbench.materialDragAdded) errors.push('左侧材料无法通过指针拖入桌面工作区');
   if (!workbench.actionArrowInsideCard) errors.push('右侧动作箭头仍可能被工作区或滚动容器遮挡');
+  if (!workbench.stepImagePanel || !workbench.stepImagePlaceholder || !workbench.stepImageBelowActions || !workbench.stepImageFlat) errors.push('步骤图片模块未显示在动作模块下方、未保持横向扁平比例，或空图片状态不正确');
   if (!firstMaterialUpgradeDetected) errors.push('完成工序后，材料没有原位升级并作为继承材料自动带入下一步');
   if (!firstRippleDetected) errors.push('正确动作落到工作台后没有触发粒子水波扩散');
   if (idlePreview.deferredButton || !idlePreview.canvas || !idlePreview.finishedAssetLoaded) errors.push('三维预览没有在进入工艺页后自动加载');

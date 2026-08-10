@@ -5,33 +5,36 @@ export const POINTER_GESTURE_STATES = Object.freeze({
   DRAGGING: 'DRAGGING',
 });
 
-// 将“按下、静止长按、移动拖拽、释放”拆成独立状态。
-// startPoint 在进入长按时会重锁，避免旧的按下位置造成第二段拖拽延迟。
+// Air interaction is deliberately different from a physical pointer. A few
+// camera pixels become tens of CSS pixels, so ordinary hand tremor must not
+// turn a tap into a drag. A press therefore has exactly two outcomes:
+//   - release before the hold threshold -> click the target locked on press;
+//   - hold, then move -> drag the locked scene.
+// DOM controls still receive the raw virtual pointer stream, so direct objects
+// such as the mascot remain draggable without acquiring the scene behind them.
 export function createPointerGestureStateMachine({
-  dragThresholdPx = 10,
-  stationarySlopPx = 8,
-  longPressMs = 560,
-  smoothing = 0.30,
+  clickSlopPx = 34,
+  holdSlopPx = 42,
+  longPressMs = 520,
+  postHoldDragThresholdPx = 6,
+  smoothing = 0.38,
 } = {}) {
   let state = POINTER_GESTURE_STATES.IDLE;
   let startedAt = 0;
   let startPoint = null;
   let smoothedPoint = null;
   let previousPoint = null;
-  let maxStationaryDisplacement = 0;
+  let clickEligible = false;
+  let holdEligible = false;
 
-  const clampSmoothing = Math.max(0.05, Math.min(1, Number(smoothing) || 0.30));
-  const dragThreshold = Math.max(2, Number(dragThresholdPx) || 10);
-  const stationarySlop = Math.max(1, Number(stationarySlopPx) || 8);
-  const holdDuration = Math.max(100, Number(longPressMs) || 560);
+  const alpha = Math.max(0.05, Math.min(1, Number(smoothing) || 0.38));
+  const clickSlop = Math.max(8, Number(clickSlopPx) || 34);
+  const holdSlop = Math.max(clickSlop, Number(holdSlopPx) || 42);
+  const holdDuration = Math.max(200, Number(longPressMs) || 520);
+  const postHoldDragThreshold = Math.max(2, Number(postHoldDragThresholdPx) || 6);
 
-  function pointOf(point) {
-    return { x: Number(point?.x || 0), y: Number(point?.y || 0) };
-  }
-
-  function distanceFrom(point, origin) {
-    return Math.hypot(point.x - origin.x, point.y - origin.y);
-  }
+  const pointOf = (point) => ({ x: Number(point?.x || 0), y: Number(point?.y || 0) });
+  const distanceFrom = (point, origin) => Math.hypot(point.x - origin.x, point.y - origin.y);
 
   function reset() {
     state = POINTER_GESTURE_STATES.IDLE;
@@ -39,7 +42,8 @@ export function createPointerGestureStateMachine({
     startPoint = null;
     smoothedPoint = null;
     previousPoint = null;
-    maxStationaryDisplacement = 0;
+    clickEligible = false;
+    holdEligible = false;
   }
 
   function start(point, timestamp) {
@@ -49,15 +53,16 @@ export function createPointerGestureStateMachine({
     startPoint = next;
     smoothedPoint = { ...next };
     previousPoint = { ...next };
-    maxStationaryDisplacement = 0;
+    clickEligible = true;
+    holdEligible = true;
     return { state, point: next };
   }
 
   function smooth(point) {
     const raw = pointOf(point);
     smoothedPoint = {
-      x: smoothedPoint.x + (raw.x - smoothedPoint.x) * clampSmoothing,
-      y: smoothedPoint.y + (raw.y - smoothedPoint.y) * clampSmoothing,
+      x: smoothedPoint.x + (raw.x - smoothedPoint.x) * alpha,
+      y: smoothedPoint.y + (raw.y - smoothedPoint.y) * alpha,
     };
     return smoothedPoint;
   }
@@ -66,34 +71,27 @@ export function createPointerGestureStateMachine({
     if (state === POINTER_GESTURE_STATES.IDLE) return [];
     const current = smooth(point);
     const elapsed = Math.max(0, (Number(timestamp) || 0) - startedAt);
-    const distance = distanceFrom(current, startPoint);
-    maxStationaryDisplacement = Math.max(maxStationaryDisplacement, distance);
+    const displacement = distanceFrom(current, startPoint);
     const events = [];
 
     if (state === POINTER_GESTURE_STATES.PRESSED) {
-      // 先判拖拽，避免用户已经移动后仍被误报成长按。
-      if (distance >= dragThreshold) {
-        state = POINTER_GESTURE_STATES.DRAGGING;
-        startPoint = { ...current };
-        previousPoint = { ...current };
-        events.push({ type: 'drag-start', point: { ...current }, distance, elapsed });
-      } else if (elapsed >= holdDuration && maxStationaryDisplacement <= stationarySlop) {
-        // 静止窗口判长按：560ms 内平滑位移必须仍在 8px 内。
+      if (displacement > clickSlop) clickEligible = false;
+      if (displacement > holdSlop) holdEligible = false;
+
+      // Movement before the hold threshold never manipulates a Three scene.
+      // This is the key ownership boundary between a click and map rotation.
+      if (elapsed >= holdDuration && holdEligible) {
         state = POINTER_GESTURE_STATES.LONG_PRESS;
-        // 长按触发时锁住当前点，后续只需移动约 10px 即进入拖拽。
+        clickEligible = false;
         startPoint = { ...current };
         previousPoint = { ...current };
-        maxStationaryDisplacement = 0;
-        events.push({ type: 'long-press-start', point: { ...current }, distance, elapsed });
+        events.push({ type: 'long-press-start', point: { ...current }, distance: displacement, elapsed });
       }
     } else if (state === POINTER_GESTURE_STATES.LONG_PRESS) {
       const dragDistance = distanceFrom(current, startPoint);
-      if (dragDistance >= dragThreshold) {
-        // 再次重锁基准，清除从长按确认到第一次移动之间的累计偏差。
+      if (dragDistance >= postHoldDragThreshold) {
         state = POINTER_GESTURE_STATES.DRAGGING;
-        startPoint = { ...current };
-        previousPoint = { ...current };
-        events.push({ type: 'long-press-end', point: { ...current }, distance: dragDistance, elapsed, reason: 'drag-start' });
+        previousPoint = { ...startPoint };
         events.push({ type: 'drag-start', point: { ...current }, distance: dragDistance, elapsed });
       }
     }
@@ -102,7 +100,7 @@ export function createPointerGestureStateMachine({
       const dx = current.x - previousPoint.x;
       const dy = current.y - previousPoint.y;
       if (Math.abs(dx) + Math.abs(dy) >= 0.08) {
-        events.push({ type: 'drag-move', point: { ...current }, dx, dy, distance: distanceFrom(current, startPoint), elapsed });
+        events.push({ type: 'drag-move', point: { ...current }, dx, dy, elapsed });
       }
     }
 
@@ -115,24 +113,29 @@ export function createPointerGestureStateMachine({
       return { type: 'cancel', wasClick: false, state, events: [] };
     }
 
-    // 释放前消费最后一个样本，避免最后一帧移动被吞掉。
     const events = move(point || smoothedPoint, timestamp);
     const endingState = state;
+    const finalPoint = { ...(smoothedPoint || point || { x: 0, y: 0 }) };
+    const elapsed = Math.max(0, (Number(timestamp) || 0) - startedAt);
+    const wasClick = endingState === POINTER_GESTURE_STATES.PRESSED && clickEligible;
+
+    if (endingState === POINTER_GESTURE_STATES.DRAGGING) {
+      events.push({ type: 'drag-end', point: finalPoint, elapsed });
+      events.push({ type: 'long-press-end', point: finalPoint, elapsed, reason: 'release' });
+    } else if (endingState === POINTER_GESTURE_STATES.LONG_PRESS) {
+      events.push({ type: 'long-press-end', point: finalPoint, elapsed, reason: 'release' });
+    }
+
     const result = {
-      type: endingState === POINTER_GESTURE_STATES.PRESSED ? 'click'
-        : endingState === POINTER_GESTURE_STATES.LONG_PRESS ? 'long-press-end'
-          : endingState === POINTER_GESTURE_STATES.DRAGGING ? 'drag-end' : 'cancel',
-      wasClick: endingState === POINTER_GESTURE_STATES.PRESSED,
+      type: wasClick ? 'click'
+        : endingState === POINTER_GESTURE_STATES.DRAGGING ? 'drag-end'
+          : endingState === POINTER_GESTURE_STATES.LONG_PRESS ? 'long-press-end' : 'cancel',
+      wasClick,
       state: endingState,
-      point: { ...(smoothedPoint || point || { x: 0, y: 0 }) },
-      elapsed: Math.max(0, (Number(timestamp) || 0) - startedAt),
+      point: finalPoint,
+      elapsed,
       events,
     };
-    if (endingState === POINTER_GESTURE_STATES.DRAGGING) {
-      result.events.push({ type: 'drag-end', point: { ...result.point }, elapsed: result.elapsed });
-    } else if (endingState === POINTER_GESTURE_STATES.LONG_PRESS) {
-      result.events.push({ type: 'long-press-end', point: { ...result.point }, elapsed: result.elapsed, reason: 'release' });
-    }
     reset();
     return result;
   }

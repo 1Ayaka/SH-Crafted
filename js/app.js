@@ -5,7 +5,7 @@ import { el, catSVG } from './ui.js';
 import { initializeAdmin, saveSiteTexts } from './admin.js';
 import { mountEditableModule } from './editable.js';
 import { agent } from './agent.js';
-import { getGraphNode, parseGraphId } from './agent/graph-adapter.js';
+import { getGraphNode, heritageDetailTarget } from './agent/graph-adapter.js';
 
 const app = document.getElementById('app');
 
@@ -61,9 +61,9 @@ agent.enableGlobal({
   }),
   async openNode({ node_id }) { location.hash = `#/graph/${encodeURIComponent(node_id)}`; return { ok: true, node_id }; },
   async openHeritageDetail({ heritage_id }) {
-    const parsed = parseGraphId(heritage_id);
-    if (!parsed) return { ok: false, error: { code: 'node_not_found', message: '没有找到这个非遗项目。' } };
-    location.hash = `#/craft/${encodeURIComponent(parsed.rawId)}`;
+    const craftId = heritageDetailTarget(heritage_id);
+    if (!craftId) return { ok: false, error: { code: 'node_not_found', message: '这个节点暂时没有对应的非遗详情页。' } };
+    location.hash = `#/craft/${encodeURIComponent(craftId)}`;
     return { ok: true };
   },
   async openRegion({ region_id }) { location.hash = `#/graph/${encodeURIComponent(region_id)}`; return { ok: true }; },
@@ -83,4 +83,6 @@ startRouter(app);
 // 手势开关按钮始终可见（轻量 DOM，不影响首屏）。
 // 点击后按需加载 MediaPipe WASM + 模型（约 17MB），用户主动触发。
 // localStorage 中的 enabled 字段控制下次进页面是否自动开启。
-import('./gesture/gesture-init.js').then((m) => m.initGesture()).catch(() => {});
+import('./gesture/gesture-init.js')
+  .then((m) => m.initGesture())
+  .catch((error) => console.warn('手势系统初始化失败：', error));

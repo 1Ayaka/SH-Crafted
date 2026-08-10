@@ -17,8 +17,11 @@ const DEFAULTS = Object.freeze({
   palmDragMaxDeltaPx: 64,
   swipeEnabled: false,
   hitSlopPx: 30,
+  threeHitSlopPx: 24,
   edgeInsetX: 0.10,
   edgeInsetY: 0.10,
+  screenOffsetXRatio: -0.018,
+  screenOffsetYRatio: -0.022,
 });
 
 const PREF_KEY = 'sh-crafted.gesture-preferences';
@@ -91,14 +94,14 @@ export function effectiveConfig(settings) {
     pinchStableFrames: 2,
     // 点击冷却 (ms)
     clickCooldownMs: 140 + (1 - sensitivity) * 100,
-    // 屏幕像素状态机：轻微位移即可进入拖拽
-    dragThresholdPx: 10 + (1 - sensitivity) * 2,
-    // 长按静止窗口允许的平滑位移
-    stationarySlopPx: 8,
+    // 空中点击需要吸收摄像头坐标放大后的自然手抖；场景拖拽只在长按后开始。
+    clickSlopPx: 30 + sensitivity * 10,
+    holdSlopPx: 38 + sensitivity * 10,
+    postHoldDragThresholdPx: 6,
     // 手掌锚点的逐帧平滑系数
-    dragSmoothing: 0.30,
+    dragSmoothing: 0.38,
     // 持续捏合进入长按的时间
-    longPressMs: 560,
+    longPressMs: 520,
     // 张掌进入鼠标按下状态的稳定帧数
     palmPressStableFrames: Math.max(2, Math.min(10, Number(s.palmPressStableFrames) || 5)),
     // 张掌短暂识别抖动不会立即释放拖拽
@@ -115,9 +118,12 @@ export function effectiveConfig(settings) {
     swipeEnabled: s.swipeEnabled === true,
     // 手势按钮的额外屏幕命中范围
     hitSlopPx,
+    threeHitSlopPx: Math.max(12, Math.min(42, Number(s.threeHitSlopPx) || 24)),
     // 摄像头安全区映射：手不用抵到镜头边缘即可触达屏幕边缘
     edgeInsetX,
     edgeInsetY,
+    screenOffsetXRatio: Math.max(-0.08, Math.min(0.08, Number(s.screenOffsetXRatio ?? -0.018))),
+    screenOffsetYRatio: Math.max(-0.08, Math.min(0.08, Number(s.screenOffsetYRatio ?? -0.022))),
     // 握拳缩小：较短稳定窗口，持续握拳时以克制频率重复缩小
     fistStableFrames: 5,
     fistRepeatMs: 650,

@@ -16,7 +16,7 @@ import { registerPage, unregisterPage, transitionTo, consumeEnter } from '../tra
 import { isAdmin, saveCraft } from '../admin.js';
 import { mountEditableModule } from '../editable.js';
 import { createWorkbenchSurface } from '../workbench-preview.js';
-import { graphId, parseGraphId } from '../agent/graph-adapter.js';
+import { graphId, heritageDetailTarget, parseGraphId } from '../agent/graph-adapter.js';
 import { materialTransformMap } from '../material-flow.js';
 import { createHeritageGraphState } from '../heritage-graph.js';
 import { mountHeritageGraph } from '../heritage-graph-3d.js';
@@ -394,6 +394,31 @@ export async function craftView(root, { id }) {
       media,
       clip.description ? el('p', { class: 'wb-documentary-description', text: clip.description }) : null,
       clip.source_url ? el('a', { class: 'ev-link', href: clip.source_url, target: '_blank', rel: 'noopener noreferrer', text: '查看片段来源' }) : null,
+    ]);
+  }
+
+  function stepImagePanel(step) {
+    const image = step?.step_image;
+    const mediaHost = el('div', { class: `wb-step-image-media${image?.image_url ? '' : ' is-empty'}` });
+    if (image?.image_url) {
+      const preview = el('img', {
+        src: craftAssetUrl(craft, image.image_url),
+        alt: image.alt || `工序“${step.displayName}”参考图`,
+      });
+      preview.addEventListener('error', () => {
+        mediaHost.classList.add('is-empty', 'is-error');
+        mediaHost.replaceChildren(el('span', { text: '图片暂时无法显示' }));
+      }, { once: true });
+      mediaHost.appendChild(preview);
+    } else {
+      mediaHost.appendChild(el('span', { text: '本步骤图片待补充' }));
+    }
+    return el('aside', { class: 'wb-step-image', 'aria-label': '当前工序参考图片' }, [
+      el('div', { class: 'wb-step-image-heading' }, [
+        el('p', { text: '步骤图片' }),
+        el('span', { text: `${S.stepIndex + 1}/${craft.steps.length}` }),
+      ]),
+      mediaHost,
     ]);
   }
 
@@ -1168,6 +1193,7 @@ export async function craftView(root, { id }) {
       el('p', { class: 'action-title', text: '动作' }),
       ...actionCards,
     ]);
+    const sideRail = el('div', { class: 'wb-side-rail' }, [actionPalette, stepImagePanel(step)]);
 
     const progress = el('span', { class: 'wb-progress' }, craft.steps.map((s, i) =>
       el('i', { class: `pg${i < S.stepIndex ? ' done' : i === S.stepIndex ? ' now' : ''}`, title: s.displayName })));
@@ -1177,7 +1203,7 @@ export async function craftView(root, { id }) {
         el('span', { class: 'cur', text: `当前工序 ${S.stepIndex + 1}/${craft.steps.length}：${step.displayName}` }),
         reviewTag(), progress,
       ]),
-      el('div', { class: 'wb-stage-layout' }, [tableSurface, actionPalette, documentary]),
+      el('div', { class: 'wb-stage-layout' }, [tableSurface, sideRail, documentary]),
       feedback,
       el('div', { class: 'wb-actions' }, [
         el('button', { class: 'btn-quick-fill', text: '一键填入', title: '自动把当前步骤所需物品放到桌面', onclick: quickFillCurrentStep }),
@@ -1744,7 +1770,12 @@ export async function craftView(root, { id }) {
     },
     async openNode({ node_id }) {
       const parsed = parseGraphId(node_id);
-      if (parsed?.type === 'heritage') { transitionTo(`#/craft/${encodeURIComponent(parsed.rawId)}`); return { ok: true, node_id }; }
+      if (parsed?.type === 'heritage') {
+        const craftId = heritageDetailTarget(node_id);
+        if (craftId) transitionTo(`#/craft/${encodeURIComponent(craftId)}`);
+        else transitionTo(`#/graph/${encodeURIComponent(node_id)}`);
+        return { ok: true, node_id };
+      }
       if (parsed?.type === 'region') { transitionTo('#/explore'); return { ok: true, node_id }; }
       if (['material', 'tradition'].includes(parsed?.type)) { transitionTo(`#/graph/${encodeURIComponent(node_id)}`); return { ok: true, node_id }; }
       throw Object.assign(new Error('当前页面暂不支持打开这种节点。'), { code: 'unsupported_node_type' });
