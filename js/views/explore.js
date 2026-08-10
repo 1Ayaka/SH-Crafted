@@ -4,7 +4,7 @@
 // - 搜索/类别筛选、地图/列表切换、Esc 返回在两种模式下均可用
 import { el, reviewTag, jiaoToast } from '../ui.js';
 import { InkField, blotTargets, reducedMotion } from '../particles.js';
-import { allCrafts, craftAssetUrl, ensureCraftLoaded, siteText } from '../data.js';
+import { allCrafts, craftAssetUrl, ensureCraftLoaded, isContentReviewed, siteText } from '../data.js';
 import { DISTRICTS, DISTRICT_PROFILES } from '../config.js';
 import { topNav, TRANSITION_STATES } from './home.js';
 import { agent } from '../agent.js';
@@ -30,6 +30,7 @@ const NODE_TO_DISTRICTS = {
 const displayNodeName = (nodeName) => nodeName === '上海市核心区' ? siteText('map.center.name', '上海中心城区') : nodeName;
 
 export async function exploreView(root) {
+  const reviewed = isContentReviewed();
   const craftRecords = allCrafts();
   const craftsByDistrict = new Map();
   for (const craft of craftRecords) {
@@ -397,7 +398,7 @@ export async function exploreView(root) {
       el('p', { class: 'project-story-kicker', text: '非遗项目' }),
       projectHeading,
       el('p', { class: 'project-story-meta' }, [
-        document.createTextNode(`${craft.config.districtLabel || '地区待核对'} · ${craft.config.category || '类别待核对'} `),
+        document.createTextNode(`${craft.config.districtLabel || (reviewed ? '地区未填写' : '地区待核对')} · ${craft.config.category || (reviewed ? '未分类' : '类别待核对')} `),
         craft.config.community ? el('span', { class: 'tag tag-community', text: '社区共建' }) : null,
       ]),
       el('div', { class: 'project-story-scroll' }, [
@@ -876,8 +877,8 @@ export async function exploreView(root) {
               el('span', { text: `${c.config.districtLabel} · ${c.config.category} ` }),
               c.config.community
                 ? el('span', { class: 'tag tag-community', text: '社区审核通过' })
-                : el('span', { class: 'tag tag-pending', text: '类别待核对' }),
-              c.config.districtVerified ? null : el('span', { class: 'tag tag-pending', text: ' 地区待核对' }),
+                : (reviewed ? null : el('span', { class: 'tag tag-pending', text: '类别待核对' })),
+              c.config.districtVerified || reviewed ? null : el('span', { class: 'tag tag-pending', text: ' 地区待核对' }),
             ]),
             el('p', {}, [el('span', { text: c.summary.slice(0, 80) + '… ' }), c.config.community ? null : reviewTag()]),
           ]),

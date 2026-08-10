@@ -47,6 +47,7 @@ export async function buildContentSeed() {
   for (const [craftIndex, pkg] of catalog.packages.entries()) {
     const directory = join(ROOT, 'data', pkg.directory);
     const draft = await readJson(join(directory, 'knowledge', 'knowledge_draft.json'));
+    const claims = await readJsonl(join(directory, 'knowledge', 'claims.jsonl'));
     const steps = await readJsonl(join(directory, 'knowledge', 'process_steps.jsonl'));
     const curated = config.CRAFT_CONFIG[pkg.video_id] || {};
     crafts.push({
@@ -56,6 +57,11 @@ export async function buildContentSeed() {
       district_id: curated.districtId || null,
       category: curated.category || '',
       summary: draft.summary_candidate || '',
+      claims: claims.map((claim) => ({
+        id: claim.claim_id || '',
+        statement: claim.statement || '',
+        evidence_ids: claim.evidence_ids || [],
+      })).filter((claim) => claim.statement),
       cover_path: curated.heroFrame ? `data/${pkg.directory}/${curated.heroFrame}` : '',
       source_directory: pkg.directory,
     });

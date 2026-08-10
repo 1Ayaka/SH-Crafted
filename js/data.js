@@ -54,6 +54,20 @@ function jsonValue(value, fallback) {
   }
 }
 
+function managedValue(record, key, fallback) {
+  return record && Object.hasOwn(record, key) ? record[key] : fallback;
+}
+
+function normalizedManagedClaims(value) {
+  return Array.isArray(value) ? value.map((claim, index) => ({
+    ...(typeof claim === 'object' && claim ? claim : {}),
+    claim_id: claim?.claim_id || claim?.id || `managed_claim_${index + 1}`,
+    statement: typeof claim === 'string' ? claim : String(claim?.statement || ''),
+    evidence_ids: Array.isArray(claim?.evidence_ids) ? claim.evidence_ids : [],
+    review_status: claim?.review_status || 'edited_by_admin',
+  })).filter((claim) => claim.statement) : [];
+}
+
 function actionLabel(step, index) {
   const override = INTERACTION_OVERRIDES[step.step_id]?.action;
   if (override?.label) return override;
@@ -170,7 +184,7 @@ export async function loadAll(onProgress) {
     if (managedCraft) {
       cfg.craftName = managedCraft.title || cfg.craftName;
       cfg.districtId = managedCraft.district_id || cfg.districtId;
-      cfg.category = managedCraft.category || cfg.category;
+      cfg.category = managedValue(managedCraft, 'category', cfg.category);
       if (managedCraft.cover_path) cfg.heroFrame = managedCraft.cover_path.replace(`data/${pkg.directory}/`, '');
       if (managedCraft.graph_data) cfg.graphData = managedCraft.graph_data;
     }
@@ -180,13 +194,13 @@ export async function loadAll(onProgress) {
       name: work.title || '',
       evidenceId: work.evidence_id || '',
     }));
-    const summary = managedCraft?.summary || '';
+    const summary = managedValue(managedCraft, 'summary', '');
     const metrics = knowledgeStats?.per_craft?.[pkg.video_id] || {};
     store.crafts.set(pkg.video_id, {
       craftId: pkg.video_id, title: managedCraft?.title || pkg.title,
       directory: pkg.directory, baseUrl: base + pkg.directory + '/',
       manifest: { video: { source_filename: pkg.title } }, draft: { summary_candidate: summary }, summary,
-      steps: [], evidence: [], evMap: new Map(), claims: [], config: cfg,
+      steps: [], evidence: [], evMap: new Map(), claims: managedCraft && Object.hasOwn(managedCraft, 'claims') ? normalizedManagedClaims(managedCraft.claims) : [], config: cfg,
       allMaterials: [], allTools: [], allResources: [], resourceKinds: new Map(), actions: [],
       people: [], artifacts: [], places: [], externalFacts: [], externalSources: [],
       stepCount: editorialSteps.get(pkg.video_id)?.length || metrics.steps || 0,
@@ -213,7 +227,7 @@ export async function loadAll(onProgress) {
     if (managedCraft) {
       cfg.craftName = managedCraft.title || cfg.craftName;
       cfg.districtId = managedCraft.district_id || cfg.districtId;
-      cfg.category = managedCraft.category || cfg.category;
+      cfg.category = managedValue(managedCraft, 'category', cfg.category);
       if (managedCraft.cover_path) cfg.heroFrame = managedCraft.cover_path.replace(`data/${pkg.directory}/`, '');
     }
     const managedWorks = editorialGallery.get(pkg.video_id);
@@ -287,11 +301,11 @@ export async function loadAll(onProgress) {
       baseUrl: dir,
       manifest,
       draft,
-      summary: managedCraft?.summary || draft.summary_candidate || '',
+      summary: managedValue(managedCraft, 'summary', draft.summary_candidate || ''),
       steps: normalizedSteps,
       evidence,
       evMap,
-      claims,
+      claims: managedCraft && Object.hasOwn(managedCraft, 'claims') ? normalizedManagedClaims(managedCraft.claims) : claims,
       config: cfg,
       // 由数据推导：材料与工具全集（并集，保持出现顺序）
       allMaterials: [...new Set(normalizedSteps.flatMap((s) => s.materials || []))],

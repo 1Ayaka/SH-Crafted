@@ -285,6 +285,7 @@ export async function createParticleModel(container, url, opts = {}) {
     looseAmount = 0,        // 完成前预览：在成品轮廓周围增加细碎离散量；完成态保持 0
     solidMode = false,
     particleFraction = solidMode ? 0.2 : 1,
+    onTap = null,
   } = opts;
 
   const loadingEl = document.createElement('div');
@@ -620,7 +621,10 @@ export async function createParticleModel(container, url, opts = {}) {
     rot.dragging = false;
     el.style.cursor = 'grab';
     // 无拖拽点击 → 散墨（外爆 → 停顿 → 自行合并回家）
-    if (rot.moved < 6 && performance.now() - rot.t0 < 450 && !reducedMotion) scatterAge = 0;
+    if (rot.moved < 6 && performance.now() - rot.t0 < 450) {
+      if (typeof onTap === 'function') onTap();
+      else if (!reducedMotion) scatterAge = 0;
+    }
   };
   const onWheel = (e) => {
     e.preventDefault();

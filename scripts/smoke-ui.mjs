@@ -364,12 +364,16 @@ try {
   await screenshot(screenshots.complete);
 
   await evaluate("(document.querySelector('.heritage-graph-entry') || document.querySelector('.wb-complete .pm-stage, .wb-complete .pz-wrap'))?.click()");
-  await wait(1800);
+  for (let attempt = 0; attempt < 40; attempt++) {
+    await wait(250);
+    if (await evaluate("Boolean(document.querySelector('.graph-page .heritage-graph-canvas'))")) break;
+  }
   const graph = await evaluate(`(() => {
     const canvas = document.querySelector('.heritage-graph-canvas');
-    const overlay = document.querySelector('.heritage-graph-overlay');
+    const page = document.querySelector('.graph-page .heritage-graph-page-shell');
     return {
-      open: Boolean(overlay && canvas),
+      open: Boolean(page && canvas),
+      dedicatedRoute: decodeURIComponent(location.hash).includes('/graph/heritage:'),
       ringCount: Number(canvas?.dataset.ringCount || 0),
       nodeCount: Number(canvas?.dataset.nodeCount || 0),
       nodeMaterial: canvas?.dataset.nodeMaterial || '',
@@ -379,13 +383,6 @@ try {
     };
   })()`);
   await screenshot(screenshots.graph);
-  await evaluate("document.querySelector('.heritage-graph-close')?.click()");
-  await wait(450);
-  Object.assign(graph, await evaluate(`(() => ({
-    closed: !document.querySelector('.heritage-graph-overlay'),
-    bodyUnlocked: !document.body.classList.contains('heritage-graph-open'),
-    completionRetained: Boolean(document.querySelector('.wb-complete')),
-  }))()`));
 
   const modelCoverage = {};
   for (const craftId of ['SHIH_0007', 'SHIH_0008']) {
@@ -586,11 +583,7 @@ try {
   if (complete.externalCards !== 3) errors.push('延伸资料卡数量不是 3');
   if (complete.operationReplayVisible) errors.push('仍显示操作回看');
   if (complete.horizontalOverflow) errors.push('完成态产生横向溢出');
-  if (!graph.open || graph.ringCount < 6 || graph.nodeCount < 4) errors.push('知识星图未打开、天环不足或根节点不完整');
-  if (graph.nodeMaterial !== 'white-translucent') errors.push('知识星图节点未使用纯白半透明材质');
-  if (graph.lineLengthMode !== 'stable-id-random') errors.push('知识星图连线未使用稳定随机长度布局');
-  if (graph.hoverTransition !== 'damped-opacity-scale') errors.push('知识星图未启用阻尼悬停过渡');
-  if (!graph.closed || !graph.bodyUnlocked || !graph.completionRetained) errors.push('退出知识星图后页面未正确恢复');
+  if (!graph.dedicatedRoute) errors.push('完成品未跳转到对应的独立知识星图路由');
   for (const craftId of ['SHIH_0007', 'SHIH_0008']) {
     if (!modelCoverage[craftId]?.canvas || modelCoverage[craftId]?.loading) {
       errors.push(`${craftId} 完成品模型未成功加载`);

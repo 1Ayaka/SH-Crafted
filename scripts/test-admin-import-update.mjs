@@ -201,10 +201,26 @@ try {
 
   content = await request('/api/content');
   const manualEdit = await request(`/api/admin/crafts/${firstId}`, {
-    method: 'PUT', cookie, body: { revision: content.payload.revision, summary: '协作者已经在管理员界面手工核验并修改此项目。' },
+    method: 'PUT', cookie, body: {
+      revision: content.payload.revision,
+      summary: '',
+      category: '',
+      claims: [
+        { id: 'reviewed_claim_1', statement: '管理员确认的第一条事实陈述。', evidence_ids: ['ev_001'] },
+        { id: 'reviewed_claim_2', statement: '管理员确认的第二条事实陈述。', evidence_ids: [] },
+      ],
+    },
   });
   expectStatus(manualEdit, 200);
   content = await request('/api/content');
+  const editedCraft = content.payload.crafts.find((craft) => craft.id === firstId);
+  if (editedCraft.summary !== '' || editedCraft.category !== '' || editedCraft.claims?.length !== 2) throw new Error('项目正文或事实陈述未按管理员修改持久化');
+  const clearClaims = await request(`/api/admin/crafts/${firstId}`, {
+    method: 'PUT', cookie, body: { revision: content.payload.revision, claims: [] },
+  });
+  expectStatus(clearClaims, 200);
+  content = await request('/api/content');
+  if (content.payload.crafts.find((craft) => craft.id === firstId)?.claims?.length !== 0) throw new Error('管理员删除事实陈述后数据再次回退');
   const overwriteEdited = await request('/api/admin/crafts/import', {
     method: 'POST', cookie, body: importRecord(firstId, content.payload.revision),
   });

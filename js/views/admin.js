@@ -544,6 +544,88 @@ export async function adminCraftView(root, { id }) {
   let activeSave = null;
   let disposed = false;
 
+  const contentDraft = {
+    title: craft.title || '',
+    category: craft.config?.category || '',
+    summary: craft.summary || '',
+    claims: (craft.claims || []).map((claim, index) => ({
+      id: claim.claim_id || claim.id || `claim_${index + 1}`,
+      statement: claim.statement || '',
+      evidence_ids: Array.isArray(claim.evidence_ids) ? claim.evidence_ids : [],
+    })),
+  };
+  let contentDirty = false;
+  const contentState = el('span', { class: 'admin-save-status is-saved', text: '正文已保存' });
+  const contentSaveButton = el('button', { class: 'btn-ghost', type: 'button', text: '保存正文' });
+  const contentEditor = el('section', { class: 'admin-content-editor' });
+  const titleInput = el('input', { value: contentDraft.title, maxlength: '200', placeholder: '项目名称' });
+  const categoryInput = el('input', { value: contentDraft.category, maxlength: '100', placeholder: '分类；留空则显示“未分类”' });
+  const summaryInput = el('textarea', { rows: '5', maxlength: '10000', placeholder: '项目简介；可以清空后保存' }, [contentDraft.summary]);
+  const claimList = el('div', { class: 'admin-claim-list' });
+  const markContentDirty = () => {
+    contentDirty = true;
+    contentState.className = 'admin-save-status is-dirty';
+    contentState.textContent = '正文有未保存修改';
+  };
+  [titleInput, categoryInput, summaryInput].forEach((control) => control.addEventListener('input', markContentDirty));
+  const renderClaims = () => {
+    claimList.replaceChildren();
+    contentDraft.claims.forEach((claim, index) => {
+      const statement = el('textarea', { rows: '3', maxlength: '3000', 'aria-label': `事实陈述 ${index + 1}` }, [claim.statement]);
+      statement.addEventListener('input', () => { claim.statement = statement.value; markContentDirty(); });
+      claimList.appendChild(el('div', { class: 'admin-claim-row' }, [
+        statement,
+        iconButton('删除事实陈述', minusSvg, () => { contentDraft.claims.splice(index, 1); markContentDirty(); renderClaims(); }),
+      ]));
+    });
+    claimList.appendChild(el('button', {
+      class: 'admin-add-row', type: 'button', html: `${plusSvg}<span>添加事实陈述</span>`,
+      onclick: () => { contentDraft.claims.push({ id: `claim_${Date.now()}`, statement: '', evidence_ids: [] }); markContentDirty(); renderClaims(); claimList.querySelector('.admin-claim-row:last-of-type textarea')?.focus(); },
+    }));
+  };
+  async function persistContent({ announce = false } = {}) {
+    if (!contentDirty) return true;
+    contentSaveButton.disabled = true;
+    contentSaveButton.textContent = '保存中…';
+    contentState.className = 'admin-save-status is-saving';
+    contentState.textContent = '正在保存正文…';
+    try {
+      await saveCraft(craft.craftId, {
+        title: titleInput.value,
+        category: categoryInput.value,
+        summary: summaryInput.value,
+        claims: contentDraft.claims,
+      });
+      contentDirty = false;
+      contentState.className = 'admin-save-status is-saved';
+      contentState.textContent = '正文已保存';
+      if (announce) adminNotice('项目正文与事实陈述已保存');
+      return true;
+    } catch (error) {
+      contentState.className = 'admin-save-status is-error';
+      contentState.textContent = '正文保存失败';
+      adminNotice(error.message, true);
+      return false;
+    } finally {
+      contentSaveButton.disabled = false;
+      contentSaveButton.textContent = '保存正文';
+    }
+  }
+  contentSaveButton.addEventListener('click', () => void persistContent({ announce: true }));
+  contentEditor.append(
+    el('div', { class: 'admin-section-heading' }, [
+      el('div', {}, [el('h2', { text: '项目正文' }), el('p', { text: '这里是用户页面的正式内容。简介可以清空，事实陈述可逐条编辑或删除。' })]),
+      el('div', {}, [contentState, contentSaveButton]),
+    ]),
+    el('div', { class: 'admin-content-fields' }, [
+      el('label', { class: 'admin-field' }, [el('span', { text: '项目名称' }), titleInput]),
+      el('label', { class: 'admin-field' }, [el('span', { text: '分类' }), categoryInput]),
+    ]),
+    el('label', { class: 'admin-field' }, [el('span', { text: '项目简介' }), summaryInput]),
+    el('section', {}, [el('h3', { text: '事实陈述' }), el('p', { class: 'admin-field-help', text: '删除后保存即不再出现在用户页面或智能体项目资料中。' }), claimList]),
+  );
+  renderClaims();
+
   const tabs = el('div', { class: 'admin-step-tabs', role: 'tablist', 'aria-label': '选择工序' });
   const editor = el('section', { class: 'admin-step-editor' });
   const graphEditor = el('section', { class: 'admin-graph-editor' });
@@ -1113,7 +1195,8 @@ export async function adminCraftView(root, { id }) {
     event.preventDefault();
     const target = link.getAttribute('href');
     link.setAttribute('aria-disabled', 'true');
-    const saved = await persistSteps({ announce: dirty });
+    const contentSaved = await persistContent({ announce: contentDirty });
+    const saved = contentSaved && await persistSteps({ announce: dirty });
     link.removeAttribute('aria-disabled');
     if (saved && target) {
       // 数据已经写入服务器，但 data.js 在当前 SPA 会话中仍持有进入页面时的缓存。
@@ -1129,8 +1212,8 @@ export async function adminCraftView(root, { id }) {
     el('div', { class: 'admin-page-heading' }, [
       el('div', {}, [
         returnLink,
-        el('h1', { text: `${craft.title} · 工序管理` }),
-        el('p', { text: '在上方选择工序；下方可以修改名称、材料、工具和操作。' }),
+        el('h1', { text: `${craft.title} · 内容与工序管理` }),
+        el('p', { text: '先维护项目正文与事实陈述，再编辑工序和知识星图。' }),
       ]),
       el('div', { class: 'admin-heading-actions' }, [
         userPageLink,
@@ -1138,19 +1221,21 @@ export async function adminCraftView(root, { id }) {
         saveButton,
       ]),
     ]),
+    contentEditor,
     tabs,
     editor,
     graphEditor,
   ]);
   render();
   const shell = await adminShell(root, 'admin', content);
-  const beforeUnload = (event) => { if (dirty) { event.preventDefault(); event.returnValue = ''; } };
+  const beforeUnload = (event) => { if (dirty || contentDirty || graphDirty) { event.preventDefault(); event.returnValue = ''; } };
   window.addEventListener('beforeunload', beforeUnload);
   return { cleanup() {
     disposed = true;
     clearTimeout(autoSaveTimer);
     // 顶部导航等非本页按钮离开时仍尽力提交最后一次修改；本页的返回按钮会等待保存完成。
     if (dirty && !activeSave) void saveCraftSteps(craft.craftId, structuredClone(steps)).catch(() => {});
+    if (contentDirty) void persistContent().catch(() => {});
     if (graphDirty) void saveCraft(craft.craftId, { graph_data: graphData }).catch(() => {});
     shell.cleanup();
     window.removeEventListener('beforeunload', beforeUnload);

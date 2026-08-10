@@ -110,12 +110,18 @@ try {
     brandInput: document.querySelector('.admin-brand-file-input')?.getAttribute('accept') || '',
     brandCurrentLoaded: (document.querySelector('.admin-brand-preview img[data-brand-logo]')?.naturalWidth || 0) > 0,
     brandSaveDisabled: Boolean(document.querySelector('.admin-brand-panel .btn-primary')?.disabled),
-    brandPreviewCount: document.querySelectorAll('.admin-brand-preview').length
+    brandPreviewCount: document.querySelectorAll('.admin-brand-preview').length,
+    reviewChecked: Boolean(document.querySelector('.admin-review-toggle input')?.checked)
   })`);
   await screenshot(screenshots.dashboard);
 
   await navigate(`${base}/#/admin/craft/SHIH_0001`, `Boolean(document.querySelector('.admin-step-editor'))`);
   const process = await evaluate(`({
+    contentEditor: Boolean(document.querySelector('.admin-content-editor')),
+    contentFields: document.querySelectorAll('.admin-content-editor input, .admin-content-editor textarea').length,
+    claimRows: document.querySelectorAll('.admin-claim-row').length,
+    claimDeleteButtons: document.querySelectorAll('.admin-claim-row .admin-icon-button').length,
+    contentSaveButton: Boolean([...document.querySelectorAll('.admin-content-editor button')].find((button) => button.textContent.includes('保存正文'))),
     tabs: document.querySelectorAll('.admin-step-tab').length,
     addStep: Boolean(document.querySelector('.admin-step-add')),
     materialInputs: document.querySelectorAll('.admin-resource-columns input').length,
@@ -186,6 +192,13 @@ try {
     returnSavePersisted = await evaluate(`document.querySelector('input[aria-label$="完成后变为"]')?.value === ${JSON.stringify(returnMarker)}`);
   }
 
+  await navigate(`${base}/#/craft/SHIH_0001`, `Boolean(document.querySelector('.craft-page'))`);
+  const reviewedPage = await evaluate(`({
+    draftDisclaimer: document.body.textContent.includes('summary_candidate') || document.body.textContent.includes('人工审核尚未完成'),
+    pendingTags: [...document.querySelectorAll('.tag-pending')].filter((node) => /类别待核对|地区待核对/.test(node.textContent)).length,
+    autoExtractHeading: [...document.querySelectorAll('.craft-page h5')].some((node) => node.textContent.includes('自动抽取'))
+  })`);
+
   await navigate(`${base}/#/`, `Boolean(document.querySelector('.home .hero-copy'))`);
   const inline = await evaluate(`({
     editButtons: document.querySelectorAll('.admin-module-edit').length,
@@ -207,13 +220,15 @@ try {
   if (!dashboard.bulkToolbar || dashboard.protectedChecks < 8 || !dashboard.deleteDisabled) errors.push('批量删除工具条或原始 8 项删除保护未显示');
   if (!dashboard.brandPanel || dashboard.brandInput !== 'image/png' || !dashboard.brandCurrentLoaded || !dashboard.brandSaveDisabled || dashboard.brandPreviewCount !== 2) errors.push('管理员 Logo 上传、保存或双预览模块不完整');
   if (!process.tabs || !process.addStep || !process.materialInputs || !process.materialOutputInputs || !process.operationInputs || !process.saveButton) errors.push('工序编辑器控件不完整或缺少逐材料升级映射');
+  if (!process.contentEditor || process.contentFields < 3 || !process.claimRows || process.claimDeleteButtons !== process.claimRows || !process.contentSaveButton) errors.push('项目正文或事实陈述的编辑、删除、保存链路不完整');
+  if (dashboard.reviewChecked && (reviewedPage.draftDisclaimer || reviewedPage.pendingTags || reviewedPage.autoExtractHeading)) errors.push('全库审核后项目页仍显示 AI 草稿、自动抽取或待核对标记');
   if (!process.stepImageInput || !process.stepImageEmpty) errors.push('工序编辑器缺少步骤图片上传控件或空状态');
   if (!materialFlow.inheritedRows || !materialFlow.flowHelp || !materialFlow.removeButton || !materialFlow.heldOrUsable) errors.push('继承材料缺少本步使用/移出暂存控制');
   if (verifyWrite && !savePersisted) errors.push('逐材料升级映射点击保存后没有从服务器持久化读回');
   if (verifyWrite && !autoSavePersisted) errors.push('逐材料升级映射停止输入后没有自动保存并重新显示');
   if (verifyWrite && !returnSavePersisted) errors.push('点击返回项目列表时没有先保存逐材料升级映射');
   if (inline.editButtons < 2 || inline.managementLink || !inline.editActivated) errors.push('主界面管理入口隐藏或管理员原位编辑状态不符合要求');
-  console.log(JSON.stringify({ dashboard, process, materialFlow, savePersisted, autoSavePersisted, returnSavePersisted, inline, screenshots, errors }, null, 2));
+  console.log(JSON.stringify({ dashboard, process, materialFlow, reviewedPage, savePersisted, autoSavePersisted, returnSavePersisted, inline, screenshots, errors }, null, 2));
   if (errors.length) process.exitCode = 1;
 } finally {
   try { socket?.close(); } catch (_) { /* ignore */ }

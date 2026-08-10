@@ -154,8 +154,10 @@ function editableKnowledgeChunks(craftId = null) {
       ? graph.relations.map((item) => `${item.title || item}${item.summary ? `：${item.summary}` : ''}`).join('；')
       : '';
     const details = craft.community_details || {};
+    const claimStatements = (craft.claims || []).map((claim) => typeof claim === 'string' ? claim : claim?.statement).filter(Boolean);
     const text = [
       craft.summary,
+      ...claimStatements,
       craft.history || details.history,
       craft.features || details.features,
       graph.summary,
@@ -331,7 +333,8 @@ function buildLocalAgentReply(userMsg, context = {}, knowledge = []) {
     if (sourceNames.length) parts.push(`这些信息可在${sourceNames.join('、')}的资料中继续核对。`);
     if (!reviewed && useful.some((item) => item.review_status !== 'verified_external')) parts.push('其中项目整理内容仍待人工复核，适合先作为理解线索。');
   } else {
-    const contextual = [craft.summary, ...(craft.claims || [])].filter(Boolean).slice(0, 2).map((item) => compactKnowledgeText(item, 170));
+    const contextual = [craft.summary, ...(craft.claims || []).map((claim) => typeof claim === 'string' ? claim : claim?.statement)]
+      .filter(Boolean).slice(0, 2).map((item) => compactKnowledgeText(item, 170));
     if (contextual.length) parts.push(`关于**${subject}**，当前项目资料记录了：${contextual.join('；')}`);
     else parts.push(`我暂时没有在项目知识库中找到能直接回答“${compactKnowledgeText(userMsg, 52)}”的可靠条目。为了不把猜测说成事实，我先不补造细节。`);
   }
@@ -388,8 +391,8 @@ function buildSystemPrompt(ctx = {}) {
     craft.steps.forEach((s, i) => lines.push(`${i + 1}. ${s.name}——${s.action}`));
   }
   if (craft.claims?.length) {
-    lines.push('', '知识草稿（自动抽取，待审核）：');
-    craft.claims.forEach((c) => lines.push(`- ${c}`));
+    lines.push('', contentReviewed ? '已审核事实陈述：' : '知识草稿（自动抽取，待审核）：');
+    craft.claims.forEach((claim) => lines.push(`- ${typeof claim === 'string' ? claim : claim?.statement || ''}`));
   }
   if (craft.evidence?.length) {
     lines.push('', '相关纪录片证据（可引用时间码）：');
@@ -455,6 +458,16 @@ const cleanText = (value, max = 5000) => String(value ?? '').replace(/\r\n/g, '\
 const cleanList = (value, maxItems = 40) => [...new Set((Array.isArray(value) ? value : [])
   .map((item) => cleanText(item, 100)).filter(Boolean))].slice(0, maxItems);
 const COMMUNITY_DISTRICTS = new Set(CONTENT_SEED.districts.map((district) => district.id));
+
+function normalizeCraftClaims(value) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 80).map((claim, index) => ({
+    id: cleanText(claim?.id || claim?.claim_id, 120) || `claim_${index + 1}`,
+    statement: cleanText(typeof claim === 'string' ? claim : claim?.statement, 3000),
+    evidence_ids: cleanList(claim?.evidence_ids, 30),
+    review_status: 'edited_by_admin',
+  })).filter((claim) => claim.statement);
+}
 
 function cleanPublicUrl(value) {
   const source = cleanText(value, 1200);
@@ -1861,6 +1874,7 @@ async function handleAdminApi(req, res, urlPath) {
           if ('title' in body) item.title = cleanText(body.title, 200);
           if ('category' in body) item.category = cleanText(body.category, 100);
           if ('summary' in body) item.summary = cleanText(body.summary, 10000);
+          if ('claims' in body) item.claims = normalizeCraftClaims(body.claims);
           if ('graph_data' in body) {
             const graph = body.graph_data && typeof body.graph_data === 'object' ? body.graph_data : {};
             item.graph_data = {

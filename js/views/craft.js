@@ -168,7 +168,8 @@ export async function craftView(root, { id }) {
 
   // ---------- 页面骨架 ----------
   const craftTitle = el('h2', { text: craft.title });
-  const craftCategory = el('span', { text: craft.config.category || '类别待核对' });
+  const reviewed = isContentReviewed();
+  const craftCategory = el('span', { text: craft.config.category || (reviewed ? '未分类' : '类别待核对') });
   const head = el('div', { class: 'craft-head' }, [
     el('button', { class: 'back-btn', onclick: () => transitionTo('#/explore') }, ['← 返回地图']),
     craftTitle,
@@ -177,8 +178,8 @@ export async function craftView(root, { id }) {
       craftCategory,
       craft.config.community
         ? el('span', { class: 'tag tag-community', text: '社区投稿 · 已审核' })
-        : el('span', { class: 'tag tag-pending', text: '类别待核对' }),
-      craft.config.districtVerified ? null : el('span', { class: 'tag tag-pending', text: ' 地区待核对' }),
+        : (reviewed ? null : el('span', { class: 'tag tag-pending', text: '类别待核对' })),
+      craft.config.districtVerified || reviewed ? null : el('span', { class: 'tag tag-pending', text: ' 地区待核对' }),
     ]),
     el('span', { class: 'spacer' }),
     isAdmin() ? el('a', { href: `#/admin/craft/${craft.craftId}`, class: 'small admin-process-link', text: '编辑工序' }) : null,
@@ -260,10 +261,9 @@ export async function craftView(root, { id }) {
     ]);
     mountEditableModule(summaryBlock, [{ key: 'summary', element: summary }], (values) => saveCraft(craft.craftId, values));
     frag.appendChild(summaryBlock);
-    frag.appendChild(el('p', { class: 'small muted', text: craft.config.community
-      ? '该条目由社区用户提交，并经管理员审核后公开。'
-      : '以上简介为 AI 从纪录片自动生成的草稿（summary_candidate），人工审核尚未完成。' }));
-    frag.appendChild(el('h5', { text: '资料中的事实陈述（自动抽取）' }));
+    if (craft.config.community) frag.appendChild(el('p', { class: 'small muted', text: '该条目由社区用户提交，并经管理员审核后公开。' }));
+    else if (!reviewed) frag.appendChild(el('p', { class: 'small muted', text: '以上简介为 AI 从纪录片自动生成的草稿，人工审核尚未完成。' }));
+    frag.appendChild(el('h5', { text: reviewed ? '资料中的事实陈述' : '资料中的事实陈述（自动抽取）' }));
     if (!craft.claims.length) frag.appendChild(el('p', { class: 'empty-state', text: '资料待补充' }));
     for (const c of craft.claims) {
       frag.appendChild(el('div', { class: 'claim-item' }, [
@@ -1419,6 +1419,10 @@ export async function craftView(root, { id }) {
   }
 
   // --- 平面成品呈现（无成品模型 / 加载失败回退）：墨粒聚成影像 + 拖拽平移、滚轮缩放 ---
+  function goToHeritageGraph() {
+    location.hash = `#/graph/${encodeURIComponent(graphId('heritage', craft.craftId))}`;
+  }
+
   function renderCompleteFlat(stageWrap) {
     const cv = el('canvas', { class: 'finish-flat-canvas', 'aria-label': '墨粒聚成的成品影像' });
     const pzWrap = el('div', { class: 'pz-wrap' });
@@ -1428,17 +1432,24 @@ export async function craftView(root, { id }) {
     pzWrap.appendChild(pzInner);
     stageWrap.append(cv, pzWrap, el('span', { class: 'stage-tip', text: '拖拽平移 · 滚轮缩放' }));
 
-    const pz = { x: 0, y: 0, k: 1, dragging: false, sx: 0, sy: 0 };
+    const pz = { x: 0, y: 0, k: 1, dragging: false, moved: 0, sx: 0, sy: 0, ox: 0, oy: 0 };
     const applyPz = () => { pzInner.style.transform = `translate(${pz.x}px, ${pz.y}px) scale(${pz.k})`; };
     pzWrap.addEventListener('pointerdown', (e) => {
-      pz.dragging = true; pz.sx = e.clientX - pz.x; pz.sy = e.clientY - pz.y;
+      pz.dragging = true; pz.sx = e.clientX; pz.sy = e.clientY; pz.ox = pz.x; pz.oy = pz.y;
+      pz.moved = 0;
       pzWrap.setPointerCapture(e.pointerId);
     });
     pzWrap.addEventListener('pointermove', (e) => {
       if (!pz.dragging) return;
-      pz.x = e.clientX - pz.sx; pz.y = e.clientY - pz.sy; applyPz();
+      const dx = e.clientX - pz.sx; const dy = e.clientY - pz.sy;
+      pz.moved = Math.max(pz.moved, Math.hypot(dx, dy));
+      pz.x = pz.ox + dx; pz.y = pz.oy + dy; applyPz();
     });
-    pzWrap.addEventListener('pointerup', () => { pz.dragging = false; });
+    pzWrap.addEventListener('pointerup', () => {
+      const tapped = pz.dragging && pz.moved < 6;
+      pz.dragging = false;
+      if (tapped) goToHeritageGraph();
+    });
     pzWrap.addEventListener('wheel', (e) => {
       e.preventDefault();
       pz.k = Math.min(3, Math.max(0.5, pz.k * (e.deltaY < 0 ? 1.1 : 0.9)));
@@ -1622,7 +1633,7 @@ export async function craftView(root, { id }) {
     const pmStage = hasModel ? el('div', { class: 'pm-stage finish-model', style: { opacity: '0' } }) : null;
     const graphEntry = el('button', {
       class: 'heritage-graph-entry', type: 'button', text: '点击完成品，探索知识图谱',
-      onclick: openHeritageGraph,
+      onclick: goToHeritageGraph,
     });
     const zoomControls = hasModel ? el('div', { class: 'pm-zoom-controls', 'aria-label': '模型缩放' }, [
       el('button', { type: 'button', text: '缩小', disabled: true, onclick: () => finishedModelHandle?.zoomBy(0.82) }),
@@ -1634,13 +1645,9 @@ export async function craftView(root, { id }) {
       class: 'pm-cap',
       text: hasModel
         ? (modelSet.pattern
-          ? '玉石实体成品 · 花纹来自纪录片真实影像取样 · 表面墨粒缓慢下落 · 点击爆散'
-          : '玉石实体成品 · 表面墨粒缓慢下落 · 拖拽旋转 · 滚轮缩放 · 点击爆散')
-        : '墨粒聚成成品影像 · 拖拽平移 · 滚轮缩放',
-    });
-    stageWrap.addEventListener('click', (event) => {
-      if (event.target.closest('button, .pm-zoom-controls')) return;
-      if (event.target.closest('.pm-stage, .pz-wrap')) openHeritageGraph();
+          ? '玉石实体成品 · 花纹来自纪录片真实影像取样 · 拖拽旋转 · 轻点进入知识星图'
+          : '玉石实体成品 · 拖拽旋转 · 滚轮缩放 · 轻点进入知识星图')
+        : '墨粒聚成成品影像 · 拖拽平移 · 滚轮缩放 · 轻点进入知识星图',
     });
 
     // 侧栏：代表影像 + 已核验的外部资料（置于主舞台侧边，不把模型挤离中心）
@@ -1727,6 +1734,7 @@ export async function craftView(root, { id }) {
         flowSpeed: 0.016,
         diffuseSpeed: 0.006,
         dropRate: 0.34,
+        onTap: goToHeritageGraph,
         ...(modelSet.pattern ? { tint: modelSet.rawTint, patternUrl: modelSet.pattern } : {}),
       });
       if (!h) return;
@@ -1736,7 +1744,7 @@ export async function craftView(root, { id }) {
       pmStage.setAttribute('tabindex', '0');
       pmStage.setAttribute('aria-label', '打开三维非遗知识图谱');
       pmStage.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openHeritageGraph(); }
+        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); goToHeritageGraph(); }
       });
       zoomControls.querySelectorAll('button').forEach((button) => { button.disabled = false; });
       pmStage.style.opacity = '1';
@@ -1844,7 +1852,7 @@ export async function craftView(root, { id }) {
           getTargets: () => [],
           getInteractiveGroups: () => [],
           rendererDomElement: adapter.rendererDomElement,
-          onClick: () => openHeritageGraph(),
+          onClick: () => goToHeritageGraph(),
           onDragStart: () => adapter.startDrag?.(),
           onDragMove: (dx, dy) => adapter.applyDrag(dx, dy),
           onDragEnd: () => adapter.endDrag(),

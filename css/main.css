@@ -1620,9 +1620,13 @@ a:hover { color: var(--terracotta); }
 
 /* ---------- 管理员：社区投稿审核 ---------- */
 .admin-submission-filter { min-width: 220px; }
-.admin-graph-editor { display: grid; gap: 14px; margin-bottom: 22px; padding: 24px; border: 1px solid rgba(96,108,56,.28); border-radius: var(--radius-lg); background: rgba(232,220,199,.94); }
-.admin-graph-editor .admin-field { display: grid; gap: 7px; }
-.admin-graph-editor input, .admin-graph-editor textarea, .admin-graph-editor select { width: 100%; padding: 10px 12px; border: 1px solid rgba(96,108,56,.34); border-radius: var(--radius-sm); background: rgba(255,255,255,.32); font: inherit; }
+.admin-graph-editor, .admin-content-editor { display: grid; gap: 14px; margin-bottom: 22px; padding: 24px; border: 1px solid rgba(96,108,56,.28); border-radius: var(--radius-lg); background: rgba(232,220,199,.94); }
+.admin-graph-editor .admin-field, .admin-content-editor .admin-field { display: grid; gap: 7px; }
+.admin-graph-editor input, .admin-graph-editor textarea, .admin-graph-editor select,
+.admin-content-editor input, .admin-content-editor textarea { width: 100%; padding: 10px 12px; border: 1px solid rgba(96,108,56,.34); border-radius: var(--radius-sm); background: rgba(255,255,255,.32); font: inherit; }
+.admin-content-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, .55fr); gap: 14px; }
+.admin-claim-list { display: grid; gap: 10px; margin-top: 10px; }
+.admin-claim-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 10px; }
 .admin-graph-relations { display: grid; gap: 9px; }
 .admin-graph-relation-row { display: grid; grid-template-columns: 110px 1fr 1.15fr 1.35fr auto; gap: 8px; align-items: start; }
 .admin-documentary-editor { display: grid; gap: 12px; margin: 18px 0; padding: 16px; border: 1px solid rgba(96,108,56,.22); border-radius: var(--radius-md); background: rgba(232,220,199,.46); }
@@ -2276,6 +2280,7 @@ body.agent-open .jiao-toast { right: calc(min(400px, 92vw) + 100px); }
   .admin-card-actions, .admin-heading-actions { align-items: flex-start; flex-direction: column; gap: 8px; }
   .admin-step-editor { padding: 20px 16px; }
   .admin-editor-heading, .admin-section-heading { align-items: flex-start; flex-direction: column; }
+  .admin-content-fields { grid-template-columns: 1fr; }
   .admin-operation-row { align-items: stretch; flex-wrap: wrap; }
   .admin-operation-row > input { min-width: calc(100% - 50px); }
   .heritage-graph-info { top: auto; right: 14px; bottom: 52px; left: 14px; width: auto; min-height: 0; padding: 14px 16px; }
