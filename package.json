@@ -14,6 +14,7 @@
     "kb:links": "node scripts/check-knowledge-links.mjs",
     "kb:test-api": "node scripts/smoke-knowledge-api.mjs",
     "ui:test": "node scripts/smoke-ui.mjs",
+    "mobile:test-ui": "node scripts/smoke-mobile-ui.mjs",
     "map:test-ui": "node scripts/smoke-map-navigation-ui.mjs",
     "map:test-center-edit": "node scripts/test-map-center-edit.mjs",
     "mascot:import-godot": "node scripts/import-godot-cat-rig.mjs",

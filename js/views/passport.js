@@ -14,6 +14,7 @@ export async function passportView(root) {
   const kbStats = knowledge.stats || {};
   const coveredDistricts = new Set(crafts.map((c) => c.config.districtId).filter(Boolean)).size;
   const remainingDistricts = Math.max(0, 16 - coveredDistricts);
+  const tableLabels = ['项目', '来源与处理模型', '授权状态', '人工审核', '视频数据', '知识库', '生成时间'];
   const rows = crafts.map((c) => {
     const m = c.manifest || {};
     const v = m.video || {};
@@ -23,7 +24,7 @@ export async function passportView(root) {
     const videoId = v.video_id || (isManaged ? '无独立视频' : c.craftId);
     const rightsStatus = v.rights_status || (isManaged ? '由投稿/导入资料约定' : '待确认');
     const generatedAt = m.generated_at || c.communityDetails?.updated_at || c.communityDetails?.created_at;
-    return el('tr', {}, [
+    const cells = [
       el('td', {}, [
         el('b', { text: c.title }),
         el('p', { class: 'mono', text: `${packageId} / ${videoId}` }),
@@ -53,7 +54,12 @@ export async function passportView(root) {
       el('td', {}, [
         el('p', { class: 'mono', text: generatedAt ? new Date(generatedAt).toLocaleString('zh-CN') : '未登记' }),
       ]),
-    ]);
+    ];
+    cells.forEach((cell, index) => {
+      cell.setAttribute('data-label', tableLabels[index]);
+      cell.setAttribute('aria-label', tableLabels[index]);
+    });
+    return el('tr', {}, cells);
   });
 
   const authorityCards = ['A', 'B', 'C'].map((tier) => el('div', { class: 'kb-stat' }, [
@@ -114,7 +120,7 @@ export async function passportView(root) {
         ]),
       ]),
       el('table', {}, [
-        el('thead', {}, el('tr', {}, ['项目', '来源与处理模型', '授权状态', '人工审核', '视频数据', '知识库', '生成时间'].map((h) => el('th', { text: h })))),
+        el('thead', {}, el('tr', {}, tableLabels.map((h) => el('th', { text: h })))),
         el('tbody', {}, rows),
       ]),
       el('p', { class: 'foot-note', text: `目录生成时间：${new Date(crafts[0] ? crafts[0].manifest.generated_at : Date.now()).toLocaleString('zh-CN')} · 视频文件尚未接入播放（playback_url 为空），页面证据以关键帧 + 转写原文 + 时间码形式呈现。其余 ${remainingDistricts} 个行政区与更多项目：资料待接入。` }),

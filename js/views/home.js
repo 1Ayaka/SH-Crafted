@@ -15,18 +15,38 @@ import { mountEditableModule } from '../editable.js';
 
 export function topNav(active) {
   const editing = isAdmin();
-  return el('header', { class: 'topnav' }, [
+  const nav = el('nav', { id: 'site-navigation', 'aria-label': '主导航' }, [
+    el('a', { href: '#/explore', class: active === 'explore' ? 'active' : '', text: '地图探索' }),
+    el('a', { href: '#/graph', class: active === 'graph' ? 'active graph-nav-link' : 'graph-nav-link', text: '知识星图' }),
+    el('a', { href: '#/passport', class: active === 'passport' ? 'active' : '', text: '数据护照' }),
+    editing ? el('button', { class: 'admin-nav-logout', type: 'button', text: '退出', onclick: () => logout() }) : null,
+  ]);
+  const toggle = el('button', {
+    class: 'topnav-toggle', type: 'button', 'aria-label': '打开导航菜单',
+    'aria-controls': 'site-navigation', 'aria-expanded': 'false',
+  }, [el('span'), el('span'), el('span')]);
+  const header = el('header', { class: 'topnav' }, [
     el('a', { class: 'brand', href: '#/', 'aria-label': '返回初始页', style: { display: 'flex', alignItems: 'center', gap: '14px' } }, [
       brandLogo('brand-logo', '探物志 Logo'),
       el('span', { class: 'name', text: '探物志-上海非遗交互数字平台' }),
     ]),
-    el('nav', {}, [
-      el('a', { href: '#/explore', class: active === 'explore' ? 'active' : '', text: '地图探索' }),
-      el('a', { href: '#/graph', class: active === 'graph' ? 'active graph-nav-link' : 'graph-nav-link', text: '知识星图' }),
-      el('a', { href: '#/passport', class: active === 'passport' ? 'active' : '', text: '数据护照' }),
-      editing ? el('button', { class: 'admin-nav-logout', type: 'button', text: '退出', onclick: () => logout() }) : null,
-    ]),
+    toggle,
+    nav,
   ]);
+  const setOpen = (open) => {
+    header.classList.toggle('menu-open', open);
+    nav.classList.toggle('is-open', open);
+    toggle.setAttribute('aria-expanded', String(open));
+    toggle.setAttribute('aria-label', open ? '关闭导航菜单' : '打开导航菜单');
+  };
+  toggle.addEventListener('click', (event) => {
+    event.stopPropagation();
+    setOpen(!header.classList.contains('menu-open'));
+  });
+  nav.addEventListener('click', (event) => {
+    if (event.target.closest('a, button')) setOpen(false);
+  });
+  return header;
 }
 
 // 转场状态名（产品大纲 §4.1 预留接口）：home_exit = 首页离场，map_enter = 地图页进场标记类
