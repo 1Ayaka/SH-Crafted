@@ -178,6 +178,7 @@ function randomDropPosition(index = 0) {
 }
 
 export function createWorkbenchSurface(container, descriptors = [], options = {}) {
+  const interactive = options.interactive !== false;
   const stateStore = options.stateStore || new Map();
   const canvas = document.createElement('canvas');
   canvas.className = 'wb-table-canvas';
@@ -366,10 +367,13 @@ export function createWorkbenchSurface(container, descriptors = [], options = {}
     pointerStart = null;
     canvas.classList.remove('is-grabbing');
   };
-  canvas.addEventListener('pointerdown', onPointerDown);
-  canvas.addEventListener('pointermove', onPointerMove);
-  canvas.addEventListener('pointerup', onPointerUp);
-  canvas.addEventListener('pointercancel', onPointerUp);
+  container.dataset.interactionMode = interactive ? 'drag' : 'scroll-safe';
+  if (interactive) {
+    canvas.addEventListener('pointerdown', onPointerDown);
+    canvas.addEventListener('pointermove', onPointerMove);
+    canvas.addEventListener('pointerup', onPointerUp);
+    canvas.addEventListener('pointercancel', onPointerUp);
+  }
 
   const resize = () => {
     const rect = container.getBoundingClientRect();

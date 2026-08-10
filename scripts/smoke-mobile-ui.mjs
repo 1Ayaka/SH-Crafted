@@ -203,6 +203,37 @@ try {
         fs.writeFileSync(path.join(artifactDir, `map-preview-${device.width}x${device.height}.png`), Buffer.from(previewShot.data, 'base64'));
         await evaluate("document.querySelector('.map-heritage-preview-close').click()");
         results.push({ device: device.name, page: 'map-preview', ...previewAudit });
+
+        await evaluate(`(() => {
+          const input = document.querySelector('.toolbar input[type="search"]');
+          input.value = '嘉定区'; input.dispatchEvent(new Event('input', { bubbles: true }));
+        })()`);
+        await until("[...document.querySelectorAll('.map-search-result')].some((node) => node.textContent.includes('嘉定区'))");
+        await evaluate("[...document.querySelectorAll('.map-search-result')].find((node) => node.textContent.includes('嘉定区')).click()");
+        await until("Boolean(document.querySelector('.district-story'))");
+        await wait(350);
+        const districtAudit = await evaluate(`(() => {
+          const panel = document.querySelector('.district-story'); const rect = panel.getBoundingClientRect();
+          const toggle = panel.querySelector('.district-story-mobile-toggle');
+          const toggleRect = toggle.getBoundingClientRect(); const hit = document.elementFromPoint(toggleRect.left + toggleRect.width / 2, toggleRect.top + toggleRect.height / 2);
+          const back = panel.querySelector('.district-story-back'); const backRect = back.getBoundingClientRect(); const backHit = document.elementFromPoint(backRect.left + backRect.width / 2, backRect.top + backRect.height / 2);
+          return { top: rect.top, bottom: rect.bottom, height: rect.height, toggleVisible: getComputedStyle(toggle).display !== 'none', toggleReachable: hit === toggle || toggle.contains(hit), backReachable: backHit === back || back.contains(backHit), expanded: toggle.getAttribute('aria-expanded') };
+        })()`);
+        if (districtAudit.height > 170 || !districtAudit.toggleVisible || !districtAudit.toggleReachable || !districtAudit.backReachable || districtAudit.expanded !== 'false' || districtAudit.top < device.height * .68) {
+          throw new Error(`standard/map-district-compact failed ${JSON.stringify(districtAudit)}`);
+        }
+        const districtShot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+        fs.writeFileSync(path.join(artifactDir, `map-district-${device.width}x${device.height}.png`), Buffer.from(districtShot.data, 'base64'));
+        await evaluate("document.querySelector('.district-story-mobile-toggle').click()");
+        await wait(280);
+        const expandedDistrict = await evaluate(`(() => {
+          const panel = document.querySelector('.district-story'); const rect = panel.getBoundingClientRect();
+          return { height: rect.height, expanded: panel.classList.contains('is-mobile-expanded'), ariaExpanded: panel.querySelector('.district-story-mobile-toggle').getAttribute('aria-expanded') };
+        })()`);
+        if (!expandedDistrict.expanded || expandedDistrict.ariaExpanded !== 'true' || expandedDistrict.height <= districtAudit.height || expandedDistrict.height > device.height * .54) {
+          throw new Error(`standard/map-district-expanded failed ${JSON.stringify(expandedDistrict)}`);
+        }
+        results.push({ device: device.name, page: 'map-district', ...districtAudit });
       }
 
       if (device.name === 'standard' && page.name === 'craft') {
@@ -212,13 +243,32 @@ try {
         await wait(350);
         const workbenchAudit = await evaluate(`(() => {
           const rect = document.querySelector('.workbench-col').getBoundingClientRect();
-          return { left: rect.left, right: rect.right, width: rect.width, actionTargets: [...document.querySelectorAll('.wb-play button')].filter((node) => node.getBoundingClientRect().height >= 40).length };
+          const backpack = document.querySelector('.wb-play-physics .backpack').getBoundingClientRect();
+          const main = document.querySelector('.wb-play-physics .wb-main').getBoundingClientRect();
+          const execute = document.querySelector('.wb-mobile-execute');
+          return {
+            left: rect.left, right: rect.right, width: rect.width,
+            actionTargets: [...document.querySelectorAll('.wb-play button')].filter((node) => node.getBoundingClientRect().height >= 40).length,
+            interactionMode: document.querySelector('.wb-table-surface')?.dataset.interactionMode,
+            executeVisible: execute && getComputedStyle(execute).display !== 'none' && execute.getBoundingClientRect().height >= 44,
+            verticalFlow: main.top >= backpack.bottom - 1,
+          };
         })()`);
-        if (workbenchAudit.left < -1 || workbenchAudit.right > device.width + 1 || workbenchAudit.actionTargets < 1) {
+        if (workbenchAudit.left < -1 || workbenchAudit.right > device.width + 1 || workbenchAudit.actionTargets < 1 || workbenchAudit.interactionMode !== 'scroll-safe' || !workbenchAudit.executeVisible || !workbenchAudit.verticalFlow) {
           throw new Error(`standard/craft-workbench failed ${JSON.stringify(workbenchAudit)}`);
         }
         const workbenchShot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
         fs.writeFileSync(path.join(artifactDir, `craft-workbench-${device.width}x${device.height}.png`), Buffer.from(workbenchShot.data, 'base64'));
+        await evaluate("document.querySelector('.wb-mobile-execute').scrollIntoView({ block: 'center' })");
+        await wait(250);
+        const executeReachable = await evaluate(`(() => {
+          const button = document.querySelector('.wb-mobile-execute'); const rect = button.getBoundingClientRect();
+          const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+          return hit === button || button.contains(hit);
+        })()`);
+        if (!executeReachable) throw new Error('standard/craft-workbench: mobile execute action is covered');
+        const actionShot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+        fs.writeFileSync(path.join(artifactDir, `craft-actions-${device.width}x${device.height}.png`), Buffer.from(actionShot.data, 'base64'));
         results.push({ device: device.name, page: 'craft-workbench', ...workbenchAudit });
       }
 

@@ -319,11 +319,16 @@ export async function exploreView(root) {
       return section;
     };
     const recommendations = crafts.slice(0, 3);
+    const mobileToggle = el('button', {
+      class: 'district-story-mobile-toggle', type: 'button', text: '展开地区介绍',
+      'aria-expanded': 'false',
+    });
     const panel = el('aside', { class: 'district-story', 'aria-label': `${name}地区介绍` }, [
       districtHeading,
       el('button', { class: 'back-btn district-story-back', onclick: onBack }, ['← 返回上海全景']),
       aggregate ? el('p', { class: 'district-story-scope', text: '黄浦区 · 徐汇区 · 长宁区 · 静安区 · 普陀区' }) : null,
       el('p', { class: 'district-story-count', text: `当前接入 ${crafts.length} 项非遗内容` }),
+      mobileToggle,
       collapsible(aggregate ? '区域关系' : '区名由来', 'origin', profile.origin),
       collapsible('地域特色', 'features', profile.features),
       collapsible('非遗概览', 'heritage_overview', profile.heritageOverview),
@@ -341,6 +346,13 @@ export async function exploreView(root) {
         }, [el('span', { text: craft.title }), el('small', { text: '查看非遗' })]))) : null,
       ]),
     ]);
+    mobileToggle.addEventListener('click', () => {
+      const expanded = !panel.classList.contains('is-mobile-expanded');
+      panel.classList.toggle('is-mobile-expanded', expanded);
+      mobileToggle.setAttribute('aria-expanded', String(expanded));
+      mobileToggle.textContent = expanded ? '收起地区介绍' : '展开地区介绍';
+      if (!expanded) panel.scrollTop = 0;
+    });
     return panel;
   }
 

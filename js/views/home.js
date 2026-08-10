@@ -36,6 +36,9 @@ export function topNav(active) {
   const setOpen = (open) => {
     header.classList.toggle('menu-open', open);
     nav.classList.toggle('is-open', open);
+    Object.assign(nav.style, open
+      ? { opacity: '1', visibility: 'visible', transform: 'none', pointerEvents: 'auto' }
+      : { opacity: '', visibility: '', transform: '', pointerEvents: '' });
     toggle.setAttribute('aria-expanded', String(open));
     toggle.setAttribute('aria-label', open ? '关闭导航菜单' : '打开导航菜单');
   };

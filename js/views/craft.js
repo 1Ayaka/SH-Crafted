@@ -990,6 +990,7 @@ export async function craftView(root, { id }) {
     ];
 
     let physicsHandle = null;
+    const mobileTapMode = window.matchMedia('(max-width: 680px) and (pointer: coarse)').matches;
     const feedback = el('p', { class: 'wb-feedback', role: 'status' });
     const executeDroppedAction = (actionId, clientX, clientY) => {
       document.body.classList.remove('wb-dragging');
@@ -1024,6 +1025,7 @@ export async function craftView(root, { id }) {
     };
 
     const beginPointerResourceDrag = (event, name, kind, card) => {
+      if (mobileTapMode) return;
       if (event.button !== 0 || card.disabled || tableSurface.dataset.processing === 'true') return;
       rememberBackpackScroll(card);
       const startX = event.clientX;
@@ -1082,6 +1084,7 @@ export async function craftView(root, { id }) {
     };
 
     const beginPointerActionDrag = (event, action, card) => {
+      if (mobileTapMode) return;
       if (event.button !== 0 || tableSurface.dataset.processing === 'true') return;
       const startX = event.clientX;
       const startY = event.clientY;
@@ -1174,7 +1177,7 @@ export async function craftView(root, { id }) {
       card = el('button', {
         class: `action-card${S.actionSlot === action.id ? ' selected' : ''}`,
         type: 'button', 'data-action': action.id, 'data-drag-mode': 'pointer',
-        title: '按住并向左拖到桌面，松开即可执行',
+        title: mobileTapMode ? '轻触选择动作，再点击下方“执行已选动作”' : '按住并向左拖到桌面，松开即可执行',
         onpointerdown: (event) => beginPointerActionDrag(event, action, card),
         onclick: () => {
           if (card.dataset.suppressClick === 'true') {
@@ -1184,7 +1187,7 @@ export async function craftView(root, { id }) {
           S.actionSlot = action.id;
           [...actionPalette.querySelectorAll('.action-card')].forEach((node) => node.classList.toggle('selected', node.dataset.action === action.id));
           feedback.className = 'wb-feedback';
-          feedback.textContent = '已选择动作，请按住动作卡并向左拖到桌面工作区执行。';
+          feedback.textContent = mobileTapMode ? '已选择动作，点击下方“执行已选动作”即可继续。' : '已选择动作，请按住动作卡并向左拖到桌面工作区执行。';
         },
       }, [el('span', { text: action.label })]);
       return card;
@@ -1207,8 +1210,9 @@ export async function craftView(root, { id }) {
       feedback,
       el('div', { class: 'wb-actions' }, [
         el('button', { class: 'btn-quick-fill', text: '一键填入', title: '自动把当前步骤所需物品放到桌面', onclick: quickFillCurrentStep }),
+        el('button', { class: 'btn btn-primary wb-mobile-execute', type: 'button', text: '执行已选动作', onclick: () => processStep(feedback, tableSurface, tableSurface) }),
         !documentary && step.evidence_ids?.length ? el('button', { class: 'btn-ghost', text: '查看纪录片证据', onclick: () => openEvidenceModal(craft, step.evidence_ids, { title: `证据 · ${step.displayName}` }) }) : null,
-        el('span', { class: 'wb-note', text: '动作需要拖到桌面工作区后才会执行。' }),
+        el('span', { class: 'wb-note', text: mobileTapMode ? '手机端可轻触材料和动作，不需要拖动页面。' : '动作需要拖到桌面工作区后才会执行。' }),
       ]),
     ]);
 
@@ -1219,7 +1223,7 @@ export async function craftView(root, { id }) {
       backpack.scrollTop = savedBackpackScroll;
       if (!tableSurface.isConnected) return;
       try {
-        physicsHandle = createWorkbenchSurface(tableSurface, tableObjects, { stateStore: S.workbenchPhysics });
+        physicsHandle = createWorkbenchSurface(tableSurface, tableObjects, { stateStore: S.workbenchPhysics, interactive: !mobileTapMode });
         wbPreviewHandles.push(physicsHandle);
       } catch (error) {
         tableSurface.appendChild(el('p', { class: 'wb-table-error', text: '当前浏览器无法显示粒子桌面，请继续使用背包和动作。' }));

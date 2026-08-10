@@ -2746,6 +2746,8 @@ body.agent-open .jiao-toast { right: calc(min(400px, 92vw) + 100px); }
    The mobile experience changes composition instead of shrinking desktop UI.
    ============================================================ */
 .topnav-toggle { display: none; }
+.wb-mobile-execute { display: none; }
+.district-story-mobile-toggle { display: none; }
 
 @media (max-width: 680px) {
   :root {
@@ -2849,9 +2851,36 @@ body.agent-open .jiao-toast { right: calc(min(400px, 92vw) + 100px); }
     position: fixed; z-index: 70; top: auto; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); left: 10px;
     width: auto; max-width: none; max-height: min(47svh, 430px); transform: none; border-radius: 24px;
   }
-  .district-story h2 { font-size: 30px; }
-  .district-story-count { margin-bottom: 10px; }
+  .map-view > .district-story, .district-focus .district-story {
+    max-height: 168px; padding: 13px 15px 14px; overflow: hidden;
+    animation: mobileSheetIn .28s cubic-bezier(.2,.8,.25,1) both;
+  }
+  .map-view > .district-story.is-mobile-expanded, .district-focus .district-story.is-mobile-expanded {
+    max-height: min(52svh, 460px); overflow-y: auto;
+  }
+  body:has(.map-view .district-story) .mascot-bubble,
+  body:has(.map-view .project-story) .mascot-bubble { display: none; }
+  body:has(.map-view .district-story) .agent-fab,
+  body:has(.map-view .project-story) .agent-fab { display: none !important; }
+  body:has(.craft-body.playing) .mascot-bubble { display: none; }
+  body:has(.map-view .district-story) .gesture-toggle { bottom: calc(184px + env(safe-area-inset-bottom)); }
+  body:has(.map-view .district-story) .gesture-status { bottom: calc(240px + env(safe-area-inset-bottom)); }
+  @keyframes mobileSheetIn { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: none; } }
+  .district-story-heading { padding-right: 0; }
+  .district-story-kicker { letter-spacing: .16em; }
+  .district-story h2 { margin: 2px 0 3px; font-size: 25px; }
+  .district-story-back { position: absolute; top: 10px; right: 13px; margin: 0; font-size: 11px; }
+  .district-story-scope { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .district-story-count { margin-bottom: 5px; }
+  .district-story-mobile-toggle {
+    width: 100%; min-height: 40px; display: flex; align-items: center; justify-content: center;
+    border-top: 1px solid rgba(96,108,56,.2); color: var(--moss); font-size: 12px;
+  }
+  .district-story.is-mobile-expanded .district-story-mobile-toggle {
+    position: sticky; top: -13px; z-index: 3; background: rgba(232,220,199,.97);
+  }
   .district-story-section { padding: 10px 0; }
+  .project-story { animation: mobileSheetIn .28s cubic-bezier(.2,.8,.25,1) both; }
   .project-story-scroll { min-height: 0; }
   .project-story-action { position: sticky; bottom: 0; padding-bottom: 2px; }
   .project-story-action .btn { width: 100%; min-width: 0; min-height: 46px; }
@@ -2868,7 +2897,7 @@ body.agent-open .jiao-toast { right: calc(min(400px, 92vw) + 100px); }
   .craft-head.admin-editable-module { padding-right: 16px; }
   .craft-body { flex: none; height: auto; min-height: calc(100dvh - 94px); flex-direction: column; overflow: visible; }
   .reading-col { width: 100%; min-width: 0; max-height: 42dvh; flex: none; overflow: auto; }
-  .workbench-col { min-height: 58dvh; flex: none; overflow: hidden; }
+  .workbench-col { min-height: 58dvh; height: auto; flex: none; overflow: visible; }
   .craft-body.playing .reading-col, .craft-body.panels-collapsed .reading-col { width: 100%; min-width: 0; max-height: 54px; flex-direction: row; overflow-x: auto; overflow-y: hidden; }
   .craft-body.playing .panel, .craft-body.panels-collapsed .panel { min-width: max-content; }
   .craft-body.playing .panel .panel-head, .craft-body.panels-collapsed .panel .panel-head { min-height: 54px; writing-mode: horizontal-tb; padding: 10px 15px; }
@@ -2877,6 +2906,42 @@ body.agent-open .jiao-toast { right: calc(min(400px, 92vw) + 100px); }
   .workbench { min-height: 56dvh; }
   .action-palette { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; }
   .action-palette button { min-width: 76px; min-height: 44px; scroll-snap-align: start; }
+  .wb-play-physics { display: block; overflow: visible; }
+  .wb-play-physics .backpack {
+    width: 100%; max-height: none; overflow: visible; padding: 12px 14px 8px;
+    border-right: 0; border-bottom: 1px solid rgba(96,108,56,.25); box-shadow: none;
+  }
+  .wb-play-physics .backpack h4 { margin-bottom: 7px; }
+  .wb-play-physics .backpack .bp-sec {
+    display: flex; align-items: center; gap: 8px; margin: 0 0 7px; padding: 0 0 7px;
+    overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scrollbar-width: none;
+  }
+  .wb-play-physics .backpack .bp-sec::-webkit-scrollbar { display: none; }
+  .wb-play-physics .backpack .bp-sec > .sec-label { min-width: 34px; margin: 0; flex: none; }
+  .wb-play-physics .backpack .bp-item {
+    width: auto; min-width: 132px; min-height: 44px; flex: 0 0 132px; margin: 0;
+    scroll-snap-align: start; touch-action: pan-y !important;
+  }
+  .wb-play-physics .bp-help, .wb-play-physics .bp-legend { display: none; }
+  .wb-play-physics .wb-main { overflow: visible; padding: 14px 12px calc(20px + env(safe-area-inset-bottom)); }
+  .wb-play-physics .wb-stage-layout { display: flex; min-height: 0; flex-direction: column; gap: 12px; }
+  .wb-play-physics .wb-table-surface { order: 1; min-height: 48svh; touch-action: pan-y; }
+  .wb-play-physics .wb-table-canvas { touch-action: pan-y; cursor: default; }
+  .wb-play-physics .wb-side-rail { order: 2; display: flex; min-height: 0; flex-direction: column; gap: 12px; }
+  .wb-play-physics .action-palette {
+    order: 1; min-height: 62px; max-height: none; padding: 8px; flex-direction: row;
+    overflow-x: auto; overflow-y: hidden; scroll-snap-type: x proximity;
+  }
+  .wb-play-physics .action-card { min-width: 142px; min-height: 46px; touch-action: pan-y !important; scroll-snap-align: start; }
+  .wb-play-physics .wb-step-image { order: 2; min-height: 210px; }
+  .wb-play-physics .wb-actions {
+    position: sticky; z-index: 8; bottom: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    margin: 8px -4px 0; padding: 10px 4px calc(8px + env(safe-area-inset-bottom));
+    background: linear-gradient(to top, rgba(241,232,214,.98) 72%, rgba(241,232,214,.72), transparent);
+  }
+  .wb-play-physics .wb-actions > button { min-height: 46px; margin: 0; justify-content: center; }
+  .wb-play-physics .wb-actions .wb-note { grid-column: 1 / -1; max-width: none; margin: 0; text-align: center; }
+  .wb-mobile-execute { display: inline-flex; align-items: center; }
   .finish-v2 { min-height: calc(100dvh - 150px); }
   .finish-stage, .complete-stage { min-height: 44dvh; }
   .finish-v2 .complete-side, .complete-side { width: 100%; padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
