@@ -79,6 +79,7 @@ const CONTENT_SEED = await buildContentSeed();
 const sessions = new Map();
 const loginAttempts = new Map();
 const submissionAttempts = new Map();
+const communityImageUploadAttempts = new Map();
 let editableContent;
 let contentWriteQueue = Promise.resolve();
 let communityState;
@@ -484,6 +485,7 @@ function cleanImageSource(value) {
   const source = cleanText(value, 8_000_000);
   if (!source) return '';
   if (/^\/content-uploads\/steps\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.(?:png|jpe?g|webp)$/i.test(source)) return source;
+  if (/^\/content-uploads\/community\/[A-Za-z0-9_-]+\.(?:png|jpe?g|webp|gif)$/i.test(source)) return source;
   if (/^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/i.test(source)) return source;
   return cleanPublicUrl(source);
 }
@@ -1253,6 +1255,21 @@ async function handleCommunityApi(req, res, urlPath) {
 
   if (!validWriteOrigin(req)) { jsonResponse(res, 403, { error: 'invalid_origin' }, responseHeaders); return; }
 
+  if (urlPath === '/api/community/images' && req.method === 'POST') {
+    const ip = clientAddress(req);
+    const now = Date.now();
+    const previous = communityImageUploadAttempts.get(ip);
+    const attempt = previous?.resetAt > now ? previous : { count: 0, resetAt: now + 60 * 60 * 1000 };
+    if (attempt.count >= 30) {
+      jsonResponse(res, 429, { error: 'image_upload_rate_limited' }, responseHeaders);
+      return;
+    }
+    attempt.count += 1;
+    communityImageUploadAttempts.set(ip, attempt);
+    await handleCommunityImageUpload(req, res, responseHeaders);
+    return;
+  }
+
   const engagementMatch = urlPath.match(/^\/api\/community\/crafts\/([A-Za-z0-9_-]+)\/(view|inherit)$/);
   if (engagementMatch && req.method === 'POST') {
     const [, craftId, action] = engagementMatch;
@@ -1444,6 +1461,42 @@ const STEP_IMAGE_TYPES = Object.freeze({
   'image/jpeg': { extension: '.jpg', matches: (buffer) => buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff },
   'image/webp': { extension: '.webp', matches: (buffer) => buffer.length >= 12 && buffer.subarray(0, 4).toString('ascii') === 'RIFF' && buffer.subarray(8, 12).toString('ascii') === 'WEBP' },
 });
+
+const COMMUNITY_IMAGE_TYPES = Object.freeze({
+  ...STEP_IMAGE_TYPES,
+  'image/gif': {
+    extension: '.gif',
+    matches: (buffer) => buffer.length >= 6 && ['GIF87a', 'GIF89a'].includes(buffer.subarray(0, 6).toString('ascii')),
+  },
+});
+
+async function handleCommunityImageUpload(req, res, responseHeaders = {}) {
+  try {
+    const mimeType = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+    const imageType = COMMUNITY_IMAGE_TYPES[mimeType];
+    if (!imageType) { jsonResponse(res, 415, { error: 'unsupported_image_type' }, responseHeaders); return; }
+    const buffer = await readBufferBody(req, 6 * 1024 * 1024);
+    if (!buffer.length) { jsonResponse(res, 400, { error: 'empty_image' }, responseHeaders); return; }
+    if (!imageType.matches(buffer)) { jsonResponse(res, 400, { error: 'invalid_image_content' }, responseHeaders); return; }
+    const uploadDirectory = join(CONTENT_UPLOAD_DIR, 'community');
+    await mkdir(uploadDirectory, { recursive: true });
+    const fileName = `${Date.now().toString(36)}-${randomBytes(12).toString('hex')}${imageType.extension}`;
+    await writeFile(join(uploadDirectory, fileName), buffer, { flag: 'wx' });
+    let originalName = '';
+    try { originalName = decodeURIComponent(String(req.headers['x-file-name'] || '')); } catch { originalName = ''; }
+    jsonResponse(res, 201, {
+      ok: true,
+      image: {
+        image_url: `/content-uploads/community/${fileName}`,
+        original_name: cleanText(originalName, 240),
+        mime_type: mimeType,
+        size: buffer.length,
+      },
+    }, responseHeaders);
+  } catch (error) {
+    jsonResponse(res, error?.message === 'body_too_large' ? 413 : 400, { error: error?.message || 'image_upload_failed' }, responseHeaders);
+  }
+}
 
 async function handleStepImageUpload(req, res, craftId, stepId) {
   try {
@@ -2110,7 +2163,7 @@ async function serveContentUpload(req, res, urlPath) {
     return;
   }
   const uploadPath = urlPath.slice('/content-uploads/'.length);
-  if (!/^steps\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.(?:png|jpe?g|webp)$/i.test(uploadPath)) {
+  if (!/^(?:steps\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.(?:png|jpe?g|webp)|community\/[A-Za-z0-9_-]+\.(?:png|jpe?g|webp|gif))$/i.test(uploadPath)) {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('404 Not Found');
     return;
   }

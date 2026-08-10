@@ -1,6 +1,7 @@
 import { el } from '../ui.js';
 import { DISTRICT_PROFILES } from '../config.js';
 import { submitHeritage } from '../community.js';
+import { bindImageDropZone, COMMUNITY_IMAGE_ACCEPT, uploadCommunityImage } from '../image-upload.js';
 import { createLayerBG } from '../layerbg.js';
 import { topNav } from './home.js';
 
@@ -163,24 +164,48 @@ export async function contributeView(root, { districtId }) {
     });
   }
 
-  const overviewInput = el('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp,image/gif', multiple: true });
+  const overviewInput = el('input', { class: 'community-image-file-input', type: 'file', accept: COMMUNITY_IMAGE_ACCEPT, multiple: true, tabindex: '-1' });
+  const overviewUploadStatus = el('p', { class: 'community-import-status', role: 'status', 'aria-live': 'polite' });
   const addOverviewFiles = async (files) => {
-    for (const file of [...files].slice(0, 8 - overviewImages.length)) {
-      if (!file.type.startsWith('image/')) continue;
-      if (file.size > 2 * 1024 * 1024) { importStatus.textContent = `${file.name} 超过 2MB，未导入。`; continue; }
-      const currentBytes = overviewImages.reduce((sum, item) => sum + String(item.image_url || '').length, 0);
-      if (currentBytes + file.size * 1.4 > 6 * 1024 * 1024) { importStatus.textContent = '概览图总大小不能超过约 6MB。'; break; }
-      const image_url = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file); });
-      overviewImages.push({ title: file.name.replace(/\.[^.]+$/, ''), description: '', image_url });
+    const selected = [...files].slice(0, Math.max(0, 8 - overviewImages.length));
+    if (!selected.length) {
+      overviewUploadStatus.className = 'community-import-status error';
+      overviewUploadStatus.textContent = overviewImages.length >= 8 ? '概览图最多上传 8 张。' : '没有检测到图片文件。';
+      return;
     }
-    renderOverviewImages(); saveDraft();
+    overviewInput.disabled = true;
+    overviewUploadStatus.className = 'community-import-status';
+    let uploaded = 0;
+    for (const [index, file] of selected.entries()) {
+      overviewUploadStatus.textContent = `正在上传 ${index + 1}/${selected.length}：${file.name}`;
+      try {
+        const image = await uploadCommunityImage(file);
+        overviewImages.push({ title: file.name.replace(/\.[^.]+$/, ''), description: '', image_url: image.image_url });
+        uploaded += 1;
+        renderOverviewImages();
+        saveDraft();
+      } catch (error) {
+        overviewUploadStatus.className = 'community-import-status error';
+        overviewUploadStatus.textContent = `${file.name}：${error.message}`;
+        break;
+      }
+    }
+    overviewInput.disabled = false;
+    if (uploaded === selected.length) {
+      overviewUploadStatus.className = 'community-import-status';
+      overviewUploadStatus.textContent = `已上传 ${uploaded} 张图片，请为每张填写说明。`;
+    }
   };
-  overviewInput.addEventListener('change', () => { void addOverviewFiles(overviewInput.files || []); overviewInput.value = ''; });
-  const overviewDrop = el('label', { class: 'community-overview-drop', text: '将概览图拖到这里，或点击选择图片（至少 1 张，每张必须填写说明）' }, [overviewInput]);
-  overviewDrop.addEventListener('dragover', (event) => { event.preventDefault(); overviewDrop.classList.add('is-dragover'); });
-  overviewDrop.addEventListener('dragleave', () => overviewDrop.classList.remove('is-dragover'));
-  overviewDrop.addEventListener('drop', (event) => { event.preventDefault(); overviewDrop.classList.remove('is-dragover'); void addOverviewFiles(event.dataTransfer.files || []); });
-  overviewHost.before(overviewDrop);
+  const overviewDrop = el('div', {
+    class: 'community-overview-drop', role: 'button', tabindex: '0',
+    'aria-label': '上传概览图片',
+  }, [
+    el('strong', { text: '拖入概览图，或点击选择图片' }),
+    el('span', { text: '支持 PNG、JPG、WebP、GIF；单张不超过 6MB，最多 8 张' }),
+    overviewInput,
+  ]);
+  bindImageDropZone({ zone: overviewDrop, input: overviewInput, onFiles: addOverviewFiles });
+  overviewHost.before(overviewDrop, overviewUploadStatus);
 
   function renderSteps() {
     stepsHost.replaceChildren();

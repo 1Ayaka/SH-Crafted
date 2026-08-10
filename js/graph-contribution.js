@@ -1,5 +1,6 @@
 import { el, openModal } from './ui.js';
 import { submitHeritage } from './community.js';
+import { bindImageDropZone, COMMUNITY_IMAGE_ACCEPT, uploadCommunityImage } from './image-upload.js';
 
 const CONTRIBUTION_LABELS = {
   supplement: '补充资料', correction: '纠正摘要', relation: '补充节点关系', image: '补充图片',
@@ -28,9 +29,44 @@ export function openGraphContribution(node) {
   const imageUrl = el('input', { name: 'image_url', type: 'url', placeholder: 'https://…' });
   const imageTitle = el('input', { name: 'image_title', maxlength: '160', placeholder: '图片内容或作品名称' });
   const imageDescription = el('textarea', { name: 'image_description', rows: '3', maxlength: '1000', placeholder: '说明画面内容、拍摄对象与大致时间；不要填写无法确认的人名。' });
+  const imageInput = el('input', { class: 'community-image-file-input', type: 'file', accept: COMMUNITY_IMAGE_ACCEPT, tabindex: '-1' });
+  const imageUploadStatus = el('p', { class: 'community-import-status', role: 'status', 'aria-live': 'polite' });
+  const imagePreview = el('img', { class: 'graph-contribution-image-preview', alt: '待投稿图片预览', hidden: true });
+  let uploadedImageUrl = '';
+  const imageDrop = el('div', {
+    class: 'community-overview-drop graph-contribution-image-drop', role: 'button', tabindex: '0',
+    'aria-label': '上传知识星图节点图片',
+  }, [
+    el('strong', { text: '拖入节点图片，或点击选择图片' }),
+    el('span', { text: '支持 PNG、JPG、WebP、GIF；单张不超过 6MB' }),
+    imageInput,
+  ]);
+  const uploadGraphImage = async (files) => {
+    const file = [...files][0];
+    if (!file) return;
+    imageInput.disabled = true;
+    imageUploadStatus.className = 'community-import-status';
+    imageUploadStatus.textContent = `正在上传：${file.name}`;
+    try {
+      const image = await uploadCommunityImage(file);
+      uploadedImageUrl = image.image_url;
+      imagePreview.src = image.image_url;
+      imagePreview.hidden = false;
+      if (!imageTitle.value) imageTitle.value = file.name.replace(/\.[^.]+$/, '');
+      imageUploadStatus.textContent = '图片已上传，可以继续填写说明并提交审核。';
+      imageUrl.required = false;
+    } catch (error) {
+      imageUploadStatus.className = 'community-import-status error';
+      imageUploadStatus.textContent = error.message;
+    } finally {
+      imageInput.disabled = false;
+    }
+  };
+  bindImageDropZone({ zone: imageDrop, input: imageInput, onFiles: uploadGraphImage });
   const imageFields = el('section', { class: 'graph-contribution-dependent', hidden: true }, [
     el('p', { class: 'graph-contribution-section-title', text: '图片资料' }),
-    field('图片公开链接', imageUrl, '请确认有权公开展示，并在上方填写图片出处。'),
+    imageDrop, imageUploadStatus, imagePreview,
+    field('或填写图片公开链接', imageUrl, '上传本地图片和填写公开链接二选一；请确认有权公开展示，并在上方填写图片出处。'),
     el('div', { class: 'graph-contribution-grid' }, [field('图片标题', imageTitle), field('图片说明', imageDescription)]),
   ]);
   const contributorName = el('input', { name: 'contributor_name', maxlength: '100', placeholder: '选填' });
@@ -45,7 +81,7 @@ export function openGraphContribution(node) {
     imageFields.hidden = !imageMode;
     relatedTitle.required = relationMode;
     relationExplanation.required = relationMode;
-    imageUrl.required = imageMode;
+    imageUrl.required = imageMode && !uploadedImageUrl;
   };
   type.addEventListener('change', updateDependent);
   const form = el('form', { class: 'graph-contribution-form' }, [
@@ -82,7 +118,7 @@ export function openGraphContribution(node) {
         related_node_type: relatedType.value, related_node_title: relatedTitle.value,
         relation: RELATION_BY_TYPE[relatedType.value], relation_explanation: relationExplanation.value,
       });
-      if (type.value === 'image') payload.images = [{ title: imageTitle.value, description: imageDescription.value, image_url: imageUrl.value, source_url: sourceUrl.value }];
+      if (type.value === 'image') payload.images = [{ title: imageTitle.value, description: imageDescription.value, image_url: uploadedImageUrl || imageUrl.value, source_url: sourceUrl.value }];
       const result = await submitHeritage(payload);
       form.replaceChildren(el('div', { class: 'graph-contribution-success' }, [
         el('h3', { text: '已进入审核队列' }),

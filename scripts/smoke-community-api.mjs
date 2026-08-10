@@ -67,6 +67,20 @@ try {
   const stats = await json('/api/community/stats');
   const visitorA = cookieFrom(stats.response, 'sh_visitor');
   if (!visitorA) throw new Error('visitor cookie was not issued');
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
+  const imageUpload = await fetch(`${base}/api/community/images`, {
+    method: 'POST',
+    headers: { Origin: base, Cookie: visitorA, 'Content-Type': 'image/png', 'X-File-Name': encodeURIComponent('投稿测试.png') },
+    body: png,
+  });
+  const imagePayload = await imageUpload.json();
+  if (imageUpload.status !== 201 || !/^\/content-uploads\/community\/.+\.png$/.test(imagePayload.image?.image_url || '')) throw new Error('community image upload failed');
+  const uploadedImage = await fetch(`${base}${imagePayload.image.image_url}`);
+  if (!uploadedImage.ok || uploadedImage.headers.get('content-type') !== 'image/png' || !Buffer.from(await uploadedImage.arrayBuffer()).equals(png)) throw new Error('uploaded community image is not served intact');
+  const invalidImage = await fetch(`${base}/api/community/images`, {
+    method: 'POST', headers: { Origin: base, Cookie: visitorA, 'Content-Type': 'image/png' }, body: Buffer.from('not a png'),
+  });
+  if (invalidImage.status !== 400 || (await invalidImage.json()).error !== 'invalid_image_content') throw new Error('invalid community image content was accepted');
   const view1 = await json('/api/community/crafts/SHIH_0001/view', { method: 'POST', cookie: visitorA });
   const view2 = await json('/api/community/crafts/SHIH_0001/view', { method: 'POST', cookie: visitorA });
   if (view1.payload.view_count !== 1 || view2.payload.view_count !== 2) throw new Error('view counter is not monotonic');
@@ -87,8 +101,8 @@ try {
       summary: '这是一条用于验证社区投稿审核与正式发布链路的测试内容。',
       history: '测试历史说明。', features: '测试特色说明。', include_steps: true,
       steps: [{ name: '准备材料', description: '整理并检查材料。', result: '得到已整理材料', materials: ['材料甲'], tools: ['工具甲'], actions: ['整理'], documentary_clips: [{ title: '准备材料片段', video_url: 'assets/video/test.mp4', start_seconds: 0, end_seconds: 10 }] }],
-      overview_images: [{ title: '测试概览图', image_url: 'data:image/png;base64,iVBORw0KGgo=', description: '用于验证投稿概览图必填规则。' }],
-      star_data: { summary: '测试星图资料。', keywords: ['测试'], relations: ['测试传统'], images: [{ title: '测试节点图', image_url: 'data:image/png;base64,iVBORw0KGgo=' }] },
+      overview_images: [{ title: '测试概览图', image_url: imagePayload.image.image_url, description: '用于验证投稿概览图必填规则。' }],
+      star_data: { summary: '测试星图资料。', keywords: ['测试'], relations: ['测试传统'], images: [{ title: '测试节点图', image_url: imagePayload.image.image_url }] },
       gallery_urls: [], contributor_name: '测试投稿人', contributor_contact: 'test@example.invalid', website: '',
     },
   });
@@ -153,6 +167,24 @@ try {
   const graphTarget = graphContent.payload.graph_nodes.find((node) => node.id === 'heritage:SHIH_0001');
   if (!graphTarget?.community_knowledge?.some((item) => item.submission_id === graphSubmission.payload.submission_id)) throw new Error('approved graph knowledge was not attached to target node');
   if (!graphContent.payload.graph_edges.some((edge) => edge.id === approvedGraph.payload.published_graph_edge_id && edge.origin === 'community_review')) throw new Error('approved graph relation was not published');
+  const graphImageSubmission = await json('/api/community/submissions', {
+    method: 'POST', cookie: visitorA,
+    body: {
+      kind: 'graph', target_node_id: 'heritage:SHIH_0001', contribution_type: 'image',
+      statement: '这张测试图片用于验证社区上传图片经审核后进入知识星图节点的完整链路。',
+      source_title: '自动化测试图片来源', source_url: 'https://example.org/graph-image-source',
+      images: [{ title: '测试节点上传图', description: '一张用于上传回归测试的图片。', image_url: imagePayload.image.image_url, source_url: 'https://example.org/graph-image-source' }],
+      contributor_name: '星图图片测试投稿人', website: '',
+    },
+  });
+  const pendingGraphImage = await json('/api/admin/submissions?status=pending', { cookie: adminCookie });
+  await json(`/api/admin/submissions/${graphImageSubmission.payload.submission_id}/review`, {
+    method: 'PUT', cookie: adminCookie,
+    body: { action: 'approve', reviewer_note: '星图图片核对通过', revision: pendingGraphImage.payload.revision },
+  });
+  const contentWithGraphImage = await json('/api/content');
+  const graphImageTarget = contentWithGraphImage.payload.graph_nodes.find((node) => node.id === 'heritage:SHIH_0001');
+  if (!graphImageTarget?.images?.some((image) => image.image_url === imagePayload.image.image_url)) throw new Error('approved uploaded image was not published to the graph node');
   const nativeFetch = globalThis.fetch;
   globalThis.fetch = (input, options) => nativeFetch(
     typeof input === 'string' && !/^[a-z]+:/i.test(input) ? new URL(input, `${base}/`).href : input,
@@ -194,6 +226,8 @@ try {
   if (!finalStats || finalStats.inheritor_count !== 2 || finalStats.visitor_ordinal !== 1) throw new Error('engagement did not persist after restart');
   const persistedContent = await json('/api/content');
   if (!persistedContent.payload.crafts.some((craft) => craft.id === craftId)) throw new Error('published content did not persist after restart');
+  const persistedImage = await fetch(`${base}${imagePayload.image.image_url}`);
+  if (!persistedImage.ok || !Buffer.from(await persistedImage.arrayBuffer()).equals(png)) throw new Error('uploaded community image did not persist after restart');
   const cachedContent = await fetch(`${base}/api/content`);
   const etag = cachedContent.headers.get('etag');
   await cachedContent.arrayBuffer();
