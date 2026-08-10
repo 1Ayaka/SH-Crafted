@@ -73,6 +73,8 @@ const configuredContentDbPath = env('CONTENT_DB_PATH').trim();
 const CONTENT_DB_PATH = normalize(configuredContentDbPath || join(dirname(CONTENT_STORE_PATH), 'content.db'));
 const configuredContentUploadDir = env('CONTENT_UPLOAD_DIR').trim();
 const CONTENT_UPLOAD_DIR = normalize(configuredContentUploadDir || join(dirname(CONTENT_DB_PATH), 'uploads'));
+const BRAND_LOGO_PATH = join(CONTENT_UPLOAD_DIR, 'brand', 'logo.png');
+const DEFAULT_BRAND_LOGO_PATH = join(ROOT, 'assets', 'brand', 'tanwuzhi-logo.png');
 const CONTENT_SEED = await buildContentSeed();
 const sessions = new Map();
 const loginAttempts = new Map();
@@ -1462,6 +1464,42 @@ async function handleStepImageUpload(req, res, craftId, stepId) {
   }
 }
 
+function pngDimensions(buffer) {
+  if (!STEP_IMAGE_TYPES['image/png'].matches(buffer) || buffer.length < 24 || buffer.subarray(12, 16).toString('ascii') !== 'IHDR') return null;
+  return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+}
+
+async function brandLogoState() {
+  const uploaded = await stat(BRAND_LOGO_PATH).catch(() => null);
+  const fallback = uploaded?.isFile() ? null : await stat(DEFAULT_BRAND_LOGO_PATH).catch(() => null);
+  const current = uploaded?.isFile() ? uploaded : fallback;
+  return {
+    uploaded: Boolean(uploaded?.isFile()),
+    version: current ? `${Math.trunc(current.mtimeMs).toString(36)}-${current.size.toString(36)}` : 'missing',
+    size: current?.size || 0,
+    logo_url: '/brand/logo.png',
+  };
+}
+
+async function handleBrandLogoUpload(req, res) {
+  try {
+    const mimeType = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+    if (mimeType !== 'image/png') { jsonResponse(res, 415, { error: 'brand_logo_png_required' }); return; }
+    const buffer = await readBufferBody(req, 2 * 1024 * 1024);
+    const dimensions = pngDimensions(buffer);
+    if (!dimensions) { jsonResponse(res, 400, { error: 'invalid_brand_logo' }); return; }
+    if (dimensions.width < 64 || dimensions.height < 64 || dimensions.width > 2048 || dimensions.height > 2048) {
+      jsonResponse(res, 400, { error: 'brand_logo_dimensions' }); return;
+    }
+    await mkdir(dirname(BRAND_LOGO_PATH), { recursive: true });
+    await writeFile(BRAND_LOGO_PATH, buffer, { mode: 0o644 });
+    const state = await brandLogoState();
+    jsonResponse(res, 200, { ok: true, ...state, width: dimensions.width, height: dimensions.height });
+  } catch (error) {
+    jsonResponse(res, error?.message === 'body_too_large' ? 413 : 400, { error: error?.message || 'brand_logo_upload_failed' });
+  }
+}
+
 async function handleAdminApi(req, res, urlPath) {
   if (!validWriteOrigin(req)) { jsonResponse(res, 403, { error: 'invalid_origin' }); return; }
   if (urlPath === '/api/admin/login' && req.method === 'POST') {
@@ -1515,6 +1553,15 @@ async function handleAdminApi(req, res, urlPath) {
   if (urlPath === '/api/admin/logout' && req.method === 'POST') {
     sessions.delete(session.token);
     jsonResponse(res, 200, { authenticated: false }, { 'Set-Cookie': sessionCookie(req, '', 0) });
+    return;
+  }
+
+  if (urlPath === '/api/admin/brand/logo' && req.method === 'GET') {
+    jsonResponse(res, 200, await brandLogoState());
+    return;
+  }
+  if (urlPath === '/api/admin/brand/logo' && req.method === 'PUT') {
+    await handleBrandLogoUpload(req, res);
     return;
   }
 
@@ -2076,6 +2123,29 @@ async function serveContentUpload(req, res, urlPath) {
   createReadStream(target).on('error', () => res.destroy()).pipe(res);
 }
 
+async function serveBrandLogo(req, res) {
+  if (!['GET', 'HEAD'].includes(req.method || 'GET')) {
+    res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8', Allow: 'GET, HEAD' }).end('Method Not Allowed');
+    return;
+  }
+  const uploaded = await stat(BRAND_LOGO_PATH).catch(() => null);
+  const target = uploaded?.isFile() ? BRAND_LOGO_PATH : DEFAULT_BRAND_LOGO_PATH;
+  const targetStat = uploaded?.isFile() ? uploaded : await stat(target).catch(() => null);
+  if (!targetStat?.isFile()) {
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('404 Not Found');
+    return;
+  }
+  const headers = {
+    'Content-Type': 'image/png',
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Content-Length': targetStat.size,
+    'X-Content-Type-Options': 'nosniff',
+  };
+  if (req.method === 'HEAD') { res.writeHead(200, headers).end(); return; }
+  res.writeHead(200, headers);
+  createReadStream(target).on('error', () => res.destroy()).pipe(res);
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     const urlPath = decodeURIComponent(new URL(req.url, 'http://x').pathname);
@@ -2093,6 +2163,7 @@ const server = http.createServer(async (req, res) => {
     if (urlPath.startsWith('/api/admin/')) { await handleAdminApi(req, res, urlPath); return; }
     if (urlPath === '/api/kb/search') { await handleKnowledgeSearchApi(req, res); return; }
     if (urlPath === '/api/agent') { await handleAgentApi(req, res); return; }
+    if (urlPath === '/brand/logo.png') { await serveBrandLogo(req, res); return; }
     if (urlPath.startsWith('/content-uploads/')) { await serveContentUpload(req, res, urlPath); return; }
     if (['scripts', 'deploy', 'docs', 'node_modules'].includes(urlPath.split('/').filter(Boolean)[0])) {
       res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('404 Not Found');

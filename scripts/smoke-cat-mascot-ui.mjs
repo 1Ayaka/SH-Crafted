@@ -384,7 +384,7 @@ try {
     };
   })()`);
   assert.equal(chatAvatar.loaded, true, 'The Xiao Jiao chat avatar did not load');
-  assert.match(chatAvatar.source, /assets\/brand\/tanwuzhi-logo\.png$/, 'The Xiao Jiao chat avatar is not using the shared brand logo');
+  assert.match(chatAvatar.source, /\/brand\/logo\.png(?:\?.*)?$/, 'The Xiao Jiao chat avatar is not using the shared brand logo');
   await screenshot(screenshots.chat);
   assert.equal(opened.state, 'awake', 'Mascot should stay awake beside the open assistant panel');
 

@@ -13,8 +13,9 @@ import { createCatMascot } from './mascot/cat-mascot.js';
 import { createCompanionDialogue } from './mascot/companion-dialogue.js';
 import { createRelationshipStore } from './mascot/relationship-store.js';
 import { sanitizeAgentText } from './agent/response-sanitizer.js';
+import { BRAND_LOGO_URL, handleBrandLogoError } from './brand.js';
 
-const JIAO_AVATAR_URL = 'assets/brand/tanwuzhi-logo.png';
+const JIAO_AVATAR_URL = BRAND_LOGO_URL;
 const reviewVisible = () => !isContentReviewed();
 const relationship = createRelationshipStore();
 
@@ -322,7 +323,12 @@ function addMsg(kind, contentNodes, who) {
   ]);
   const avatar = kind === 'agent'
     ? (() => {
-      if (JIAO_AVATAR_URL) return el('div', { class: 'ap-avatar ap-avatar-jiao has-image' }, [el('img', { src: JIAO_AVATAR_URL, alt: '' })]);
+      if (JIAO_AVATAR_URL) return el('div', { class: 'ap-avatar ap-avatar-jiao has-image' }, [el('img', {
+        src: JIAO_AVATAR_URL,
+        'data-brand-logo': 'true',
+        onerror: handleBrandLogoError,
+        alt: '',
+      })]);
       const mascot = createCatMascot({ className: 'ap-avatar ap-avatar-jiao', animate: false });
       panel.mascots.push(mascot);
       return mascot.element;

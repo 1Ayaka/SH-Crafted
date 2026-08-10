@@ -89,6 +89,25 @@ async function save(path, body) {
 }
 
 export const saveSiteTexts = (updates) => save('/api/admin/site-texts', { updates });
+export const loadBrandLogo = () => api('/api/admin/brand/logo');
+export async function uploadBrandLogo(file) {
+  if (!(file instanceof File)) throw new Error('请选择 PNG 图片。');
+  if (file.type !== 'image/png') throw new Error('Logo 仅支持 PNG 格式，以保留透明背景。');
+  if (file.size > 2 * 1024 * 1024) throw new Error('Logo 图片不能超过 2MB。');
+  try {
+    return await api('/api/admin/brand/logo', {
+      method: 'PUT',
+      body: file,
+      headers: { 'Content-Type': 'image/png', 'X-File-Name': encodeURIComponent(file.name) },
+    });
+  } catch (error) {
+    if (error.status === 401) throw new Error('登录已过期，请重新登录。');
+    if (error.status === 413) throw new Error('Logo 图片不能超过 2MB。');
+    if (error.status === 415) throw new Error('Logo 仅支持 PNG 格式，以保留透明背景。');
+    if (error.payload?.error === 'brand_logo_dimensions') throw new Error('Logo 尺寸需在 64×64 至 2048×2048 像素之间。');
+    throw new Error('Logo 保存失败，请稍后重试。');
+  }
+}
 export const saveDistrict = (id, fields) => save(`/api/admin/districts/${encodeURIComponent(id)}`, fields);
 export const saveCraft = (id, fields) => save(`/api/admin/crafts/${encodeURIComponent(id)}`, fields);
 export async function setContentReviewed(reviewed) {

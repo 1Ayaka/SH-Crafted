@@ -315,9 +315,10 @@ try {
   };
   const errors = [];
   if (nav.labels.join('|') !== '地图探索|知识星图|数据护照') errors.push('地图页公开导航顺序不正确');
-  if (nav.title !== '探物志-上海非遗交互数字平台' || nav.brandName !== '探物志-上海非遗交互数字平台' || !nav.brandLogoLoaded || nav.legacySealVisible || !nav.brandLogo.includes('tanwuzhi-logo.png') || !nav.favicon.includes('tanwuzhi-logo.png')) errors.push('全站标题、导航 Logo 或浏览器图标未统一使用探物志品牌');
+  const isBrandLogo = (source = '') => source.includes('/brand/logo.png') || source.includes('/assets/brand/tanwuzhi-logo.png');
+  if (nav.title !== '探物志-上海非遗交互数字平台' || nav.brandName !== '探物志-上海非遗交互数字平台' || !nav.brandLogoLoaded || nav.legacySealVisible || !isBrandLogo(nav.brandLogo) || !isBrandLogo(nav.favicon)) errors.push('全站标题、导航 Logo 或浏览器图标未统一使用探物志品牌');
   if (homeNav.join('|') !== '地图探索|知识星图|数据护照') errors.push('首页公开导航顺序不正确或仍有冗余入口');
-  if (!homeBrand.logoLoaded || !homeBrand.logoSource.includes('tanwuzhi-logo.png')) errors.push('首页左下角未使用探物志 Logo');
+  if (!homeBrand.logoLoaded || !isBrandLogo(homeBrand.logoSource)) errors.push('首页左下角未使用探物志 Logo');
   if (nav.adminVisible) errors.push('公开导航仍显示管理入口');
   if (overviewMarkers.count !== 8 || overviewMarkers.visibleNumbers || overviewMarkers.width > 34 || !overviewMarkers.labels.every((label) => label.includes('·')) || !decodeURIComponent(overviewMarkers.iconMask).includes('地图,图钉,标记,标点.png')) errors.push('地图未按“一项非遗一个小标记”规则或指定图案渲染');
   if (!markerFollowing.available || markerFollowing.movedCount < 6 || markerFollowing.maxDragDistance < 8 || markerFollowing.riseDistance < 1) errors.push('非遗标记未持续跟随地图旋转或区块抬升');

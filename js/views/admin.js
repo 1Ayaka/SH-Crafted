@@ -1,6 +1,7 @@
 import { el } from '../ui.js';
 import { adminNotice } from '../editable.js';
-import { adminState, applyGraphPatch, deleteCrafts, exportGraph, importCraft, isAdmin, loadSubmissions, login, logout, previewGraphPatch, reviewSubmission, saveCraft, saveCraftSteps, setContentReviewed, uploadCraftStepImage } from '../admin.js';
+import { adminState, applyGraphPatch, deleteCrafts, exportGraph, importCraft, isAdmin, loadBrandLogo, loadSubmissions, login, logout, previewGraphPatch, reviewSubmission, saveCraft, saveCraftSteps, setContentReviewed, uploadBrandLogo, uploadCraftStepImage } from '../admin.js';
+import { applyBrandLogoVersion, brandLogoUrl } from '../brand.js';
 import { allCrafts, craftAssetUrl, ensureCraftLoaded, setContentReviewedLocal } from '../data.js';
 import { loadCommunityStats } from '../community.js';
 import { DISTRICT_PROFILES } from '../config.js';
@@ -81,9 +82,10 @@ export async function adminLoginView(root) {
 export async function adminHomeView(root) {
   if (!requireAdmin()) return { cleanup() {} };
   const crafts = allCrafts();
-  const [submissionData, engagement] = await Promise.all([
+  const [submissionData, engagement, brandState] = await Promise.all([
     loadSubmissions('pending').catch(() => ({ submissions: [] })),
     loadCommunityStats({ refresh: true }).catch(() => ({})),
+    loadBrandLogo().catch(() => ({ logo_url: '/brand/logo.png', version: '', uploaded: false })),
   ]);
   const pendingCount = submissionData.submissions?.length || 0;
   const adminImportTemplate = { schema: 'sh-crafted.heritage-submission/v1', id: '', update_existing: false, title: '', district_id: '', category: '', summary: '', history: '', features: '', source_url: '', cover_url: '', model_path: 'assets/models/crafts/example.glb', overview_images: [{ title: '', image_url: '', description: '', source_url: '' }], graph_data: { summary: '', keywords: [], images: [{ title: '', image_url: '', description: '', source_url: '' }], relations: [{ type: 'tradition', title: '', summary: '', images: [{ title: '', image_url: '', description: '' }] }] }, steps: [{ name: '', description: '', result: '', materials: [], tools: [], actions: [], documentary_clips: [{ title: '', video_url: 'https://', start_seconds: 0, end_seconds: 30, description: '', source_url: '' }] }] };
@@ -218,6 +220,77 @@ export async function adminHomeView(root) {
     deleteButton,
   ]);
   updateBulkState();
+  let pendingLogoFile = null;
+  let pendingLogoUrl = '';
+  const brandFileInput = el('input', { class: 'admin-brand-file-input', type: 'file', accept: 'image/png' });
+  const currentBrandImage = el('img', {
+    src: brandLogoUrl(brandState.version), alt: '当前全站 Logo', 'data-brand-logo': 'true',
+  });
+  const pendingBrandImage = el('img', { class: 'is-empty', alt: '待保存 Logo 预览' });
+  const brandStatus = el('p', {
+    class: 'admin-brand-status', role: 'status', 'aria-live': 'polite',
+    text: brandState.uploaded ? '当前使用管理员上传版本' : '当前使用随版本发布的默认 Logo',
+  });
+  const brandSaveButton = el('button', { class: 'btn btn-primary', type: 'button', text: '保存并全站应用', disabled: true });
+  const clearPendingLogo = () => {
+    if (pendingLogoUrl) URL.revokeObjectURL(pendingLogoUrl);
+    pendingLogoUrl = '';
+    pendingLogoFile = null;
+    brandFileInput.value = '';
+    pendingBrandImage.removeAttribute('src');
+    pendingBrandImage.classList.add('is-empty');
+    brandSaveButton.disabled = true;
+  };
+  brandFileInput.addEventListener('change', () => {
+    const file = brandFileInput.files?.[0];
+    if (!file) return;
+    if (file.type !== 'image/png' || file.size > 2 * 1024 * 1024) {
+      clearPendingLogo();
+      brandStatus.className = 'admin-brand-status is-error';
+      brandStatus.textContent = file.type !== 'image/png' ? '请选择 PNG 图片，以保留透明背景。' : 'Logo 图片不能超过 2MB。';
+      return;
+    }
+    if (pendingLogoUrl) URL.revokeObjectURL(pendingLogoUrl);
+    pendingLogoFile = file;
+    pendingLogoUrl = URL.createObjectURL(file);
+    pendingBrandImage.src = pendingLogoUrl;
+    pendingBrandImage.classList.remove('is-empty');
+    brandSaveButton.disabled = false;
+    brandStatus.className = 'admin-brand-status';
+    brandStatus.textContent = `已选择 ${file.name}，保存前不会影响前台。`;
+  });
+  brandSaveButton.addEventListener('click', async () => {
+    if (!pendingLogoFile) return;
+    brandSaveButton.disabled = true;
+    brandStatus.className = 'admin-brand-status is-saving';
+    brandStatus.textContent = '正在保存并刷新全站 Logo…';
+    try {
+      const result = await uploadBrandLogo(pendingLogoFile);
+      const url = applyBrandLogoVersion(result.version);
+      currentBrandImage.src = url;
+      clearPendingLogo();
+      brandStatus.className = 'admin-brand-status is-success';
+      brandStatus.textContent = '保存成功：首页、导航、浏览器图标和小蕉头像已统一更新。';
+    } catch (error) {
+      brandSaveButton.disabled = false;
+      brandStatus.className = 'admin-brand-status is-error';
+      brandStatus.textContent = error.message;
+    }
+  });
+  const brandPanel = el('section', { class: 'admin-brand-panel', 'aria-labelledby': 'admin-brand-heading' }, [
+    el('div', { class: 'admin-brand-copy' }, [
+      el('p', { class: 'admin-kicker', text: '全站品牌资源' }),
+      el('h2', { id: 'admin-brand-heading', text: 'Logo 管理' }),
+      el('p', { text: '上传透明背景 PNG。点击保存后，首页、全站导航、浏览器图标和小蕉聊天头像会统一读取新版本。' }),
+      el('label', { class: 'btn-ghost admin-brand-choose' }, [el('span', { text: '选择新 Logo' }), brandFileInput]),
+      brandStatus,
+    ]),
+    el('div', { class: 'admin-brand-previews' }, [
+      el('figure', {}, [el('div', { class: 'admin-brand-preview' }, [currentBrandImage]), el('figcaption', { text: '当前 Logo' })]),
+      el('figure', {}, [el('div', { class: 'admin-brand-preview' }, [pendingBrandImage, el('span', { class: 'admin-brand-empty', text: '选择图片后预览' })]), el('figcaption', { text: '待保存预览' })]),
+    ]),
+    brandSaveButton,
+  ]);
   const content = el('main', { class: 'admin-dashboard' }, [
     el('div', { class: 'admin-page-heading' }, [
       el('div', {}, [
@@ -236,6 +309,7 @@ export async function adminHomeView(root) {
         el('button', { class: 'btn-ghost', text: '退出登录', onclick: () => logout() }),
       ]),
     ]),
+    brandPanel,
     bulkToolbar,
     el('div', { class: 'admin-craft-grid' }, craftCards),
   ]);

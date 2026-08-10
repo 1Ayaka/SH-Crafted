@@ -173,4 +173,4 @@ ubuntu ALL=NOPASSWD: /usr/bin/systemctl restart sh-crafted, /usr/bin/systemctl i
 
 ## 7. 站内管理
 
-管理员通过 `https://avonana.site/#/admin/login` 登录，在用户页面原位编辑文字，并在工序管理页调整材料、操作和步骤截图。正式内容、点击统计、传承人序号和社区投稿统一保存在 `/var/lib/sh-crafted/content.db`，上传的步骤截图保存在 `/var/lib/sh-crafted/uploads`；两者都不随 Git 更新覆盖。旧 JSON 只作为首次迁移兼容输入。完整使用、协作与备份说明见 [`docs/内容后台使用与部署.md`](docs/内容后台使用与部署.md)。
+管理员通过 `https://avonana.site/#/admin/login` 登录，在用户页面原位编辑文字，并在管理员首页更新全站 Logo、在工序管理页调整材料、操作和步骤截图。正式内容、点击统计、传承人序号和社区投稿统一保存在 `/var/lib/sh-crafted/content.db`，上传的步骤截图与全站 Logo 保存在 `/var/lib/sh-crafted/uploads`；两者都不随 Git 更新覆盖。旧 JSON 只作为首次迁移兼容输入。完整使用、协作与备份说明见 [`docs/内容后台使用与部署.md`](docs/内容后台使用与部署.md)。

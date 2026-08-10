@@ -1,5 +1,6 @@
 // UI 基础工具：DOM 创建、证据浮窗、通用弹窗
 import { evidenceTimecode, isContentReviewed } from './data.js';
+import { BRAND_LOGO_URL, handleBrandLogoError } from './brand.js';
 
 export function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -33,7 +34,9 @@ export function catSVG(cls = 'cat') {
 export function brandLogo(cls = 'brand-logo', alt = '探物志') {
   return el('img', {
     class: cls,
-    src: 'assets/brand/tanwuzhi-logo.png',
+    src: BRAND_LOGO_URL,
+    'data-brand-logo': 'true',
+    onerror: handleBrandLogoError,
     alt,
     draggable: 'false',
   });

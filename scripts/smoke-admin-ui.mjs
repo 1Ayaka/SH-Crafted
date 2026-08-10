@@ -105,7 +105,12 @@ try {
     bulkToolbar: Boolean(document.querySelector('.admin-bulk-toolbar')),
     protectedChecks: document.querySelectorAll('.admin-craft-select input:disabled').length,
     deletableChecks: document.querySelectorAll('.admin-craft-select input:not(:disabled)').length,
-    deleteDisabled: Boolean(document.querySelector('.admin-danger-button')?.disabled)
+    deleteDisabled: Boolean(document.querySelector('.admin-danger-button')?.disabled),
+    brandPanel: Boolean(document.querySelector('.admin-brand-panel')),
+    brandInput: document.querySelector('.admin-brand-file-input')?.getAttribute('accept') || '',
+    brandCurrentLoaded: (document.querySelector('.admin-brand-preview img[data-brand-logo]')?.naturalWidth || 0) > 0,
+    brandSaveDisabled: Boolean(document.querySelector('.admin-brand-panel .btn-primary')?.disabled),
+    brandPreviewCount: document.querySelectorAll('.admin-brand-preview').length
   })`);
   await screenshot(screenshots.dashboard);
 
@@ -200,6 +205,7 @@ try {
   const errors = [];
   if (!dashboard.loggedIn || dashboard.cards !== 8) errors.push('管理员首页未显示 8 个项目');
   if (!dashboard.bulkToolbar || dashboard.protectedChecks < 8 || !dashboard.deleteDisabled) errors.push('批量删除工具条或原始 8 项删除保护未显示');
+  if (!dashboard.brandPanel || dashboard.brandInput !== 'image/png' || !dashboard.brandCurrentLoaded || !dashboard.brandSaveDisabled || dashboard.brandPreviewCount !== 2) errors.push('管理员 Logo 上传、保存或双预览模块不完整');
   if (!process.tabs || !process.addStep || !process.materialInputs || !process.materialOutputInputs || !process.operationInputs || !process.saveButton) errors.push('工序编辑器控件不完整或缺少逐材料升级映射');
   if (!process.stepImageInput || !process.stepImageEmpty) errors.push('工序编辑器缺少步骤图片上传控件或空状态');
   if (!materialFlow.inheritedRows || !materialFlow.flowHelp || !materialFlow.removeButton || !materialFlow.heldOrUsable) errors.push('继承材料缺少本步使用/移出暂存控制');
