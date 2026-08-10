@@ -270,6 +270,7 @@ try {
       source: Boolean(form?.querySelector('[name="source_title"][required]') && form?.querySelector('[name="source_url"][required]')),
       consent: Boolean(form?.querySelector('.community-consent input[required]')),
       imageUpload: Boolean(form?.querySelector('.graph-contribution-image-drop[role="button"] input[type="file"][accept*="image/png"]')),
+      imageProgress: Boolean(form?.querySelector('.image-upload-progress progress')),
     };
     document.querySelector('.modal .m-close')?.click();
     return result;
@@ -349,7 +350,7 @@ try {
   if (!standalone.page || !standalone.canvas || standalone.selectedTitle !== '牙雕与篾丝编织传统') errors.push('独立星图路由未定位到指定稳定节点');
   if (standalone.logoHref !== '#/' || !standalone.graphNav) errors.push('Logo 初始页路由或知识星图导航入口不正确');
   if (standalone.keyboardNodes < 1) errors.push('独立星图没有提供键盘等价节点入口');
-  if (!contributionForm.trigger || !contributionForm.form || !contributionForm.targetNamed || contributionForm.types !== 4 || !contributionForm.statement || !contributionForm.source || !contributionForm.consent || !contributionForm.imageUpload) errors.push('知识星图节点共建入口、图片上传或规范化表单不完整');
+  if (!contributionForm.trigger || !contributionForm.form || !contributionForm.targetNamed || contributionForm.types !== 4 || !contributionForm.statement || !contributionForm.source || !contributionForm.consent || !contributionForm.imageUpload || !contributionForm.imageProgress) errors.push('知识星图节点共建入口、图片上传进度或规范化表单不完整');
   if (!gestureOverlay.canvasVisible || gestureOverlay.pointState !== '持续按住 · 长按' || !gestureOverlay.guideExists) errors.push('虚拟手骨架或动作引导未正确挂载');
   if (!virtualPointer.canvasTested || !['pointermove', 'pointerdown', 'pointerup', 'mousemove', 'mousedown', 'mouseup'].every((type) => virtualPointer.events.includes(type))) errors.push('虚拟鼠标没有派发完整事件链');
   if (!virtualPointer.expandedButtonHit) errors.push('按钮手势扩展命中区未生效');

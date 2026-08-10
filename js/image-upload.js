@@ -10,28 +10,90 @@ export function validateCommunityImage(file) {
   return file;
 }
 
-export async function uploadCommunityImage(file) {
-  validateCommunityImage(file);
-  const response = await fetch('/api/community/images', {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: {
-      'Content-Type': file.type,
-      'X-File-Name': encodeURIComponent(file.name),
-    },
-    body: file,
+export function uploadImageRequest({ url, method = 'POST', file, headers = {}, onProgress }) {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open(method, url);
+    request.withCredentials = true;
+    Object.entries(headers).forEach(([name, value]) => request.setRequestHeader(name, value));
+    request.upload.addEventListener('progress', (event) => {
+      const total = event.lengthComputable ? event.total : file.size;
+      const percent = total ? Math.min(100, Math.round((event.loaded / total) * 100)) : 0;
+      onProgress?.({ loaded: event.loaded, total, percent });
+    });
+    request.addEventListener('load', () => {
+      let payload = {};
+      try { payload = JSON.parse(request.responseText || '{}'); } catch { payload = {}; }
+      if (request.status >= 200 && request.status < 300) {
+        onProgress?.({ loaded: file.size, total: file.size, percent: 100 });
+        resolve(payload);
+        return;
+      }
+      const error = new Error(payload.error || `request_${request.status}`);
+      error.status = request.status;
+      error.payload = payload;
+      reject(error);
+    });
+    request.addEventListener('error', () => reject(new Error('network_error')));
+    request.addEventListener('abort', () => reject(new Error('upload_aborted')));
+    request.send(file);
   });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
+}
+
+export function createUploadProgress() {
+  const root = document.createElement('div');
+  root.className = 'image-upload-progress';
+  root.hidden = true;
+  const copy = document.createElement('div');
+  copy.className = 'image-upload-progress-copy';
+  const label = document.createElement('span');
+  const value = document.createElement('span');
+  value.className = 'image-upload-progress-value';
+  const track = document.createElement('progress');
+  track.max = 100;
+  track.value = 0;
+  track.setAttribute('aria-label', '图片上传进度');
+  copy.append(label, value);
+  root.append(copy, track);
+  const set = ({ text = '', percent = 0, state = 'uploading' }) => {
+    root.hidden = false;
+    root.dataset.state = state;
+    label.textContent = text;
+    const safePercent = Math.max(0, Math.min(100, Number(percent) || 0));
+    track.value = safePercent;
+    value.textContent = `${Math.round(safePercent)}%`;
+  };
+  return {
+    el: root,
+    start: (fileName) => set({ text: `正在上传 ${fileName}`, percent: 0 }),
+    update: ({ percent }) => set({ text: label.textContent, percent }),
+    success: (text = '上传完成') => set({ text, percent: 100, state: 'success' }),
+    error: (text) => set({ text, percent: Number(track.value) || 0, state: 'error' }),
+    reset: () => { root.hidden = true; root.dataset.state = ''; track.value = 0; label.textContent = ''; value.textContent = ''; },
+  };
+}
+
+export async function uploadCommunityImage(file, { onProgress } = {}) {
+  validateCommunityImage(file);
+  try {
+    const payload = await uploadImageRequest({
+      url: '/api/community/images', method: 'POST', file, onProgress,
+      headers: {
+        'Content-Type': file.type,
+        'X-File-Name': encodeURIComponent(file.name),
+      },
+    });
+    return payload.image;
+  } catch (error) {
     const messages = {
       body_too_large: '单张图片不能超过 6MB。',
       unsupported_image_type: '仅支持 PNG、JPG、WebP 或 GIF 图片。',
       invalid_image_content: '图片内容与文件格式不一致，请重新导出后上传。',
       image_upload_rate_limited: '上传过于频繁，请稍后再试。',
+      network_error: '网络中断，图片未上传完成。',
     };
-    throw new Error(messages[payload.error] || '图片上传失败，请稍后重试。');
+    throw new Error(messages[error.payload?.error || error.message] || '图片上传失败，请稍后重试。');
   }
-  return payload.image;
 }
 
 export function bindImageDropZone({ zone, input, onFiles }) {

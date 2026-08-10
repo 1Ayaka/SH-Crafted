@@ -1,7 +1,7 @@
 import { el } from '../ui.js';
 import { DISTRICT_PROFILES } from '../config.js';
 import { submitHeritage } from '../community.js';
-import { bindImageDropZone, COMMUNITY_IMAGE_ACCEPT, uploadCommunityImage } from '../image-upload.js';
+import { bindImageDropZone, COMMUNITY_IMAGE_ACCEPT, createUploadProgress, uploadCommunityImage } from '../image-upload.js';
 import { createLayerBG } from '../layerbg.js';
 import { topNav } from './home.js';
 
@@ -104,7 +104,53 @@ export async function contributeView(root, { districtId }) {
   const starSummary = el('textarea', { rows: '3', maxlength: '2000', placeholder: '星图摘要：它与哪些传统、地区或材料有关？' }, [restored.star_data?.summary || '']);
   const starRelations = el('input', { type: 'text', maxlength: '500', value: (restored.star_data?.relations || []).join('、'), placeholder: '关联传统、地区或材料，用顿号分隔' });
   const starKeywords = el('input', { type: 'text', maxlength: '500', value: (restored.star_data?.keywords || []).join('、'), placeholder: '关键词，用顿号分隔' });
-  const starImages = el('textarea', { rows: '4', placeholder: '节点图片 JSON 数组：[{"title":"","image_url":"","description":"","source_url":""}]' }, [JSON.stringify(restored.star_data?.images || [], null, 2)]);
+  let starImages = Array.isArray(restored.star_data?.images) ? restored.star_data.images.slice(0, 8) : [];
+  const starImagesHost = el('div', { class: 'community-overview-images' });
+  const starImageInput = el('input', { class: 'community-image-file-input', type: 'file', accept: COMMUNITY_IMAGE_ACCEPT, multiple: true, tabindex: '-1' });
+  const starImageProgress = createUploadProgress();
+  const starImageStatus = el('p', { class: 'community-import-status', role: 'status', 'aria-live': 'polite' });
+  const renderStarImages = () => {
+    starImagesHost.replaceChildren();
+    starImages.forEach((image, index) => {
+      const titleControl = el('input', { value: image.title || '', placeholder: `节点图片 ${index + 1} 标题` });
+      const descriptionControl = el('textarea', { rows: '2', placeholder: '图片内容说明' }, [image.description || '']);
+      const sourceControl = el('input', { type: 'url', value: image.source_url || '', placeholder: '图片来源链接（选填）' });
+      const sync = () => { Object.assign(image, { title: titleControl.value, description: descriptionControl.value, source_url: sourceControl.value }); saveDraft(); };
+      [titleControl, descriptionControl, sourceControl].forEach((control) => control.addEventListener('input', sync));
+      starImagesHost.appendChild(el('article', { class: 'community-overview-image-card' }, [
+        el('img', { src: image.image_url, alt: image.title || '星图节点图片' }),
+        field('图片标题', titleControl), field('图片说明', descriptionControl), field('图片来源', sourceControl),
+        el('button', { type: 'button', class: 'community-remove-step', text: '删除图片', onclick: () => { starImages.splice(index, 1); renderStarImages(); saveDraft(); } }),
+      ]));
+    });
+  };
+  const uploadStarImages = async (files) => {
+    const selected = [...files].slice(0, Math.max(0, 8 - starImages.length));
+    if (!selected.length) { starImageStatus.textContent = starImages.length >= 8 ? '节点图片最多上传 8 张。' : '没有检测到图片文件。'; return; }
+    starImageInput.disabled = true;
+    let uploadedCount = 0;
+    for (const [index, file] of selected.entries()) {
+      starImageProgress.start(`${index + 1}/${selected.length} · ${file.name}`);
+      try {
+        const image = await uploadCommunityImage(file, { onProgress: starImageProgress.update });
+        starImages.push({ title: file.name.replace(/\.[^.]+$/, ''), description: '', source_url: '', image_url: image.image_url });
+        uploadedCount += 1; renderStarImages(); saveDraft();
+      } catch (error) {
+        starImageProgress.error(`${file.name} 上传失败`); starImageStatus.textContent = error.message; break;
+      }
+    }
+    starImageInput.disabled = false;
+    if (uploadedCount === selected.length) { starImageProgress.success(`${uploadedCount} 张节点图片已上传`); starImageStatus.textContent = '节点图片已加入投稿资料。'; }
+  };
+  const starImageDrop = el('div', { class: 'community-overview-drop', role: 'button', tabindex: '0', 'aria-label': '上传星图节点图片' }, [
+    el('strong', { text: '拖入星图节点图片，或点击选择' }), el('span', { text: '最多 8 张，单张不超过 6MB' }), starImageInput,
+  ]);
+  bindImageDropZone({ zone: starImageDrop, input: starImageInput, onFiles: uploadStarImages });
+  const starImageSection = el('section', { class: 'community-star-image-section' }, [
+    el('h3', { text: '星图节点图片' }), el('p', { text: '用于知识星图节点的信息面板，可与上方概览图不同。' }),
+    starImageDrop, starImageProgress.el, starImageStatus, starImagesHost,
+  ]);
+  renderStarImages();
   const contributorName = el('input', { type: 'text', maxlength: '100', value: restored.contributor_name || '', placeholder: '选填' });
   const contributorContact = el('input', { type: 'text', maxlength: '200', value: restored.contributor_contact || '', placeholder: '选填，仅管理员审核时可见' });
   const honeypot = el('input', { type: 'text', name: 'website', tabindex: '-1', autocomplete: 'off' });
@@ -117,7 +163,8 @@ export async function contributeView(root, { districtId }) {
     field('资料来源链接', sourceUrl, '建议填写政府、文化机构、博物馆或公开报道页面。'),
     field('封面图片链接', coverUrl, '暂时使用公开图片链接；管理员会在上线前检查来源与展示效果。'),
     field('更多图片链接', galleryUrls),
-    el('div', { class: 'community-star-fields' }, [field('星图摘要', starSummary), field('星图关联', starRelations), field('星图关键词', starKeywords), field('星图节点图片（JSON）', starImages)]),
+    el('div', { class: 'community-star-fields' }, [field('星图摘要', starSummary), field('星图关联', starRelations), field('星图关键词', starKeywords)]),
+    starImageSection,
     overviewHost,
   ]);
 
@@ -136,7 +183,7 @@ export async function contributeView(root, { districtId }) {
       cover_url: coverUrl.value,
       gallery_urls: splitList(galleryUrls.value),
       overview_images: overviewImages,
-      star_data: { summary: starSummary.value, relations: splitList(starRelations.value), keywords: splitList(starKeywords.value), images: (() => { try { return JSON.parse(starImages.value || '[]'); } catch { return []; } })() },
+      star_data: { summary: starSummary.value, relations: splitList(starRelations.value), keywords: splitList(starKeywords.value), images: starImages },
       contributor_name: contributorName.value,
       contributor_contact: contributorContact.value,
       steps: state.steps,
@@ -166,6 +213,7 @@ export async function contributeView(root, { districtId }) {
 
   const overviewInput = el('input', { class: 'community-image-file-input', type: 'file', accept: COMMUNITY_IMAGE_ACCEPT, multiple: true, tabindex: '-1' });
   const overviewUploadStatus = el('p', { class: 'community-import-status', role: 'status', 'aria-live': 'polite' });
+  const overviewProgress = createUploadProgress();
   const addOverviewFiles = async (files) => {
     const selected = [...files].slice(0, Math.max(0, 8 - overviewImages.length));
     if (!selected.length) {
@@ -178,13 +226,15 @@ export async function contributeView(root, { districtId }) {
     let uploaded = 0;
     for (const [index, file] of selected.entries()) {
       overviewUploadStatus.textContent = `正在上传 ${index + 1}/${selected.length}：${file.name}`;
+      overviewProgress.start(`${index + 1}/${selected.length} · ${file.name}`);
       try {
-        const image = await uploadCommunityImage(file);
+        const image = await uploadCommunityImage(file, { onProgress: overviewProgress.update });
         overviewImages.push({ title: file.name.replace(/\.[^.]+$/, ''), description: '', image_url: image.image_url });
         uploaded += 1;
         renderOverviewImages();
         saveDraft();
       } catch (error) {
+        overviewProgress.error(`${file.name} 上传失败`);
         overviewUploadStatus.className = 'community-import-status error';
         overviewUploadStatus.textContent = `${file.name}：${error.message}`;
         break;
@@ -192,6 +242,7 @@ export async function contributeView(root, { districtId }) {
     }
     overviewInput.disabled = false;
     if (uploaded === selected.length) {
+      overviewProgress.success(`${uploaded} 张图片已上传`);
       overviewUploadStatus.className = 'community-import-status';
       overviewUploadStatus.textContent = `已上传 ${uploaded} 张图片，请为每张填写说明。`;
     }
@@ -205,7 +256,7 @@ export async function contributeView(root, { districtId }) {
     overviewInput,
   ]);
   bindImageDropZone({ zone: overviewDrop, input: overviewInput, onFiles: addOverviewFiles });
-  overviewHost.before(overviewDrop, overviewUploadStatus);
+  overviewHost.before(overviewDrop, overviewProgress.el, overviewUploadStatus);
 
   function renderSteps() {
     stepsHost.replaceChildren();
@@ -291,11 +342,11 @@ export async function contributeView(root, { districtId }) {
       starSummary.value = imported.star_data?.summary || '';
       starRelations.value = (imported.star_data?.relations || []).join('、');
       starKeywords.value = (imported.star_data?.keywords || []).join('、');
-      starImages.value = JSON.stringify(imported.star_data?.images || [], null, 2);
+      starImages = Array.isArray(imported.star_data?.images) ? imported.star_data.images.slice(0, 8) : [];
       contributorName.value = imported.contributor_name; contributorContact.value = imported.contributor_contact;
       state.steps = imported.steps; state.includeSteps = imported.steps.length > 0;
       processToggle.checked = state.includeSteps; processSection.classList.toggle('is-enabled', state.includeSteps);
-      setKind('full'); renderSteps(); renderOverviewImages(); saveDraft();
+      setKind('full'); renderSteps(); renderOverviewImages(); renderStarImages(); saveDraft();
       importStatus.textContent = `已导入“${imported.title || file.name}”，请检查后提交审核。`;
       importStatus.className = 'community-import-status success';
     } catch (error) {

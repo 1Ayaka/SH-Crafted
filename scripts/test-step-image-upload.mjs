@@ -75,6 +75,25 @@ try {
   assert.ok(steps.length > 0, '测试项目没有工序');
   const stepId = steps[0].id;
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
+  const unauthenticatedCraftImage = await fetch(`${base}/api/admin/crafts/${craftId}/images`, {
+    method: 'POST', headers: { 'Content-Type': 'image/png' }, body: png,
+  });
+  assert.equal(unauthenticatedCraftImage.status, 401);
+  const craftImageUpload = await fetch(`${base}/api/admin/crafts/${craftId}/images`, {
+    method: 'POST',
+    headers: { Cookie: cookie, 'Content-Type': 'image/png', 'X-File-Name': encodeURIComponent('项目封面.png') },
+    body: png,
+  });
+  assert.equal(craftImageUpload.status, 201);
+  const craftImage = await craftImageUpload.json();
+  assert.match(craftImage.image.image_url, /^\/content-uploads\/crafts\/SHIH_0001\//);
+  assert.equal((await fetch(`${base}${craftImage.image.image_url}`)).status, 200);
+  const coverSave = await fetch(`${base}/api/admin/crafts/${craftId}`, {
+    method: 'PUT', headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ revision: session.revision, cover_path: craftImage.image.image_url }),
+  });
+  assert.equal(coverSave.status, 200);
+  const coverRevision = (await coverSave.json()).revision;
   const unauthenticated = await fetch(`${base}/api/admin/crafts/${craftId}/steps/${stepId}/image`, {
     method: 'POST', headers: { 'Content-Type': 'image/png' }, body: png,
   });
@@ -102,7 +121,7 @@ try {
   const saved = await fetch(`${base}/api/admin/crafts/${craftId}/steps`, {
     method: 'PUT',
     headers: { Cookie: cookie, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ revision: session.revision, steps }),
+    body: JSON.stringify({ revision: coverRevision, steps }),
   });
   assert.equal(saved.status, 200);
   const savedPayload = await saved.json();
@@ -111,13 +130,16 @@ try {
   const persistedStep = persisted.craft_steps.find((step) => step.craft_id === craftId && step.id === stepId);
   assert.equal(persistedStep.step_image.image_url, uploaded.image.image_url);
   assert.equal(persistedStep.step_image.alt, '工序参考图');
+  assert.equal(persisted.crafts.find((craft) => craft.id === craftId)?.cover_path, craftImage.image.image_url);
 
   await stopServer(server);
   server = await startServer();
   const afterRestart = await fetch(`${base}/api/content`).then((response) => response.json());
   assert.equal(afterRestart.craft_steps.find((step) => step.craft_id === craftId && step.id === stepId)?.step_image?.image_url, uploaded.image.image_url);
   assert.equal((await fetch(`${base}${uploaded.image.image_url}`)).status, 200);
-  console.log('步骤图片上传、保存、公开读取与重启持久化测试：通过');
+  assert.equal(afterRestart.crafts.find((craft) => craft.id === craftId)?.cover_path, craftImage.image.image_url);
+  assert.equal((await fetch(`${base}${craftImage.image.image_url}`)).status, 200);
+  console.log('项目图片与步骤图片上传、保存、公开读取及重启持久化测试：通过');
 } finally {
   await stopServer(server);
   const resolved = path.resolve(temporaryRoot);

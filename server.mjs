@@ -485,6 +485,7 @@ function cleanImageSource(value) {
   const source = cleanText(value, 8_000_000);
   if (!source) return '';
   if (/^\/content-uploads\/steps\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.(?:png|jpe?g|webp)$/i.test(source)) return source;
+  if (/^\/content-uploads\/crafts\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.(?:png|jpe?g|webp|gif)$/i.test(source)) return source;
   if (/^\/content-uploads\/community\/[A-Za-z0-9_-]+\.(?:png|jpe?g|webp|gif)$/i.test(source)) return source;
   if (/^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/i.test(source)) return source;
   return cleanPublicUrl(source);
@@ -1498,6 +1499,35 @@ async function handleCommunityImageUpload(req, res, responseHeaders = {}) {
   }
 }
 
+async function handleAdminCraftImageUpload(req, res, craftId) {
+  try {
+    if (!editableContent.crafts.some((craft) => craft.id === craftId)) { jsonResponse(res, 404, { error: 'craft_not_found' }); return; }
+    const mimeType = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+    const imageType = COMMUNITY_IMAGE_TYPES[mimeType];
+    if (!imageType) { jsonResponse(res, 415, { error: 'unsupported_image_type' }); return; }
+    const buffer = await readBufferBody(req, 6 * 1024 * 1024);
+    if (!buffer.length) { jsonResponse(res, 400, { error: 'empty_image' }); return; }
+    if (!imageType.matches(buffer)) { jsonResponse(res, 400, { error: 'invalid_image_content' }); return; }
+    const uploadDirectory = join(CONTENT_UPLOAD_DIR, 'crafts', craftId);
+    await mkdir(uploadDirectory, { recursive: true });
+    const fileName = `${Date.now().toString(36)}-${randomBytes(12).toString('hex')}${imageType.extension}`;
+    await writeFile(join(uploadDirectory, fileName), buffer, { flag: 'wx' });
+    let originalName = '';
+    try { originalName = decodeURIComponent(String(req.headers['x-file-name'] || '')); } catch { originalName = ''; }
+    jsonResponse(res, 201, {
+      ok: true,
+      image: {
+        image_url: `/content-uploads/crafts/${craftId}/${fileName}`,
+        original_name: cleanText(originalName, 240),
+        mime_type: mimeType,
+        size: buffer.length,
+      },
+    });
+  } catch (error) {
+    jsonResponse(res, error?.message === 'body_too_large' ? 413 : 400, { error: error?.message || 'image_upload_failed' });
+  }
+}
+
 async function handleStepImageUpload(req, res, craftId, stepId) {
   try {
     const craftExists = editableContent.crafts.some((craft) => craft.id === craftId);
@@ -1634,6 +1664,12 @@ async function handleAdminApi(req, res, urlPath) {
   const stepImageUploadMatch = urlPath.match(/^\/api\/admin\/crafts\/([A-Za-z0-9_-]+)\/steps\/([A-Za-z0-9_-]+)\/image$/);
   if (stepImageUploadMatch && req.method === 'POST') {
     await handleStepImageUpload(req, res, stepImageUploadMatch[1], stepImageUploadMatch[2]);
+    return;
+  }
+
+  const craftImageUploadMatch = urlPath.match(/^\/api\/admin\/crafts\/([A-Za-z0-9_-]+)\/images$/);
+  if (craftImageUploadMatch && req.method === 'POST') {
+    await handleAdminCraftImageUpload(req, res, craftImageUploadMatch[1]);
     return;
   }
 
@@ -1927,6 +1963,7 @@ async function handleAdminApi(req, res, urlPath) {
           if ('title' in body) item.title = cleanText(body.title, 200);
           if ('category' in body) item.category = cleanText(body.category, 100);
           if ('summary' in body) item.summary = cleanText(body.summary, 10000);
+          if ('cover_path' in body || 'cover_url' in body) item.cover_path = cleanImageSource(body.cover_path || body.cover_url);
           if ('claims' in body) item.claims = normalizeCraftClaims(body.claims);
           if ('graph_data' in body) {
             const graph = body.graph_data && typeof body.graph_data === 'object' ? body.graph_data : {};
@@ -2163,7 +2200,7 @@ async function serveContentUpload(req, res, urlPath) {
     return;
   }
   const uploadPath = urlPath.slice('/content-uploads/'.length);
-  if (!/^(?:steps\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.(?:png|jpe?g|webp)|community\/[A-Za-z0-9_-]+\.(?:png|jpe?g|webp|gif))$/i.test(uploadPath)) {
+  if (!/^(?:steps\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.(?:png|jpe?g|webp)|crafts\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.(?:png|jpe?g|webp|gif)|community\/[A-Za-z0-9_-]+\.(?:png|jpe?g|webp|gif))$/i.test(uploadPath)) {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('404 Not Found');
     return;
   }

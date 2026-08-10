@@ -1,6 +1,7 @@
 import { el } from '../ui.js';
 import { adminNotice } from '../editable.js';
-import { adminState, applyGraphPatch, deleteCrafts, exportGraph, importCraft, isAdmin, loadBrandLogo, loadSubmissions, login, logout, previewGraphPatch, reviewSubmission, saveCraft, saveCraftSteps, setContentReviewed, uploadBrandLogo, uploadCraftStepImage } from '../admin.js';
+import { adminState, applyGraphPatch, deleteCrafts, exportGraph, importCraft, isAdmin, loadBrandLogo, loadSubmissions, login, logout, previewGraphPatch, reviewSubmission, saveCraft, saveCraftSteps, setContentReviewed, uploadBrandLogo, uploadCraftImage, uploadCraftStepImage } from '../admin.js';
+import { bindImageDropZone, COMMUNITY_IMAGE_ACCEPT, createUploadProgress } from '../image-upload.js';
 import { applyBrandLogoVersion, brandLogoUrl } from '../brand.js';
 import { allCrafts, craftAssetUrl, ensureCraftLoaded, setContentReviewedLocal } from '../data.js';
 import { loadCommunityStats } from '../community.js';
@@ -199,7 +200,10 @@ export async function adminHomeView(root) {
         updateBulkState();
       });
     }
-    return el('article', { class: `admin-craft-card${isProtected ? ' is-protected' : ''}`, 'data-craft-id': craft.craftId }, [
+    return el('article', {
+      class: `admin-craft-card${isProtected ? ' is-protected' : ''}`, 'data-craft-id': craft.craftId,
+      'data-search': `${craft.title} ${craft.config.districtLabel || ''} ${craft.config.category || ''}`.toLowerCase(),
+    }, [
       el('label', { class: 'admin-craft-select' }, [checkbox, el('span', { text: isProtected ? '原始项目' : '选择' })]),
       craft.config.heroFrame
         ? el('img', { src: craftAssetUrl(craft, craft.config.heroFrame), alt: craft.title, loading: 'lazy' })
@@ -208,12 +212,25 @@ export async function adminHomeView(root) {
         el('p', { class: 'admin-card-meta', text: `${craft.config.districtLabel || '地区待核对'} · ${craft.stepCount ?? craft.steps.length} 道工序 · ${engagement[craft.craftId]?.view_count || 0} 次查看 · ${engagement[craft.craftId]?.inheritor_count || 0} 位传承人` }),
         el('h2', { text: craft.title }),
         el('div', { class: 'admin-card-actions' }, [
-          el('a', { class: 'btn btn-primary', href: `#/admin/craft/${craft.craftId}`, text: '编辑工序' }),
+          el('a', { class: 'btn btn-primary', href: `#/admin/craft/${craft.craftId}`, text: '维护项目' }),
           el('a', { class: 'btn-ghost', href: `#/craft/${craft.craftId}`, text: '查看用户页面' }),
         ]),
       ]),
     ]);
   });
+  const projectSearch = el('input', { type: 'search', placeholder: '搜索项目、地区或分类', 'aria-label': '搜索已有项目' });
+  const projectSearchStatus = el('span', { class: 'admin-project-search-status', text: `共 ${craftCards.length} 个项目`, 'aria-live': 'polite' });
+  projectSearch.addEventListener('input', () => {
+    const query = projectSearch.value.trim().toLowerCase();
+    let visible = 0;
+    craftCards.forEach((card) => {
+      const matches = !query || String(card.dataset.search || '').includes(query);
+      card.hidden = !matches;
+      if (matches) visible += 1;
+    });
+    projectSearchStatus.textContent = query ? `找到 ${visible} 个项目` : `共 ${craftCards.length} 个项目`;
+  });
+  const projectSearchBar = el('section', { class: 'admin-project-search' }, [projectSearch, projectSearchStatus]);
   const bulkToolbar = el('section', { class: 'admin-bulk-toolbar', 'aria-label': '批量删除项目' }, [
     el('label', { class: 'admin-bulk-select-all' }, [selectAll, el('span', { text: '选择全部可删除项目' })]),
     selectionSummary,
@@ -222,7 +239,8 @@ export async function adminHomeView(root) {
   updateBulkState();
   let pendingLogoFile = null;
   let pendingLogoUrl = '';
-  const brandFileInput = el('input', { class: 'admin-brand-file-input', type: 'file', accept: 'image/png' });
+  const brandFileInput = el('input', { class: 'admin-brand-file-input', type: 'file', accept: 'image/png', tabindex: '-1' });
+  const brandProgress = createUploadProgress();
   const currentBrandImage = el('img', {
     src: brandLogoUrl(brandState.version), alt: '当前全站 Logo', 'data-brand-logo': 'true',
   });
@@ -241,9 +259,10 @@ export async function adminHomeView(root) {
     pendingBrandImage.classList.add('is-empty');
     brandSaveButton.disabled = true;
   };
-  brandFileInput.addEventListener('change', () => {
-    const file = brandFileInput.files?.[0];
+  const selectBrandFile = (files) => {
+    const file = [...files][0];
     if (!file) return;
+    brandProgress.reset();
     if (file.type !== 'image/png' || file.size > 2 * 1024 * 1024) {
       clearPendingLogo();
       brandStatus.className = 'admin-brand-status is-error';
@@ -258,23 +277,30 @@ export async function adminHomeView(root) {
     brandSaveButton.disabled = false;
     brandStatus.className = 'admin-brand-status';
     brandStatus.textContent = `已选择 ${file.name}，保存前不会影响前台。`;
-  });
+  };
+  const brandDrop = el('div', { class: 'admin-image-drop', role: 'button', tabindex: '0', 'aria-label': '选择或拖入新 Logo' }, [
+    el('strong', { text: '拖入透明 PNG' }), el('span', { text: '或点击选择，最大 2MB' }), brandFileInput,
+  ]);
+  bindImageDropZone({ zone: brandDrop, input: brandFileInput, onFiles: selectBrandFile });
   brandSaveButton.addEventListener('click', async () => {
     if (!pendingLogoFile) return;
     brandSaveButton.disabled = true;
     brandStatus.className = 'admin-brand-status is-saving';
     brandStatus.textContent = '正在保存并刷新全站 Logo…';
+    brandProgress.start(pendingLogoFile.name);
     try {
-      const result = await uploadBrandLogo(pendingLogoFile);
+      const result = await uploadBrandLogo(pendingLogoFile, { onProgress: brandProgress.update });
       const url = applyBrandLogoVersion(result.version);
       currentBrandImage.src = url;
       clearPendingLogo();
       brandStatus.className = 'admin-brand-status is-success';
       brandStatus.textContent = '保存成功：首页、导航、浏览器图标和小蕉头像已统一更新。';
+      brandProgress.success('Logo 已保存并全站应用');
     } catch (error) {
       brandSaveButton.disabled = false;
       brandStatus.className = 'admin-brand-status is-error';
       brandStatus.textContent = error.message;
+      brandProgress.error('Logo 上传失败');
     }
   });
   const brandPanel = el('section', { class: 'admin-brand-panel', 'aria-labelledby': 'admin-brand-heading' }, [
@@ -282,7 +308,8 @@ export async function adminHomeView(root) {
       el('p', { class: 'admin-kicker', text: '全站品牌资源' }),
       el('h2', { id: 'admin-brand-heading', text: 'Logo 管理' }),
       el('p', { text: '上传透明背景 PNG。点击保存后，首页、全站导航、浏览器图标和小蕉聊天头像会统一读取新版本。' }),
-      el('label', { class: 'btn-ghost admin-brand-choose' }, [el('span', { text: '选择新 Logo' }), brandFileInput]),
+      brandDrop,
+      brandProgress.el,
       brandStatus,
     ]),
     el('div', { class: 'admin-brand-previews' }, [
@@ -290,6 +317,16 @@ export async function adminHomeView(root) {
       el('figure', {}, [el('div', { class: 'admin-brand-preview' }, [pendingBrandImage, el('span', { class: 'admin-brand-empty', text: '选择图片后预览' })]), el('figcaption', { text: '待保存预览' })]),
     ]),
     brandSaveButton,
+  ]);
+  const maintenanceTools = el('details', { class: 'admin-maintenance-tools' }, [
+    el('summary', {}, [el('strong', { text: '导入、导出与批量维护' }), el('span', { text: 'JSON 导入、星图补丁和内容模板' })]),
+    el('div', { class: 'admin-maintenance-tools-body' }, [
+      el('label', { class: 'btn-ghost admin-import-button' }, [el('span', { text: '导入主非遗 JSON' }), importInput]),
+      el('button', { class: 'btn-ghost', type: 'button', text: '下载管理员模板', onclick: () => { const url = URL.createObjectURL(new Blob([JSON.stringify(adminImportTemplate, null, 2)], { type: 'application/json' })); const link = document.createElement('a'); link.href = url; link.download = '主非遗导入模板.json'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 0); } }),
+      el('button', { class: 'btn-ghost', type: 'button', text: '导出星图补丁', onclick: downloadGraph }),
+      el('label', { class: 'btn-ghost admin-import-button' }, [el('span', { text: '导入星图补丁' }), graphPatchInput]),
+      graphPatchStatus,
+    ]),
   ]);
   const content = el('main', { class: 'admin-dashboard' }, [
     el('div', { class: 'admin-page-heading' }, [
@@ -300,16 +337,13 @@ export async function adminHomeView(root) {
       ]),
       el('div', { class: 'admin-heading-actions' }, [
         el('label', { class: 'admin-review-toggle' }, [reviewCheckbox, el('span', { text: '专家已审核全部当前内容' }), reviewStatus]),
-        el('label', { class: 'btn-ghost admin-import-button' }, [el('span', { text: '导入主非遗 JSON' }), importInput]),
-        el('button', { class: 'btn-ghost', type: 'button', text: '下载管理员模板', onclick: () => { const url = URL.createObjectURL(new Blob([JSON.stringify(adminImportTemplate, null, 2)], { type: 'application/json' })); const link = document.createElement('a'); link.href = url; link.download = '主非遗导入模板.json'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 0); } }),
-        el('button', { class: 'btn-ghost', type: 'button', text: '导出星图补丁', onclick: downloadGraph }),
-        el('label', { class: 'btn-ghost admin-import-button' }, [el('span', { text: '导入星图补丁' }), graphPatchInput]),
-        graphPatchStatus,
         el('a', { class: 'btn btn-primary', href: '#/admin/submissions', text: `审核社区投稿（${pendingCount}）` }),
         el('button', { class: 'btn-ghost', text: '退出登录', onclick: () => logout() }),
       ]),
     ]),
     brandPanel,
+    maintenanceTools,
+    projectSearchBar,
     bulkToolbar,
     el('div', { class: 'admin-craft-grid' }, craftCards),
   ]);
@@ -554,19 +588,56 @@ export async function adminCraftView(root, { id }) {
       evidence_ids: Array.isArray(claim.evidence_ids) ? claim.evidence_ids : [],
     })),
   };
+  let coverPath = craft.config?.heroFrame || '';
+  let coverChanged = false;
   let contentDirty = false;
   const contentState = el('span', { class: 'admin-save-status is-saved', text: '正文已保存' });
   const contentSaveButton = el('button', { class: 'btn-ghost', type: 'button', text: '保存正文' });
-  const contentEditor = el('section', { class: 'admin-content-editor' });
+  const contentEditor = el('section', { class: 'admin-content-editor', id: 'admin-content-section' });
   const titleInput = el('input', { value: contentDraft.title, maxlength: '200', placeholder: '项目名称' });
   const categoryInput = el('input', { value: contentDraft.category, maxlength: '100', placeholder: '分类；留空则显示“未分类”' });
   const summaryInput = el('textarea', { rows: '5', maxlength: '10000', placeholder: '项目简介；可以清空后保存' }, [contentDraft.summary]);
+  const coverInput = el('input', { class: 'admin-upload-file-input', type: 'file', accept: COMMUNITY_IMAGE_ACCEPT, tabindex: '-1' });
+  const coverProgress = createUploadProgress();
+  const coverPreview = el('div', { class: 'admin-cover-preview' });
   const claimList = el('div', { class: 'admin-claim-list' });
   const markContentDirty = () => {
     contentDirty = true;
     contentState.className = 'admin-save-status is-dirty';
     contentState.textContent = '正文有未保存修改';
   };
+  const renderCoverPreview = () => {
+    coverPreview.replaceChildren(
+      coverPath
+        ? el('img', { src: craftAssetUrl(craft, coverPath), alt: `${titleInput.value || craft.title}封面预览` })
+        : el('div', { class: 'admin-cover-placeholder', text: '尚未设置项目封面' }),
+      coverPath ? el('button', {
+        class: 'admin-step-image-remove', type: 'button', text: '移除封面',
+        onclick: () => { coverPath = ''; coverChanged = true; markContentDirty(); coverProgress.reset(); renderCoverPreview(); },
+      }) : null,
+    );
+  };
+  const uploadCover = async (files) => {
+    const file = [...files][0];
+    if (!file) return;
+    coverInput.disabled = true;
+    coverProgress.start(file.name);
+    try {
+      const image = await uploadCraftImage(craft.craftId, file, { onProgress: coverProgress.update });
+      coverPath = image.image_url;
+      coverChanged = true;
+      markContentDirty();
+      coverProgress.success(`${file.name} 已上传，保存正文后正式应用`);
+      renderCoverPreview();
+    } catch (error) {
+      coverProgress.error(error.message || '封面上传失败');
+    } finally { coverInput.disabled = false; }
+  };
+  const coverDrop = el('div', { class: 'admin-image-drop', role: 'button', tabindex: '0', 'aria-label': '上传项目封面' }, [
+    el('strong', { text: '拖入项目封面' }), el('span', { text: '或点击选择 PNG、JPG、WebP、GIF，最大 6MB' }), coverInput,
+  ]);
+  bindImageDropZone({ zone: coverDrop, input: coverInput, onFiles: uploadCover });
+  renderCoverPreview();
   [titleInput, categoryInput, summaryInput].forEach((control) => control.addEventListener('input', markContentDirty));
   const renderClaims = () => {
     claimList.replaceChildren();
@@ -595,7 +666,9 @@ export async function adminCraftView(root, { id }) {
         category: categoryInput.value,
         summary: summaryInput.value,
         claims: contentDraft.claims,
+        ...(coverChanged ? { cover_path: coverPath } : {}),
       });
+      coverChanged = false;
       contentDirty = false;
       contentState.className = 'admin-save-status is-saved';
       contentState.textContent = '正文已保存';
@@ -622,13 +695,17 @@ export async function adminCraftView(root, { id }) {
       el('label', { class: 'admin-field' }, [el('span', { text: '分类' }), categoryInput]),
     ]),
     el('label', { class: 'admin-field' }, [el('span', { text: '项目简介' }), summaryInput]),
+    el('section', { class: 'admin-cover-editor' }, [
+      el('div', {}, [el('h3', { text: '项目封面' }), el('p', { class: 'admin-field-help', text: '用于项目列表和详情页主视觉；上传后还需保存正文。' })]),
+      el('div', { class: 'admin-cover-editor-grid' }, [coverPreview, el('div', {}, [coverDrop, coverProgress.el])]),
+    ]),
     el('section', {}, [el('h3', { text: '事实陈述' }), el('p', { class: 'admin-field-help', text: '删除后保存即不再出现在用户页面或智能体项目资料中。' }), claimList]),
   );
   renderClaims();
 
   const tabs = el('div', { class: 'admin-step-tabs', role: 'tablist', 'aria-label': '选择工序' });
-  const editor = el('section', { class: 'admin-step-editor' });
-  const graphEditor = el('section', { class: 'admin-graph-editor' });
+  const editor = el('section', { class: 'admin-step-editor', id: 'admin-active-step-editor' });
+  const graphEditor = el('section', { class: 'admin-graph-editor', id: 'admin-graph-section' });
   const graphSummary = el('textarea', { rows: '3', maxlength: '2000', placeholder: '星图摘要' }, [graphData.summary || '']);
   const graphKeywords = el('input', { value: graphData.keywords.join('、'), placeholder: '关键词，用顿号分隔' });
   const graphRelations = el('div', { class: 'admin-graph-relations' });
@@ -650,6 +727,30 @@ export async function adminCraftView(root, { id }) {
       drop.addEventListener('dragover', (event) => { event.preventDefault(); drop.classList.add('is-over'); });
       drop.addEventListener('dragleave', () => drop.classList.remove('is-over'));
       drop.addEventListener('drop', (event) => { event.preventDefault(); drop.classList.remove('is-over'); try { const image = JSON.parse(event.dataTransfer?.getData('application/x-sh-crafted-image') || '{}'); if (image.image_url) { images.push(image); markGraphDirty(); render(); } } catch (_) {} });
+      const uploadInput = el('input', { class: 'admin-upload-file-input', type: 'file', accept: COMMUNITY_IMAGE_ACCEPT, tabindex: '-1' });
+      const uploadProgress = createUploadProgress();
+      const uploadDrop = el('div', { class: 'admin-image-drop is-compact', role: 'button', tabindex: '0', 'aria-label': `上传${label}` }, [
+        el('strong', { text: `上传${label}` }), el('span', { text: '拖入图片或点击选择，最大 6MB' }), uploadInput,
+      ]);
+      bindImageDropZone({
+        zone: uploadDrop, input: uploadInput,
+        onFiles: async (files) => {
+          const file = [...files][0];
+          if (!file) return;
+          uploadInput.disabled = true;
+          uploadProgress.start(file.name);
+          try {
+            const uploaded = await uploadCraftImage(craft.craftId, file, { onProgress: uploadProgress.update });
+            images.push({ title: file.name.replace(/\.[^.]+$/, ''), image_url: uploaded.image_url, description: '', source_url: '' });
+            markGraphDirty();
+            uploadProgress.success(`${file.name} 已上传`);
+            setTimeout(render, 350);
+          } catch (error) {
+            uploadProgress.error(error.message || '图片上传失败');
+            uploadInput.disabled = false;
+          }
+        },
+      });
       const list = el('div', { class: 'admin-image-list' });
       images.forEach((image, index) => {
         const title = el('input', { value: image.title || '', placeholder: '图片标题' });
@@ -658,7 +759,7 @@ export async function adminCraftView(root, { id }) {
         [title, description, source].forEach((control) => control.addEventListener('input', () => { image.title = title.value; image.description = description.value; image.source_url = source.value; markGraphDirty(); }));
         list.appendChild(el('article', { class: 'admin-documentary-item' }, [el('img', { src: craftAssetUrl(craft, image.image_url), alt: image.title || '节点图片', loading: 'lazy' }), el('div', { class: 'admin-documentary-fields' }, [title, description, source]), iconButton('删除图片', minusSvg, () => { images.splice(index, 1); markGraphDirty(); render(); })]));
       });
-      host.append(picker, drop, list);
+      host.append(picker, drop, uploadDrop, uploadProgress.el, list);
     };
     render();
     return host;
@@ -974,49 +1075,55 @@ export async function adminCraftView(root, { id }) {
     const stepImageEditor = el('section', { class: 'admin-step-image-editor' });
     const renderStepImageEditor = () => {
       const fileInput = el('input', {
-        class: 'admin-step-image-input', type: 'file', accept: 'image/png,image/jpeg,image/webp',
+        class: 'admin-step-image-input', type: 'file', accept: 'image/png,image/jpeg,image/webp', tabindex: '-1',
         'aria-label': `上传“${step.name || `工序 ${activeIndex + 1}`}”的步骤图片`,
       });
       const status = el('p', { class: 'admin-step-image-status', role: 'status', 'aria-live': 'polite' });
-      const chooseButton = el('button', {
-        class: 'btn-ghost', type: 'button', text: step.step_image?.image_url ? '替换图片' : '上传图片',
-        onclick: () => fileInput.click(),
-      });
-      fileInput.addEventListener('change', async () => {
-        const file = fileInput.files?.[0];
+      const progress = createUploadProgress();
+      const uploadFiles = async (files) => {
+        const file = [...files][0];
         if (!file) return;
-        chooseButton.disabled = true;
+        fileInput.disabled = true;
         status.className = 'admin-step-image-status is-uploading';
         status.textContent = '正在上传图片…';
+        progress.start(file.name);
         try {
-          const image = await uploadCraftStepImage(craft.craftId, step.id, file);
+          const image = await uploadCraftStepImage(craft.craftId, step.id, file, { onProgress: progress.update });
           step.step_image = {
             ...image,
             alt: `工序“${step.name || `工序 ${activeIndex + 1}`}”参考图`,
           };
           markDirty();
-          renderStepImageEditor();
+          progress.success(`${file.name} 已上传`);
+          setTimeout(renderStepImageEditor, 350);
         } catch (error) {
-          chooseButton.disabled = false;
+          fileInput.disabled = false;
           fileInput.value = '';
           status.className = 'admin-step-image-status is-error';
           status.textContent = error.message || '图片上传失败，请重试。';
+          progress.error(status.textContent);
         }
-      });
+      };
+      const imageDrop = el('div', { class: 'admin-image-drop', role: 'button', tabindex: '0', 'aria-label': `上传“${step.name || `工序 ${activeIndex + 1}`}”的步骤图片` }, [
+        el('strong', { text: step.step_image?.image_url ? '拖入新图片替换' : '拖入步骤图片' }),
+        el('span', { text: '或点击选择 PNG、JPG、WebP，最大 6MB' }), fileInput,
+      ]);
+      bindImageDropZone({ zone: imageDrop, input: fileInput, onFiles: uploadFiles });
       const heading = el('div', { class: 'admin-section-heading' }, [
         el('div', {}, [
           el('h3', { text: '工作台步骤图片' }),
           el('p', { text: '每道工序可上传一张截图；支持 PNG、JPG、WebP，单张不超过 6MB。图片会显示在用户工作台右下角。' }),
         ]),
-        el('div', { class: 'admin-step-image-actions' }, [chooseButton, fileInput]),
+        el('div', { class: 'admin-step-image-actions' }, [imageDrop]),
       ]);
       if (!step.step_image?.image_url) {
         stepImageEditor.replaceChildren(
           heading,
           el('div', { class: 'admin-step-image-empty' }, [
             el('strong', { text: '当前工序尚未添加图片' }),
-            el('span', { text: '你可以稍后逐步上传截图。' }),
+            el('span', { text: '使用上方区域选择或拖入截图。' }),
           ]),
+          progress.el,
           status,
         );
         return;
@@ -1043,6 +1150,7 @@ export async function adminCraftView(root, { id }) {
             onclick: () => { step.step_image = null; markDirty(); renderStepImageEditor(); },
           }),
         ]),
+        progress.el,
         status,
       );
     };
@@ -1076,6 +1184,33 @@ export async function adminCraftView(root, { id }) {
         event.preventDefault(); drop.classList.remove('is-over');
         try { const clip = JSON.parse(event.dataTransfer?.getData('application/x-sh-crafted-frame') || '{}'); if (clip.image_url) { step.documentary_clips.push(clip); markDirty(); renderDocumentaryEditor(); } } catch (_) { /* ignore invalid drag payload */ }
       });
+      const localInput = el('input', { class: 'admin-upload-file-input', type: 'file', accept: COMMUNITY_IMAGE_ACCEPT, tabindex: '-1' });
+      const localProgress = createUploadProgress();
+      const localDrop = el('div', { class: 'admin-image-drop is-compact', role: 'button', tabindex: '0', 'aria-label': '上传本地纪录片关键帧' }, [
+        el('strong', { text: '上传新的关键帧' }), el('span', { text: '拖入本地图片或点击选择，最大 6MB' }), localInput,
+      ]);
+      bindImageDropZone({
+        zone: localDrop, input: localInput,
+        onFiles: async (files) => {
+          const file = [...files][0];
+          if (!file) return;
+          localInput.disabled = true;
+          localProgress.start(file.name);
+          try {
+            const uploaded = await uploadCraftImage(craft.craftId, file, { onProgress: localProgress.update });
+            step.documentary_clips.push({
+              title: file.name.replace(/\.[^.]+$/, ''), image_url: uploaded.image_url,
+              evidence_id: '', description: '', source_url: '', video_url: '', start_seconds: 0, end_seconds: 0,
+            });
+            markDirty();
+            localProgress.success(`${file.name} 已上传`);
+            setTimeout(renderDocumentaryEditor, 350);
+          } catch (error) {
+            localProgress.error(error.message || '关键帧上传失败');
+            localInput.disabled = false;
+          }
+        },
+      });
       (step.documentary_clips || []).forEach((clip, index) => {
         const title = el('input', { value: clip.title || '', placeholder: '片段标题' });
         const description = el('textarea', { rows: '2', placeholder: '图片或片段说明' }, [clip.description || '']);
@@ -1090,7 +1225,7 @@ export async function adminCraftView(root, { id }) {
           iconButton('删除片段', minusSvg, () => { step.documentary_clips.splice(index, 1); markDirty(); renderDocumentaryEditor(); }),
         ]));
       });
-      documentaryEditor.append(picker, drop, list);
+      documentaryEditor.append(picker, drop, localDrop, localProgress.el, list);
     };
     renderDocumentaryEditor();
 
@@ -1208,6 +1343,25 @@ export async function adminCraftView(root, { id }) {
   saveThenNavigate(returnLink);
   saveThenNavigate(userPageLink);
 
+  const processSection = el('section', { class: 'admin-process-workspace', id: 'admin-process-section' }, [
+    el('div', { class: 'admin-workspace-heading' }, [
+      el('div', {}, [el('h2', { text: '制作工序' }), el('p', { text: `${steps.length} 道工序；选择签条后维护步骤图片、关键帧、材料、工具和操作。` })]),
+    ]),
+    tabs,
+    editor,
+  ]);
+  const jumpTo = (target) => target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const maintenanceNav = el('aside', { class: 'admin-maintenance-nav', 'aria-label': '项目维护导航' }, [
+    el('p', { class: 'admin-kicker', text: '维护导航' }),
+    el('button', { type: 'button', text: '项目正文与封面', onclick: () => jumpTo(contentEditor) }),
+    el('button', { type: 'button', text: `制作工序（${steps.length}）`, onclick: () => jumpTo(processSection) }),
+    el('button', { type: 'button', text: `知识星图（${graphData.relations.length} 个关联）`, onclick: () => jumpTo(graphEditor) }),
+    el('div', { class: 'admin-maintenance-facts' }, [
+      el('span', { text: coverPath ? '已设置封面' : '尚未设置封面' }),
+      el('span', { text: `${steps.filter((step) => step.step_image?.image_url).length}/${steps.length} 道工序有步骤图` }),
+      el('span', { text: `${graphData.images.length} 张主节点图片` }),
+    ]),
+  ]);
   const content = el('main', { class: 'admin-process-page' }, [
     el('div', { class: 'admin-page-heading' }, [
       el('div', {}, [
@@ -1221,10 +1375,10 @@ export async function adminCraftView(root, { id }) {
         saveButton,
       ]),
     ]),
-    contentEditor,
-    tabs,
-    editor,
-    graphEditor,
+    el('div', { class: 'admin-maintenance-layout' }, [
+      maintenanceNav,
+      el('div', { class: 'admin-maintenance-workspace' }, [contentEditor, processSection, graphEditor]),
+    ]),
   ]);
   render();
   const shell = await adminShell(root, 'admin', content);

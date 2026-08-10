@@ -1,3 +1,5 @@
+import { uploadImageRequest } from './image-upload.js';
+
 const state = {
   ready: false,
   authenticated: false,
@@ -90,14 +92,13 @@ async function save(path, body) {
 
 export const saveSiteTexts = (updates) => save('/api/admin/site-texts', { updates });
 export const loadBrandLogo = () => api('/api/admin/brand/logo');
-export async function uploadBrandLogo(file) {
+export async function uploadBrandLogo(file, { onProgress } = {}) {
   if (!(file instanceof File)) throw new Error('请选择 PNG 图片。');
   if (file.type !== 'image/png') throw new Error('Logo 仅支持 PNG 格式，以保留透明背景。');
   if (file.size > 2 * 1024 * 1024) throw new Error('Logo 图片不能超过 2MB。');
   try {
-    return await api('/api/admin/brand/logo', {
-      method: 'PUT',
-      body: file,
+    return await uploadImageRequest({
+      url: '/api/admin/brand/logo', method: 'PUT', file, onProgress,
       headers: { 'Content-Type': 'image/png', 'X-File-Name': encodeURIComponent(file.name) },
     });
   } catch (error) {
@@ -158,14 +159,31 @@ export const exportGraph = () => api('/api/admin/graph/export');
 export const previewGraphPatch = (payload) => api('/api/admin/graph/patch/preview', { method: 'POST', body: JSON.stringify(payload) });
 export const applyGraphPatch = (payload) => api('/api/admin/graph/patch/apply', { method: 'POST', body: JSON.stringify(payload) });
 export const saveCraftSteps = (id, steps) => save(`/api/admin/crafts/${encodeURIComponent(id)}/steps`, { steps });
-export async function uploadCraftStepImage(craftId, stepId, file) {
+export async function uploadCraftImage(craftId, file, { onProgress } = {}) {
+  if (!(file instanceof File)) throw new Error('请选择图片文件。');
+  if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type)) throw new Error('仅支持 PNG、JPG、WebP 或 GIF 图片。');
+  if (file.size > 6 * 1024 * 1024) throw new Error('图片不能超过 6MB。');
+  try {
+    const payload = await uploadImageRequest({
+      url: `/api/admin/crafts/${encodeURIComponent(craftId)}/images`, method: 'POST', file, onProgress,
+      headers: { 'Content-Type': file.type, 'X-File-Name': encodeURIComponent(file.name) },
+    });
+    return payload.image;
+  } catch (error) {
+    if (error.status === 401) throw new Error('登录已过期，请重新登录。');
+    if (error.status === 413) throw new Error('图片不能超过 6MB。');
+    if (error.status === 415) throw new Error('仅支持 PNG、JPG、WebP 或 GIF 图片。');
+    throw new Error(error.message === 'network_error' ? '网络中断，图片未上传完成。' : '图片上传失败，请稍后重试。');
+  }
+}
+
+export async function uploadCraftStepImage(craftId, stepId, file, { onProgress } = {}) {
   if (!(file instanceof File)) throw new Error('请选择图片文件。');
   if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) throw new Error('仅支持 PNG、JPG 或 WebP 图片。');
   if (file.size > 6 * 1024 * 1024) throw new Error('图片不能超过 6MB。');
   try {
-    const payload = await api(`/api/admin/crafts/${encodeURIComponent(craftId)}/steps/${encodeURIComponent(stepId)}/image`, {
-      method: 'POST',
-      body: file,
+    const payload = await uploadImageRequest({
+      url: `/api/admin/crafts/${encodeURIComponent(craftId)}/steps/${encodeURIComponent(stepId)}/image`, method: 'POST', file, onProgress,
       headers: {
         'Content-Type': file.type,
         'X-File-Name': encodeURIComponent(file.name),

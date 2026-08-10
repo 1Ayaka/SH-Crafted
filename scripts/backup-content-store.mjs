@@ -18,4 +18,4 @@ for (const [label, legacy] of [['content', process.env.CONTENT_STORE_PATH], ['co
 }
 const uploadBackup = join(backupDir, `uploads-${stamp}`);
 if ((await stat(uploadDir).catch(() => null))?.isDirectory()) await cp(uploadDir, uploadBackup, { recursive: true, errorOnExist: true });
-console.log(`内容数据库备份已生成：${target}${(await stat(uploadBackup).catch(() => null)) ? `；上传资源（步骤图片与 Logo）：${uploadBackup}` : ''}`);
+console.log(`内容数据库备份已生成：${target}${(await stat(uploadBackup).catch(() => null)) ? `；上传资源（项目、星图、关键帧、步骤、社区图片与 Logo）：${uploadBackup}` : ''}`);

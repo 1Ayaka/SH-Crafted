@@ -24,6 +24,7 @@
     "content:seed": "node scripts/content-seed.mjs",
     "admin:test-ui": "node scripts/smoke-admin-ui.mjs",
     "step-image:test-api": "node scripts/test-step-image-upload.mjs",
+    "image-upload:test-progress": "node scripts/test-image-upload-progress.mjs",
     "brand:test-api": "node scripts/test-brand-logo-upload.mjs",
     "community:test": "node scripts/smoke-community-api.mjs",
     "content:migrate": "node scripts/migrate-content-store.mjs",

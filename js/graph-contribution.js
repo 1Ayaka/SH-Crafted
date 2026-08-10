@@ -1,6 +1,6 @@
 import { el, openModal } from './ui.js';
 import { submitHeritage } from './community.js';
-import { bindImageDropZone, COMMUNITY_IMAGE_ACCEPT, uploadCommunityImage } from './image-upload.js';
+import { bindImageDropZone, COMMUNITY_IMAGE_ACCEPT, createUploadProgress, uploadCommunityImage } from './image-upload.js';
 
 const CONTRIBUTION_LABELS = {
   supplement: '补充资料', correction: '纠正摘要', relation: '补充节点关系', image: '补充图片',
@@ -31,6 +31,7 @@ export function openGraphContribution(node) {
   const imageDescription = el('textarea', { name: 'image_description', rows: '3', maxlength: '1000', placeholder: '说明画面内容、拍摄对象与大致时间；不要填写无法确认的人名。' });
   const imageInput = el('input', { class: 'community-image-file-input', type: 'file', accept: COMMUNITY_IMAGE_ACCEPT, tabindex: '-1' });
   const imageUploadStatus = el('p', { class: 'community-import-status', role: 'status', 'aria-live': 'polite' });
+  const imageProgress = createUploadProgress();
   const imagePreview = el('img', { class: 'graph-contribution-image-preview', alt: '待投稿图片预览', hidden: true });
   let uploadedImageUrl = '';
   const imageDrop = el('div', {
@@ -47,15 +48,18 @@ export function openGraphContribution(node) {
     imageInput.disabled = true;
     imageUploadStatus.className = 'community-import-status';
     imageUploadStatus.textContent = `正在上传：${file.name}`;
+    imageProgress.start(file.name);
     try {
-      const image = await uploadCommunityImage(file);
+      const image = await uploadCommunityImage(file, { onProgress: imageProgress.update });
       uploadedImageUrl = image.image_url;
       imagePreview.src = image.image_url;
       imagePreview.hidden = false;
       if (!imageTitle.value) imageTitle.value = file.name.replace(/\.[^.]+$/, '');
       imageUploadStatus.textContent = '图片已上传，可以继续填写说明并提交审核。';
+      imageProgress.success(`${file.name} 已上传`);
       imageUrl.required = false;
     } catch (error) {
+      imageProgress.error(`${file.name} 上传失败`);
       imageUploadStatus.className = 'community-import-status error';
       imageUploadStatus.textContent = error.message;
     } finally {
@@ -65,7 +69,7 @@ export function openGraphContribution(node) {
   bindImageDropZone({ zone: imageDrop, input: imageInput, onFiles: uploadGraphImage });
   const imageFields = el('section', { class: 'graph-contribution-dependent', hidden: true }, [
     el('p', { class: 'graph-contribution-section-title', text: '图片资料' }),
-    imageDrop, imageUploadStatus, imagePreview,
+    imageDrop, imageProgress.el, imageUploadStatus, imagePreview,
     field('或填写图片公开链接', imageUrl, '上传本地图片和填写公开链接二选一；请确认有权公开展示，并在上方填写图片出处。'),
     el('div', { class: 'graph-contribution-grid' }, [field('图片标题', imageTitle), field('图片说明', imageDescription)]),
   ]);
