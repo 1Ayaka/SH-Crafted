@@ -76,7 +76,9 @@ export function createWorkerClient({ onLandmarks, onReady, onNotice, onError } =
     initPromise = new Promise((resolve, reject) => {
       initResolve = resolve;
       initReject = reject;
-      initTimer = setTimeout(() => settleInit(new Error('worker_init_timeout')), 20000);
+      // The self-hosted WASM and hand model total about 17 MB. Production
+      // bandwidth can legitimately need close to a minute on a cold cache.
+      initTimer = setTimeout(() => settleInit(new Error('worker_init_timeout')), 90000);
       worker.postMessage({
         type: 'init',
         bundlePath: '/vendor/mediapipe/vision_bundle.js',
