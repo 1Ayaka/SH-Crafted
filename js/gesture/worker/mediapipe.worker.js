@@ -12,7 +12,7 @@ let HandLandmarker = null;
 async function loadMediaPipeBundle(bundlePath) {
   // Classic Workers allow MediaPipe's internal importScripts() WASM loader.
   // Dynamic import remains available for loading the ESM vision bundle.
-  const bundleUrl = new URL(bundlePath || '/vendor/mediapipe/vision_bundle.mjs', self.location.href).href;
+  const bundleUrl = new URL(bundlePath || '/vendor/mediapipe/vision_bundle.js', self.location.href).href;
   try {
     const module = await import(bundleUrl);
     FilesetResolver = module.FilesetResolver;

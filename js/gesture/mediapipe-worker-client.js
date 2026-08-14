@@ -79,7 +79,7 @@ export function createWorkerClient({ onLandmarks, onReady, onNotice, onError } =
       initTimer = setTimeout(() => settleInit(new Error('worker_init_timeout')), 20000);
       worker.postMessage({
         type: 'init',
-        bundlePath: '/vendor/mediapipe/vision_bundle.mjs',
+        bundlePath: '/vendor/mediapipe/vision_bundle.js',
         wasmPath: wasmPath || '/vendor/mediapipe/',
         modelPath: modelPath || '/vendor/mediapipe/hand_landmarker.task',
       });
