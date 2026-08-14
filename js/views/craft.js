@@ -1219,15 +1219,17 @@ export async function craftView(root, { id }) {
     workbench.appendChild(el('div', { class: 'wb-play wb-play-physics' }, [backpack, main]));
     const savedBackpackScroll = S.backpackScrollByStep.get(backpackScrollKey) || 0;
     backpack.scrollTop = savedBackpackScroll;
+    // 材料选择会重建当前工作台。这里必须在同一个任务内挂载新画布，
+    // 否则旧画布销毁后到下一帧之间，桌面中央会短暂暴露为空白背景。
+    // createWorkbenchSurface 会同步绘制首帧，后续帧再交给 rAF 动画循环。
+    try {
+      physicsHandle = createWorkbenchSurface(tableSurface, tableObjects, { stateStore: S.workbenchPhysics, interactive: !mobileTapMode });
+      wbPreviewHandles.push(physicsHandle);
+    } catch (error) {
+      tableSurface.appendChild(el('p', { class: 'wb-table-error', text: '当前浏览器无法显示粒子桌面，请继续使用背包和动作。' }));
+    }
     requestAnimationFrame(() => {
       backpack.scrollTop = savedBackpackScroll;
-      if (!tableSurface.isConnected) return;
-      try {
-        physicsHandle = createWorkbenchSurface(tableSurface, tableObjects, { stateStore: S.workbenchPhysics, interactive: !mobileTapMode });
-        wbPreviewHandles.push(physicsHandle);
-      } catch (error) {
-        tableSurface.appendChild(el('p', { class: 'wb-table-error', text: '当前浏览器无法显示粒子桌面，请继续使用背包和动作。' }));
-      }
     });
     syncAgentContext();
   }

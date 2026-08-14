@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHeritageGraphState, goBackGraphRoot, graphStateContext, openGraphBranch, returnGraphRoot, returnInitialGraphRoot, selectGraphNode, setGraphBranchPage, setGraphRoot } from '../js/heritage-graph.js';
-import { graphNeighborhood, graphPortals, heritageForGraphTarget, relatedHeritageForRelation } from '../js/agent/graph-adapter.js';
+import { graphNeighborhood, graphNodes, graphPortals, heritageForGraphTarget, relatedHeritageForRelation } from '../js/agent/graph-adapter.js';
 import { CURATED_GRAPH_EDGES, CURATED_GRAPH_NODES, GRAPH_PROJECT_MINIMUMS } from '../js/graph-curated-catalog.js';
 
 const root = { id: 'heritage:root', type: 'heritage', title: '根项目' };
@@ -32,19 +32,16 @@ assert.deepEqual(qibaoPortals.map((portal) => portal.relation), ['LOCATED_IN', '
 assert.ok(qibaoPortals.every((portal) => portal.available && portal.target), '七宝皮影三条入口都应有已核验目标');
 const shadowPortal = qibaoPortals.find((portal) => portal.relation === 'BELONGS_TO_TRADITION');
 const shadowLeaves = relatedHeritageForRelation(shadowPortal.target.id, shadowPortal.relation, { excludeId: 'heritage:SHIH_0007' });
-assert.ok(shadowLeaves.some((node) => node.id === 'heritage:tangshan_shadow'), '皮影传统分支应包含唐山皮影戏');
+assert.ok(!shadowLeaves.some((node) => node.id === 'heritage:tangshan_shadow'), '未进入地图项目库的静态扩展项目不应单独出现在星图');
 const qibaoState = createHeritageGraphState('heritage:SHIH_0007');
 assert.equal(openGraphBranch(qibaoState, 'LOCATED_IN').ok, true);
-assert.ok(qibaoState.branchAllNodes.length > 10, '闵行地区分支应展示全部节点');
+assert.ok(qibaoState.branchAllNodes.every((node) => node.detail_available), '地区分支不得混入地图项目库之外的静态项目');
 assert.equal(setGraphBranchPage(qibaoState, 1).page, 0, '分支不再分页');
 assert.equal(qibaoState.branchNodes.length, qibaoState.branchAllNodes.length, '分支节点全部可见');
 
 const coverage = {};
-for (const rootId of GRAPH_PROJECT_MINIMUMS) {
-  const neighborhood = graphNeighborhood(rootId);
-  coverage[rootId] = neighborhood.length;
-  assert.ok(neighborhood.length >= 24, `${rootId} 至少应接入 24 个一跳可探索节点，当前 ${neighborhood.length}`);
-}
+for (const rootId of GRAPH_PROJECT_MINIMUMS) coverage[rootId] = graphNeighborhood(rootId).length;
+assert.ok(graphNodes().filter((node) => node.type === 'heritage').every((node) => node.detail_available), '星图中的非遗项目必须都能在地图/详情项目库中打开');
 assert.equal(new Set(CURATED_GRAPH_NODES.map((node) => node.id)).size, CURATED_GRAPH_NODES.length, '扩展目录不得包含重复节点 ID');
 assert.ok(CURATED_GRAPH_NODES.every((node) => node.source_ids?.length && node.source_title), '扩展目录节点必须有来源');
 assert.ok(CURATED_GRAPH_EDGES.every((edge) => edge.source_id && edge.source_title), '扩展目录关系必须有来源');

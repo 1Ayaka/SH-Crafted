@@ -71,13 +71,15 @@ function craftImageUrl(craft, value) {
 function craftNode(craft) {
   const primarySource = craft.externalSources?.[0] || {};
   const mainImage = craftImageUrl(craft, craft.config?.heroFrame || craft.config?.works?.[0]?.frame || '');
-  const nodeImages = Array.isArray(craft.config?.graphData?.images)
-    ? craft.config.graphData.images.filter((image) => image?.image_url || image?.url).map((image) => ({
-      ...image,
-      image_url: craftImageUrl(craft, image.image_url || image.url),
+  const projectImages = Array.isArray(craft.config?.works)
+    ? craft.config.works.filter((image) => image?.frame || image?.image_url).map((image, index) => ({
+      title: image.name || image.title || `${craft.title}图片 ${index + 1}`,
+      description: image.description || '',
+      source_url: image.sourceUrl || image.source_url || '',
+      image_url: craftImageUrl(craft, image.frame || image.image_url),
     }))
     : [];
-  const displayImages = nodeImages.length ? nodeImages : (mainImage ? [{
+  const displayImages = projectImages.length ? projectImages : (mainImage ? [{
     title: `${craft.title}主图`,
     description: '该节点尚未设置专用图片，当前使用项目主图。',
     image_url: mainImage,
@@ -94,7 +96,7 @@ function craftNode(craft) {
     overview_image: mainImage,
     graph_data: craft.config?.graphData || {},
     images: displayImages,
-    image_display_role: nodeImages.length ? 'node' : (mainImage ? 'main-fallback' : 'empty'),
+    image_display_role: projectImages.length ? 'project-gallery' : (mainImage ? 'main-fallback' : 'empty'),
     district_id: craft.config?.districtId || null,
     heritage_level: craft.config?.heritageLevel || (/^SHIH_\d{4}$/.test(craft.craftId) ? 'primary' : 'secondary'),
     public: true,
@@ -165,6 +167,11 @@ export function graphNodes() {
         .filter((image, index, all) => all.findIndex((other) => (other.image_url || other.url) === (image.image_url || image.url)) === index);
       return {
         ...node,
+        id: detail.id,
+        title: detail.title,
+        aliases: detail.aliases,
+        summary: detail.summary,
+        district_id: detail.district_id,
         raw_id: detail.raw_id,
         detail_available: true,
         canonical_id: detail.id,
@@ -174,6 +181,7 @@ export function graphNodes() {
         graph_data: detail.graph_data,
       };
     }).filter((node) => {
+    if (node.type === 'heritage' && !node.detail_available) return false;
     if (seen.has(node.id)) return false;
     const titleKey = node.type === 'heritage' ? String(node.title || '').trim() : '';
     if (titleKey && seenHeritageTitles.has(titleKey)) return false;
@@ -181,6 +189,15 @@ export function graphNodes() {
     if (titleKey) seenHeritageTitles.add(titleKey);
     return true;
   });
+  const visibleHeritage = new Set(cachedNodes.filter((node) => node.type === 'heritage').map((node) => node.id));
+  const relevantRelations = new Set(graphRelations.map((node) => node.id));
+  for (const node of cachedNodes) {
+    if (node.type === 'heritage' && node.district_id) relevantRelations.add(graphId('region', node.district_id));
+  }
+  for (const edge of allGraphEdges()) {
+    if (visibleHeritage.has(edge.from)) relevantRelations.add(edge.to);
+  }
+  cachedNodes = cachedNodes.filter((node) => node.type === 'heritage' || relevantRelations.has(node.id));
   cachedNodeById = new Map(cachedNodes.map((node) => [node.id, node]));
   cachedSearchTokenIndex = new Map();
   cachedSearchRecords = cachedNodes.map((node, index) => {

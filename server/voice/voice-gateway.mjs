@@ -18,7 +18,15 @@ export function createVoiceGateway({ server, sessions, upstreamUrl, allowedOrigi
     let sentFinal = false;
     let totalBytes = 0;
     let timer = setTimeout(() => failClient(client, 'VOICE_TOO_LONG'), maxDurationMs);
-    const release = () => { clearTimeout(timer); timer = 0; activeByIp.set(ip, Math.max(0, (activeByIp.get(ip) || 1) - 1)); if (!activeByIp.get(ip)) activeByIp.delete(ip); upstream?.cancel(); };
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      clearTimeout(timer); timer = 0;
+      activeByIp.set(ip, Math.max(0, (activeByIp.get(ip) || 1) - 1));
+      if (!activeByIp.get(ip)) activeByIp.delete(ip);
+      upstream?.cancel();
+    };
     client.on('close', release);
     client.on('error', release);
     client.on('message', async (data, isBinary) => {
@@ -49,7 +57,7 @@ export function createVoiceGateway({ server, sessions, upstreamUrl, allowedOrigi
         if (message.type === 'cancel') { upstream.cancel(); client.close(1000, 'cancelled'); return; }
         if (message.type === 'stop') {
           const text = await upstream.stop();
-          if (text && !sentFinal && client.readyState === 1) client.send(JSON.stringify({ type: 'final_transcript', request_id: message.request_id || '', text, is_final: true }));
+          if (!sentFinal && client.readyState === 1) client.send(JSON.stringify({ type: 'final_transcript', request_id: message.request_id || '', text: text || '', is_final: true }));
           if (client.readyState === 1) client.close(1000, 'complete');
         }
       } catch (error) {

@@ -86,9 +86,9 @@ function importRecord(id, revision = '', overrides = {}) {
     history: '海棠式测试历史线索，用于确认管理员导入资料能够进入智能体的统一检索。',
     features: '测试特色资料。',
     source_url: 'https://example.invalid/source',
-    cover_url: png,
+    cover_url: 'https://example.invalid/cover.png',
     model_path: 'assets/models/crafts/import-protection-test.glb',
-    overview_images: [{ title: '测试概览图', image_url: png, description: '仅供自动化测试使用的嵌入图片。', source_url: 'https://example.invalid/image-source' }],
+    images: [{ title: '测试其他图片', image_url: png, description: '仅供自动化测试使用的嵌入图片。', source_url: 'https://example.invalid/image-source' }],
     graph_data: {
       summary: '测试星图资料。', keywords: ['测试', '导入', '保护'], images: [{ title: '测试节点图', image_url: png, description: '测试节点图片。' }],
       relations: [{ type: 'region', title: '嘉定区', summary: '测试地区关系。' }],
@@ -156,8 +156,8 @@ try {
   if (!createdCraft) throw new Error('管理员导入后项目不存在');
   if (content.payload.craft_steps.filter((step) => step.craft_id === firstId).length !== 4) throw new Error('管理员导入后工序不是 4 条');
   const importedImage = content.payload.craft_gallery.find((image) => image.craft_id === firstId);
-  if (!importedImage) throw new Error('管理员导入后概览图未写入图库');
-  if (importedImage.source_url !== 'https://example.invalid/image-source') throw new Error('概览图来源未被统一内容库保留');
+  if (!importedImage) throw new Error('管理员导入后其他图片未写入图库');
+  if (importedImage.source_url !== 'https://example.invalid/image-source') throw new Error('图片来源未被统一内容库保留');
   const knowledgeSearch = await request('/api/kb/search', {
     method: 'POST', body: { query: '海棠式测试历史线索' },
   });
@@ -176,6 +176,24 @@ try {
   if (!updatedCraft.summary.startsWith('更新后的测试简介')) throw new Error('相同稳定 ID 未更新原记录');
   if (updatedCraft.model_path !== 'assets/models/crafts/import-protection-test.glb') throw new Error('空 model_path 清除了服务器已有模型');
   if (content.payload.crafts.filter((craft) => craft.id === firstId).length !== 1) throw new Error('相同稳定 ID 产生了重复项目');
+
+  const alternateId = 'LOCAL_IMPORT_SAME_TITLE_DIFFERENT_ID';
+  const sameTitleUpdate = await request('/api/admin/crafts/import', {
+    method: 'POST', cookie,
+    body: importRecord(alternateId, content.payload.revision, {
+      title: updatedCraft.title,
+      summary: '通过相同名称和相同区县定位已有项目，即使上传文件携带了不同 ID，也应覆盖原有记录而不是新增重复项目。',
+    }),
+  });
+  expectStatus(sameTitleUpdate, 200);
+  if (sameTitleUpdate.payload.craft_id !== firstId || !sameTitleUpdate.payload.updated) {
+    throw new Error('相同名称和区县未覆盖原项目');
+  }
+  content = await request('/api/content');
+  if (content.payload.crafts.some((craft) => craft.id === alternateId)) throw new Error('同名覆盖产生了新 ID 项目');
+  if (content.payload.crafts.filter((craft) => craft.title === updatedCraft.title && craft.district_id === 'jiading').length !== 1) {
+    throw new Error('同名覆盖后仍有重复项目');
+  }
 
   const duplicate = await request('/api/admin/crafts/import', {
     method: 'POST', cookie, body: { ...importRecord(firstId, content.payload.revision), update_existing: false },

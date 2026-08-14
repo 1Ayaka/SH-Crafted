@@ -111,8 +111,8 @@ function makeJadeTexture(image) {
   const grid = 4;
   const cell = canvas.width / grid;
   const sourceMin = Math.min(image.width, image.height);
-  context.globalAlpha = 0.68;
-  context.filter = 'saturate(48%) contrast(58%) brightness(121%) blur(0.45px)';
+  context.globalAlpha = 0.38;
+  context.filter = 'saturate(42%) contrast(52%) brightness(123%) blur(0.7px)';
   for (let row = 0; row < grid; row += 1) {
     for (let col = 0; col < grid; col += 1) {
       const sourceSize = sourceMin * (0.24 + atlasRand() * 0.14);
@@ -134,7 +134,7 @@ function makeJadeTexture(image) {
     }
   }
   context.filter = 'none';
-  context.globalAlpha = 0.24;
+  context.globalAlpha = 0.14;
   context.globalCompositeOperation = 'screen';
   context.fillStyle = '#dce4d4';
   context.fillRect(0, 0, canvas.width, canvas.height);
@@ -1005,6 +1005,22 @@ export async function createMap3D(container, hooks) {
   let pointerDirty = false;
   let lastClient = { x: 0, y: 0 };
 
+  function updatePointerFromClient(event) {
+    const rect = renderer.domElement.getBoundingClientRect();
+    if (!rect.width || !rect.height) return false;
+    pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    lastClient = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    return true;
+  }
+
+  function districtAtClientPoint(event) {
+    if (!updatePointerFromClient(event)) return null;
+    raycaster.setFromCamera(pointer, camera);
+    const hit = raycaster.intersectObjects(raycastTargets, false)[0];
+    return hit?.object?.userData?.district?.name || null;
+  }
+
   function applyHover(name, force = false) {
     if (!force && hovered === name) return;
     hovered = name;
@@ -1047,17 +1063,16 @@ export async function createMap3D(container, hooks) {
   }
 
   renderer.domElement.addEventListener('pointermove', (e) => {
-    const r = renderer.domElement.getBoundingClientRect();
-    pointer.x = ((e.clientX - r.left) / r.width) * 2 - 1;
-    pointer.y = -((e.clientY - r.top) / r.height) * 2 + 1;
-    lastClient = { x: e.clientX - r.left, y: e.clientY - r.top };
-    pointerDirty = true;
+    if (updatePointerFromClient(e)) pointerDirty = true;
   });
   renderer.domElement.addEventListener('pointerleave', () => { applyHover(null); hooks.onHover(null, null); });
-  renderer.domElement.addEventListener('click', () => {
+  renderer.domElement.addEventListener('click', (event) => {
     if (focused) { hooks.onBlank(); return; }
-    if (hovered) hooks.onSelect(hovered);
-    else if (!hovered) hooks.onBlank();
+    // Safari（尤其触摸设备）可能在区块浮起后、click 到达前清掉 hover。
+    // 点击必须以本次坐标重新命中；hovered 仅保留为桌面浏览器的兼容回退。
+    const selected = districtAtClientPoint(event) || hovered;
+    if (selected) hooks.onSelect(selected);
+    else hooks.onBlank();
   });
 
   // ---- 地区聚焦：沿弧线下降掠过城区上空，落向该区 ----

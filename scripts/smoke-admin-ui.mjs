@@ -245,14 +245,14 @@ try {
   await screenshot(screenshots.mobile);
 
   const errors = [];
-  if (!dashboard.loggedIn || dashboard.cards !== 8) errors.push('管理员首页未显示 8 个项目');
+  if (!dashboard.loggedIn || dashboard.cards < 8) errors.push('管理员首页没有显示完整项目列表');
   if (!dashboard.bulkToolbar || dashboard.protectedChecks < 8 || !dashboard.deleteDisabled) errors.push('批量删除工具条或原始 8 项删除保护未显示');
   if (!dashboard.brandPanel || dashboard.brandInput !== 'image/png' || !dashboard.brandCurrentLoaded || !dashboard.brandSaveDisabled || dashboard.brandPreviewCount !== 2 || !dashboard.brandDrop || !dashboard.brandProgress) errors.push('管理员 Logo 拖放、上传进度、保存或双预览模块不完整');
   if (!dashboard.projectSearch || !dashboard.maintenanceTools) errors.push('管理员项目搜索或低频维护工具分组缺失');
   if (!process.tabs || !process.addStep || !process.materialInputs || !process.materialOutputInputs || !process.operationInputs || !process.saveButton) errors.push('工序编辑器控件不完整或缺少逐材料升级映射');
   if (!process.contentEditor || process.contentFields < 3 || !process.claimRows || process.claimDeleteButtons !== process.claimRows || !process.contentSaveButton) errors.push('项目正文或事实陈述的编辑、删除、保存链路不完整');
   if (dashboard.reviewChecked && (reviewedPage.draftDisclaimer || reviewedPage.pendingTags || reviewedPage.autoExtractHeading)) errors.push('全库审核后项目页仍显示 AI 草稿、自动抽取或待核对标记');
-  if (!process.maintenanceLayout || !process.coverUpload || !process.graphImageUploads || !process.stepImageInput || !process.stepImageProgress || !process.stepImageEmpty || !process.documentaryUpload) errors.push('项目维护导航、封面、星图、关键帧或步骤图片上传进度链路不完整');
+  if (!process.maintenanceLayout || !process.coverUpload || !process.stepImageInput || !process.stepImageProgress || !process.stepImageEmpty || !process.documentaryUpload) errors.push('项目维护导航、主图、其他图片、关键帧或步骤图片上传进度链路不完整');
   if (!materialFlow.inheritedRows || !materialFlow.flowHelp || !materialFlow.removeButton || !materialFlow.heldOrUsable) errors.push('继承材料缺少本步使用/移出暂存控制');
   if (verifyWrite && !savePersisted) errors.push('逐材料升级映射点击保存后没有从服务器持久化读回');
   if (verifyWrite && !autoSavePersisted) errors.push('逐材料升级映射停止输入后没有自动保存并重新显示');

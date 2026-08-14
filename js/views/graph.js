@@ -59,8 +59,27 @@ export async function graphView(root, params = {}) {
     el('button', { type: 'button', text: '还原', onclick: () => explorer?.gestureAdapter?.().resetView() }),
     el('button', { type: 'button', text: '放大', onclick: () => explorer?.gestureAdapter?.().zoomBy(0.84) }),
   ]);
+  const atmosphere = document.createElement('div');
+  atmosphere.className = 'heritage-graph-atmosphere';
+  atmosphere.setAttribute('aria-hidden', 'true');
+  atmosphere.innerHTML = `<svg viewBox="0 0 1600 900" preserveAspectRatio="none">
+    <g class="heritage-graph-orbit-lines">
+      <ellipse cx="790" cy="470" rx="610" ry="245" transform="rotate(-8 790 470)" />
+      <ellipse cx="820" cy="455" rx="455" ry="365" transform="rotate(17 820 455)" />
+      <path d="M-90 700 C290 500 510 590 760 410 S1240 180 1690 300" />
+      <path d="M120 110 C420 245 535 120 810 230 S1275 510 1600 430" />
+    </g>
+    <g class="heritage-graph-coordinate-marks">
+      <path d="M160 236h76M198 198v76M1360 646h76M1398 608v76" />
+      <circle cx="198" cy="236" r="52"/><circle cx="1398" cy="646" r="52"/>
+    </g>
+  </svg>
+  <i class="heritage-graph-mist mist-far"></i>
+  <i class="heritage-graph-mist mist-mid"></i>
+  <i class="heritage-graph-mist mist-near"></i>`;
   const shell = el('div', { class: `heritage-graph-overlay heritage-graph-page-shell${state.mode === 'overview' ? ' is-overview' : ''}`, 'aria-labelledby': 'graph-page-heading' }, [
     el('div', { class: 'heritage-graph-wash', 'aria-hidden': 'true' }),
+    atmosphere,
     el('header', { class: 'heritage-graph-header' }, [
       el('div', { class: 'heritage-graph-heading' }, [
         el('span', { class: 'heritage-graph-kicker', text: '上海非遗 · 中国星图' }),

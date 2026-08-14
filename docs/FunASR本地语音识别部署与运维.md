@@ -43,7 +43,10 @@ VOICE_MAX_DURATION_SECONDS=30
 VOICE_MAX_AUDIO_BYTES=4000000
 VOICE_FUNASR_CHUNK_SIZE=5,10,5
 VOICE_FUNASR_CHUNK_INTERVAL=10
+VOICE_FUNASR_FINAL_TIMEOUT_MS=15000
 ```
+
+“点击说话”采用单句模式：点击后开始采集；检测到有效语音后的约 0.9 秒静音时自动停止麦克风，再等待 FunASR 返回最终结果并交给智能体。没有听到有效语音时约 7 秒自动结束。SSH 隧道等高延迟开发环境可通过 `VOICE_FUNASR_FINAL_TIMEOUT_MS` 调整最终结果等待时间，建议 15000 毫秒；这不会延长录音，只影响停止录音后的结果等待上限。
 
 `VOICE_WAKE_WORDS` 默认是“小蕉小蕉”，可用逗号配置最多四个候选词。回滚时可设为 `VOICE_STT_PROVIDER=browser`；文字输入不依赖该配置。浏览器兼容识别只作降级，不能保证所有浏览器都支持持续唤醒。
 

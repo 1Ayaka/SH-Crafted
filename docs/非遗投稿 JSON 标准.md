@@ -1,43 +1,38 @@
-# 探物志 非遗投稿 JSON 标准
+# 探物志非遗投稿 JSON 标准
 
 版本：`sh-crafted.heritage-submission/v1`
 
-该格式用于“添加文化遗产”页面的导入。页面支持 `.json` 和单条 `.jsonl` 文件。导入后内容仍处于待提交状态，投稿人必须检查并手动提交审核。
+用户投稿和管理员批量导入使用同一套基础字段。用户导入后仍需手动提交审核；管理员导入会直接写入正式内容。
 
 ## 最小要求
 
-- `title`：非遗名称，至少 2 个字符。
-- `summary`：内容简介，至少 10 个字符。
-- `overview_images`：至少 1 项。
-- 每个 `overview_images` 项必须同时包含图片地址和 `description` 图片说明。
-- 图片地址可以是公开的 `https://` 地址，也可以是 `data:image/...;base64,...`；页面拖放上传会自动生成后者。
+- `title`：项目名称，至少 2 个字符。
+- `district_id`：上海行政区 ID。
+- `summary`：事实性简介，至少 10 个字符。
+- `cover_url`：唯一主图，必填。支持公开 `https://` 图片、站内 `/content-uploads/...` 地址或 `data:image/...`。
+- `images`：其他图片，选填；每项支持 `title`、`image_url`、`description`、`source_url`。
 
-## 完整示例
+## 示例
 
 ```json
 {
   "schema": "sh-crafted.heritage-submission/v1",
   "title": "嘉定竹刻",
-  "category": "传统技艺",
-  "summary": "以竹材为载体，通过刻、磨、嵌等工序呈现书画与纹样的传统技艺。",
-  "history": "填写历史沿革、传承脉络和流传地区。",
-  "features": "填写形制、用途、地域特色和当代价值。",
+  "district_id": "jiading",
+  "category": "传统美术",
+  "summary": "嘉定竹刻以竹材为载体，通过浅刻、深刻、透雕等方法表现书画和纹样。",
+  "history": "",
+  "features": "创作会根据竹材形态安排构图，刀法、层次和留地共同形成画面。",
   "source_url": "https://example.org/source",
   "cover_url": "https://example.org/cover.jpg",
-  "gallery_urls": ["https://example.org/detail-1.jpg"],
-  "overview_images": [
+  "images": [
     {
-      "title": "竹刻作品正面",
-      "image_url": "https://example.org/overview.jpg",
-      "description": "展示竹刻作品的正面构图与主要刻纹，用于星图节点概览。"
+      "title": "竹刻作品细节",
+      "image_url": "https://example.org/detail.jpg",
+      "description": "展示刀痕、层次和竹材表面。",
+      "source_url": "https://example.org/source"
     }
   ],
-  "star_data": {
-    "summary": "该项目与嘉定地区、竹刻传统和竹材知识相关。",
-    "relations": ["嘉定区", "竹刻传统", "竹材"],
-    "keywords": ["竹刻", "传统技艺", "嘉定"],
-    "images": [{ "title": "节点细节", "image_url": "https://example.org/detail.jpg", "description": "节点图片说明", "source_url": "https://example.org/source" }]
-  },
   "steps": [
     {
       "name": "选竹与制坯",
@@ -45,91 +40,51 @@
       "result": "获得平整、干燥的竹刻坯体。",
       "materials": ["竹材"],
       "tools": ["刨刀"],
-      "actions": ["检查竹材", "制坯"],
-      "documentary_clips": [{ "title": "选竹与制坯片段", "video_url": "assets/video/clip.mp4", "start_seconds": 0, "end_seconds": 30, "description": "展示本工序的纪录片片段。", "source_url": "https://example.org/source" }]
+      "actions": ["检查竹材", "制坯"]
     }
-  ],
-  "contributor_name": "投稿人姓名",
-  "contributor_contact": "联系邮箱或电话"
+  ]
 }
 ```
 
-## 星图资料字段
+## 图片规则
 
-`star_data` 是可选的星图补充信息：
+- 主图只维护一张，地图列表、项目详情和知识星图均使用它。
+- `images` 用于补充不同角度、工艺细节或活动现场；详情页和星图共用，不再分别维护“概览图”和“节点图”。
+- 页面支持 PNG、JPG、WebP、GIF，单张不超过 6MB。
+- 旧字段 `overview_images`、`gallery_urls`、`star_data.images` 和 `graph_data.images` 仍可导入；服务端会合并、去重为 `images`。新文件不要再使用这些字段。
 
-- `summary`：星图侧栏显示的关联摘要。
-- `relations`：关联的地区、传统或材料名称数组。
-- `keywords`：用于检索和后续知识图谱整理的关键词数组。
-- `images`：该节点可浏览的图片数组；每项支持 `title`、`image_url`、`description`、`source_url`。关联节点也可在各 `relations` 项内填写同名 `images`。
+## 星图资料
 
-## 工序纪录片片段
-
-每道工序可选填 `documentary_clips` 数组。填写有效 `video_url` 后，用户工作台会直接在桌面右侧显示播放器；未填写时不占用右侧空间。支持 `start_seconds`、`end_seconds` 控制片段区间。
-
-`overview_images` 是星图概览图片，不建议只填写 `gallery_urls`。每张图片都需要清晰的 `description`，审核员会据此判断图片是否适合作为节点概览图。
-
-## JSONL
-
-JSONL 每行一个 JSON 对象。用户投稿页面一次导入一条记录；批量文件请拆分后逐条导入。
-
-```jsonl
-{"schema":"sh-crafted.heritage-submission/v1","title":"项目一","summary":"项目一简介至少十个字符。","overview_images":[{"image_url":"https://example.org/a.jpg","description":"项目一概览图说明"}]}
-```
-
-## 图片建议
-
-- 推荐 JPG、PNG 或 WebP，单张不超过 2MB。
-- 页面最多保留 8 张概览图，总大小建议控制在 6MB 以内。
-- 首张图片会优先作为项目封面和星图概览图使用。
-
-## 管理员主非遗导入
-
-### 两个入口是否同一标准
-
-是：两边使用同一个基础标准和字段名。用户入口会把记录写入待审核投稿；管理员入口会把同样结构作为已审核的正式主非遗新增到统一的 `content.db`。因此同一份用户 JSON 可以被管理员再次导入，管理员只需补充或确认 `model_path`、稳定 `id` 等扩展字段。
-
-管理员首页另有“导入主非遗 JSON”。该入口用于创建与原有 8 个主非遗同级的正式项目，不经过社区待审核队列；使用前应确认内容已经完成审核。
-
-用户和管理员现在共用同一个基础格式标识：`sh-crafted.heritage-submission/v1`。管理员导入是在这个标准上的可信内容扩展，增加：
-
-- `id`：可选的稳定 ID；留空时由服务端生成。
-- `model_path`：模型 URL 或站点内路径，例如 `assets/models/crafts/example.glb`。
-- `graph_data`：正式星图摘要、关键词和关联节点。
-
-管理员默认只新增项目。修复旧的管理员导入条目时，可使用相同稳定 `id` 并设置 `update_existing: true`。更新受以下保护：
-
-- `SHIH_0001` 至 `SHIH_0008` 原始主非遗永远不能通过 JSON 覆盖。
-- 社区投稿或其他来源项目不能通过管理员 JSON 覆盖。
-- 旧版批次只有在仍保留原脚本特征、没有工序且未被人工编辑时才允许更新。
-- 新版管理员导入项目一旦在编辑页修改标题、简介、星图或工序，后续 JSON 更新会被拒绝。
-- 更新仍携带当前内容 `revision`；协作者刚保存了新内容时，旧页面的导入会返回冲突，不会覆盖新版本。
+管理员文件可提供：
 
 ```json
 {
-  "schema": "sh-crafted.heritage-submission/v1",
-  "id": "new-primary-heritage",
-  "update_existing": true,
-  "title": "新主非遗项目",
-  "district_id": "jiading",
-  "category": "传统技艺",
-  "summary": "已经审核完成的项目简介，至少十个字符。",
-  "cover_url": "https://example.org/cover.jpg",
-  "model_path": "assets/models/crafts/new-project.glb",
-  "overview_images": [
-    {
-      "title": "项目概览",
-      "image_url": "https://example.org/overview.jpg",
-      "description": "用于星图总览和项目概览的图片说明。"
-    }
-  ],
   "graph_data": {
-    "summary": "该项目与某地区、某传统和某材料相关。",
-    "keywords": ["传统技艺", "地域文化"],
+    "summary": "项目在知识星图中的事实性摘要。",
+    "keywords": ["竹刻", "嘉定", "竹材"],
     "relations": [
-      { "type": "tradition", "title": "相关传统", "summary": "关联传统说明" },
-      { "type": "material", "title": "主要材料", "summary": "关联材料说明" }
+      { "type": "tradition", "title": "竹刻传统", "summary": "说明项目与该传统的关系。" },
+      { "type": "material", "title": "竹材", "summary": "说明竹材在项目中的用途。" }
     ]
   }
 }
+```
+
+地区关系不用填写，服务端根据 `district_id` 自动生成。关系节点不再拥有独立图片。
+
+## 批量导入与同名覆盖
+
+- 后台可一次选择多个 JSON、JSONL 文件，也可导入 JSON 数组。
+- `id` 相同，或同一地区内归一化后名称相同的记录，可在 `update_existing: true` 时覆盖原导入项目。
+- 名称匹配会忽略全角/半角差异、空格、连接符和中英文括号。
+- 原始 `SHIH_0001` 至 `SHIH_0008`、社区项目和其他受保护来源不能通过管理员 JSON 覆盖。
+- 已在后台手工维护的管理员导入项目仍拒绝自动覆盖，应在编辑页人工合并。
+- 所有写入都使用内容 revision；发生并发更新时返回冲突，不会静默覆盖。
+
+## JSONL
+
+JSONL 每行一个 JSON 对象。用户页面一次只导入一条；管理员后台支持整批导入。
+
+```jsonl
+{"schema":"sh-crafted.heritage-submission/v1","title":"项目一","district_id":"jiading","summary":"项目一简介至少十个字符。","cover_url":"https://example.org/a.jpg","images":[]}
 ```

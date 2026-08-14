@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "generated_at": "2026-08-07T18:44:39.725Z",
-  "passed": true,
+  "generated_at": "2026-08-12T15:44:55.173Z",
+  "passed": false,
   "totals": {
     "chunks": 850,
     "sources": 44,
@@ -85,5 +85,7 @@
     }
   },
   "warnings": [],
-  "errors": []
+  "errors": [
+    "来源链接报告缺失或已超过14天，请运行 npm run kb:links"
+  ]
 }

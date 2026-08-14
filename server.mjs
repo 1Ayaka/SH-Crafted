@@ -8,6 +8,7 @@
 import http from 'node:http';
 import net from 'node:net';
 import { createVoiceGateway } from './server/voice/voice-gateway.mjs';
+import { modelTools, normalizeToolCalls, toolResultMessages } from './server/agent-tools.mjs';
 import { createVoiceSessionManager } from './server/voice/voice-session-manager.mjs';
 import { createReadStream } from 'node:fs';
 import { chmod, copyFile, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
@@ -212,17 +213,28 @@ function editableKnowledgeChunks(craftId = null) {
 }
 
 function searchKnowledge(query, craftId = null, limit = 8) {
-  const q = searchUnits(query);
+  const original = String(query || '').trim();
+  const q = searchUnits(original);
   if (!q.clean) return [];
   const kindBoost = { external_fact: 6, video_summary: 4, video_claim: 3, video_evidence: 2, process_step: 2, source_profile: 1, entity: 0 };
   const authorityBoost = { A: 4, B: 3, C: 1 };
-  return [...KNOWLEDGE_BASE.chunks, ...editableKnowledgeChunks(craftId)]
-    .filter((chunk) => !craftId || !chunk.craft_ids?.length || chunk.craft_ids.includes(craftId))
-    .map((chunk) => {
+  const corpus = [...KNOWLEDGE_BASE.chunks, ...editableKnowledgeChunks(craftId)]
+    .filter((chunk) => !craftId || !chunk.craft_ids?.length || chunk.craft_ids.includes(craftId));
+  const graphTerms = searchGraphServer(original, ['heritage', 'region'], 3).map((node) => node.title).filter(Boolean);
+  const concise = original.replace(/我想|请|帮我|可以|能不能|介绍一下|讲讲|为什么|怎么|如何|有哪些|是什么|探索|推荐/g, ' ').replace(/\s+/g, ' ').trim();
+  const channels = [
+    { name: 'question', value: original, weight: 1 },
+    ...(concise && concise !== original ? [{ name: 'keyword', value: concise, weight: 0.85 }] : []),
+    ...graphTerms.map((value) => ({ name: 'graph_entity', value, weight: 0.72 })),
+  ].slice(0, 5);
+  const fused = new Map();
+  for (const channel of channels) {
+    const units = searchUnits(channel.value);
+    const ranked = corpus.map((chunk) => {
       const haystack = `${chunk.title || ''}${chunk.text || ''}`;
       const h = searchUnits(haystack);
-      let score = q.clean.length >= 2 && h.clean.includes(q.clean) ? 18 : 0;
-      for (const unit of q.units) {
+      let score = units.clean.length >= 2 && h.clean.includes(units.clean) ? 18 : 0;
+      for (const unit of units.units) {
         if (!h.units.has(unit)) continue;
         score += unit.length >= 2 ? 3 : 0.22;
       }
@@ -231,11 +243,20 @@ function searchKnowledge(query, craftId = null, limit = 8) {
       if (score > 0) score += authorityBoost[chunk.authority_tier] || 0;
       if (score > 0 && chunk.review_status === 'verified_external') score += 3;
       return { chunk, score };
-    })
-    .filter(({ score }) => score >= 3)
-    .sort((a, b) => b.score - a.score || a.chunk.chunk_id.localeCompare(b.chunk.chunk_id))
+    }).filter(({ score }) => score >= 3)
+      .sort((a, b) => b.score - a.score || a.chunk.chunk_id.localeCompare(b.chunk.chunk_id));
+    ranked.slice(0, 20).forEach(({ chunk, score }, rank) => {
+      const current = fused.get(chunk.chunk_id) || { chunk, score: 0, lexical_score: 0, channels: [] };
+      current.score += channel.weight / (40 + rank + 1);
+      current.lexical_score = Math.max(current.lexical_score, score);
+      current.channels.push(channel.name);
+      fused.set(chunk.chunk_id, current);
+    });
+  }
+  return [...fused.values()]
+    .sort((a, b) => b.score - a.score || b.lexical_score - a.lexical_score || a.chunk.chunk_id.localeCompare(b.chunk.chunk_id))
     .slice(0, Math.min(Math.max(Number(limit) || 8, 1), 12))
-    .map(({ chunk, score }) => ({
+    .map(({ chunk, score, lexical_score: lexicalScore, channels: matchedChannels }) => ({
       chunk_id: chunk.chunk_id,
       kind: chunk.kind,
       title: chunk.title,
@@ -244,7 +265,9 @@ function searchKnowledge(query, craftId = null, limit = 8) {
       evidence_ids: chunk.evidence_ids || [],
       authority_tier: chunk.authority_tier || null,
       review_status: chunk.review_status,
-      score: Number(score.toFixed(2)),
+      score: Number(score.toFixed(5)),
+      lexical_score: Number(lexicalScore.toFixed(2)),
+      retrieval_channels: [...new Set(matchedChannels)],
       sources: (chunk.source_ids || []).map((id) => publicSource(KNOWLEDGE_BASE.sources.get(id))).filter(Boolean),
     }));
 }
@@ -332,6 +355,8 @@ async function loadApiKey() {
   return env('DEEPSEEK_API_KEY').trim() || null;
 }
 const DEEPSEEK_KEY = await loadApiKey();
+const DEEPSEEK_MODEL = env('DEEPSEEK_MODEL', 'deepseek-v4-flash').trim() || 'deepseek-v4-flash';
+const DEEPSEEK_API_BASE = env('DEEPSEEK_API_BASE', 'https://api.deepseek.com').replace(/\/$/, '');
 const AGENT_LOCAL_ONLY = env('AGENT_LOCAL_ONLY', 'false').toLowerCase() === 'true';
 let agentUpstreamDisabledReason = '';
 console.log(`智能体应答：${AGENT_LOCAL_ONLY ? '本地检索模式' : DEEPSEEK_KEY ? 'DeepSeek 优先、本地检索兜底' : '本地检索模式（未配置 DeepSeek 密钥）'}`);
@@ -386,6 +411,8 @@ function buildSystemPrompt(ctx = {}) {
     '6. 只有用户明确表达“想看、打开、还有哪些、带我探索”等跳转意图时，才推荐一至两个站内入口；否则把入口收进“继续探索”折叠区或不显示。链接和跳转由前端生成，不要编造 URL。',
     '7. 解释某项技艺为何在某地发展时，可以从气候、原料、交通、市场和生活方式提出综合判断；资料不足时标注“待审核”，并使用“可能、通常、可从……理解”等措辞。',
     '8. 即使使用 AI 通识补充，也不得编造具体传承人、精确年份、名录等级、机构结论、引文或来源链接。',
+    '9. 你可以使用随请求提供的站内工具。涉及打开页面、跳转、返回、朗读或展开关系时，必须调用工具，不要只用文字声称已经完成。节点不确定时先 search_graph，再依据返回的真实 ID 调用导航工具。',
+    '10. 采用“观察—行动—反馈—回答”的工作方式，但不要向用户输出隐藏推理过程。工具失败时根据结构化错误调整一次；仍失败则清楚说明，不得伪造成功。',
     '',
     `当前项目：${craft.title || '未知'}（${craft.id || ''}）`,
     '输出格式：只输出自然语言，不要输出 JSON、代码块、HTML、工具调用、内部 ID 或“ext_...”编号；可使用 Markdown **加粗**，每次回答最多加粗三处短语。',
@@ -478,6 +505,7 @@ function readBufferBody(req, maxBytes = 6 * 1024 * 1024) {
 
 const makeRevision = () => `${Date.now().toString(36)}-${randomBytes(5).toString('hex')}`;
 const cleanText = (value, max = 5000) => String(value ?? '').replace(/\r\n/g, '\n').trim().slice(0, max);
+const contentIdentityKey = (value) => cleanText(value, 300).normalize('NFKC').replace(/[\s·•・—_()（）]+/g, '').toLowerCase();
 const cleanList = (value, maxItems = 40) => [...new Set((Array.isArray(value) ? value : [])
   .map((item) => cleanText(item, 100)).filter(Boolean))].slice(0, maxItems);
 const COMMUNITY_DISTRICTS = new Set(CONTENT_SEED.districts.map((district) => district.id));
@@ -517,10 +545,31 @@ function normalizeGraphImages(value) {
   if (!Array.isArray(value)) return [];
   return value.slice(0, 12).map((item, index) => ({
     title: cleanText(item?.title, 160) || `节点图片 ${index + 1}`,
-    image_url: cleanImageSource(item?.image_url || item?.url),
+    image_url: cleanImageSource(item?.image_url || item?.url || item?.source_path),
     description: cleanText(item?.description, 1000),
     source_url: cleanPublicUrl(item?.source_url || item?.source || ''),
   })).filter((item) => item.image_url);
+}
+
+function normalizeProjectImages(body, { max = 12 } = {}) {
+  const graph = body?.graph_data || body?.star_data || {};
+  const candidates = [
+    ...(Array.isArray(body?.images) ? body.images : []),
+    ...(Array.isArray(body?.overview_images) ? body.overview_images : []),
+    ...(Array.isArray(body?.gallery_urls) ? body.gallery_urls.map((image_url) => ({ image_url })) : []),
+    ...(Array.isArray(graph?.images) ? graph.images : []),
+  ];
+  const seen = new Set();
+  return candidates.map((item, index) => {
+    const source = typeof item === 'string' ? { image_url: item } : (item || {});
+    return {
+      title: cleanText(source.title, 160) || `项目图片 ${index + 1}`,
+      image_url: cleanImageSource(source.image_url || source.url),
+      description: cleanText(source.description || source.caption, 1000),
+      source_url: cleanPublicUrl(source.source_url || source.source || ''),
+      image_status: cleanText(source.image_status, 80),
+    };
+  }).filter((item) => item.image_url && !seen.has(item.image_url) && seen.add(item.image_url)).slice(0, max);
 }
 
 const GRAPH_NODE_TYPES = new Set(['heritage', 'region', 'tradition', 'material']);
@@ -546,7 +595,13 @@ function syncGraphFromContent(content, { includeSeed = false } = {}) {
   content.graph_nodes = Array.isArray(content.graph_nodes) ? content.graph_nodes : [];
   content.graph_edges = Array.isArray(content.graph_edges) ? content.graph_edges : [];
   const nodes = new Map(content.graph_nodes.filter((node) => node?.id).map((node) => [node.id, node]));
-  const edges = new Map(content.graph_edges.filter((edge) => edge?.from && edge?.to && edge?.relation).map((edge) => [edge.id || graphEdgeId(edge.from, edge.relation, edge.to), edge]));
+  const originalEdgesJson = JSON.stringify(content.graph_edges || []);
+  const edges = new Map(content.graph_edges.filter((edge) => edge?.from && edge?.to && edge?.relation && !['craft_district', 'craft_relation'].includes(edge.origin)).map((edge) => [edge.id || graphEdgeId(edge.from, edge.relation, edge.to), edge]));
+  const galleryByCraft = new Map();
+  for (const image of content.craft_gallery || []) {
+    if (!galleryByCraft.has(image.craft_id)) galleryByCraft.set(image.craft_id, []);
+    galleryByCraft.get(image.craft_id).push(image);
+  }
   let changed = false;
 
   const mergeMissingNode = (incoming) => {
@@ -585,13 +640,15 @@ function syncGraphFromContent(content, { includeSeed = false } = {}) {
       id: heritageId, raw_id: craft.id, type: 'heritage', title: craft.title, aliases: [craft.title].filter(Boolean),
       summary: craft.graph_data?.summary || craft.summary || '', district_id: craft.district_id || '',
       overview_image: craft.cover_path || '',
-      images: normalizeGraphImages(craft.graph_data?.images),
+      images: normalizeGraphImages((galleryByCraft.get(craft.id) || []).sort((a, b) => (a.sort ?? 999) - (b.sort ?? 999))),
       heritage_level: isPrimary ? 'primary' : 'secondary', protected: isPrimary,
       published: true, review_status: craft.source === 'community' ? 'approved_community' : 'edited_by_admin',
     };
     if (!current) { nodes.set(heritageId, generated); changed = true; }
     else {
-      mergeMissingNode(generated);
+      for (const key of ['raw_id', 'type', 'title', 'aliases', 'summary', 'district_id', 'published', 'review_status']) {
+        if (JSON.stringify(current[key]) !== JSON.stringify(generated[key])) { current[key] = generated[key]; changed = true; }
+      }
       // Heritage image fields are generated from the project record. Keep them
       // synchronized even when the explicit node-image list becomes empty;
       // the client then presents the project cover as a clearly labelled fallback.
@@ -613,11 +670,18 @@ function syncGraphFromContent(content, { includeSeed = false } = {}) {
     for (const relation of craft.graph_data?.relations || []) {
       const type = ['tradition', 'material', 'region'].includes(relation?.type) ? relation.type : 'tradition';
       const targetId = type === 'region' && relation.id ? `region:${relation.id}` : stableGraphRelationNodeId(type, relation.title);
-      mergeMissingNode({
+      const relationNode = {
         id: targetId, type, title: cleanText(relation.title, 160), aliases: [cleanText(relation.title, 160)].filter(Boolean),
-        summary: cleanText(relation.summary, 2000), images: normalizeGraphImages(relation.images), published: true,
+        summary: cleanText(relation.summary, 2000), images: [], published: true, origin: 'craft_relation',
         review_status: relation.source_url ? 'published' : 'needs_review', source_url: cleanPublicUrl(relation.source_url || ''),
-      });
+      };
+      const existingRelationNode = nodes.get(targetId);
+      if (!existingRelationNode) { nodes.set(targetId, relationNode); changed = true; }
+      else if (!existingRelationNode.submission_id && !existingRelationNode.community_knowledge?.length) {
+        for (const [key, value] of Object.entries(relationNode)) {
+          if (JSON.stringify(existingRelationNode[key]) !== JSON.stringify(value)) { existingRelationNode[key] = value; changed = true; }
+        }
+      }
       const relationType = graphRelationType(type);
       upsertGeneratedEdge({
         id: graphEdgeId(heritageId, relationType, targetId), from: heritageId, relation: relationType, to: targetId,
@@ -626,8 +690,10 @@ function syncGraphFromContent(content, { includeSeed = false } = {}) {
       });
     }
   }
-  content.graph_nodes = [...nodes.values()];
+  const referencedNodeIds = new Set([...edges.values()].flatMap((edge) => [edge.from, edge.to]));
+  content.graph_nodes = [...nodes.values()].filter((node) => node.origin !== 'craft_relation' || referencedNodeIds.has(node.id));
   content.graph_edges = [...edges.values()];
+  if (JSON.stringify(content.graph_edges) !== originalEdgesJson) changed = true;
   return changed;
 }
 
@@ -747,13 +813,9 @@ function normalizeSubmission(body) {
   const includeSteps = Boolean(body?.include_steps) && kind === 'full';
   const steps = includeSteps ? normalizeSubmissionSteps(body?.steps) : [];
   if (includeSteps && !steps.length) throw new Error('steps_required');
-  const overviewImages = (Array.isArray(body?.overview_images) ? body.overview_images : [])
-    .slice(0, 8).map((item, index) => ({
-      title: cleanText(item?.title, 160) || `概览图 ${index + 1}`,
-      description: cleanText(item?.description, 1000),
-      image_url: cleanImageSource(item?.image_url || item?.url),
-    })).filter((item) => item.image_url && item.description);
-  if (!overviewImages.length) throw new Error('overview_image_required');
+  const images = normalizeProjectImages(body, { max: 12 });
+  const mainImage = cleanImageSource(body?.cover_url || body?.cover_path) || images[0]?.image_url || '';
+  if (!mainImage) throw new Error('main_image_required');
   return {
     kind,
     district_id: districtId,
@@ -763,15 +825,13 @@ function normalizeSubmission(body) {
     history: cleanText(body?.history, 5000),
     features: cleanText(body?.features, 5000),
     source_url: cleanPublicUrl(body?.source_url),
-    cover_url: cleanImageSource(body?.cover_url),
-    gallery_urls: [...new Set((Array.isArray(body?.gallery_urls) ? body.gallery_urls : [])
-      .slice(0, 8).map((item) => cleanImageSource(item)).filter(Boolean))],
-    overview_images: overviewImages,
+    cover_url: mainImage,
+    images: images.filter((image) => image.image_url !== mainImage),
     star_data: {
       summary: cleanText(body?.star_data?.summary, 2000),
       relations: cleanList(body?.star_data?.relations, 20),
       keywords: cleanList(body?.star_data?.keywords, 20),
-      images: normalizeGraphImages(body?.star_data?.images),
+      images: [],
     },
     include_steps: includeSteps,
     steps,
@@ -1420,8 +1480,7 @@ async function publishSubmission(submission) {
         summary: submission.star_data?.summary || '',
         relations: (submission.star_data?.relations || []).map((title) => ({ type: 'tradition', title, summary: '' })),
         keywords: submission.star_data?.keywords || [],
-        images: submission.star_data?.images || [],
-        overview_images: submission.overview_images || [],
+        images: [],
       },
       community_details: {
         history: submission.history || '',
@@ -1429,7 +1488,7 @@ async function publishSubmission(submission) {
         source_url: submission.source_url || '',
         contributor_name: submission.contributor_name || '',
         star_data: submission.star_data || {},
-        overview_images: submission.overview_images || [],
+        images: submission.images || [],
       },
     });
 
@@ -1448,8 +1507,7 @@ async function publishSubmission(submission) {
       };
     });
     next.craft_steps.push(...normalizeSteps(craftId, incomingSteps, []));
-    const overviewImages = submission.overview_images?.length ? submission.overview_images : submission.gallery_urls.map((url, index) => ({ title: `概览图 ${index + 1}`, description: '社区投稿概览图片', image_url: url }));
-    overviewImages.forEach((image, index) => {
+    (submission.images || []).forEach((image, index) => {
       next.craft_gallery.push({
         id: `${craftId}_work_${String(index + 1).padStart(2, '0')}`,
         sort: index + 1,
@@ -1859,9 +1917,12 @@ async function handleAdminApi(req, res, urlPath) {
       if (title.length < 2) throw new Error('title_required');
       if (summary.length < 10) throw new Error('summary_required');
       const requestedId = cleanText(body.id, 80).replace(/[^A-Za-z0-9_-]/g, '_');
-      const existing = requestedId ? editableContent.crafts.find((craft) => craft.id === requestedId) : null;
+      const districtId = cleanText(body.district_id, 80);
       const wantsUpdate = body.update_existing === true;
-      if (existing && !wantsUpdate) throw new Error('duplicate_craft_id');
+      const existingById = requestedId ? editableContent.crafts.find((craft) => craft.id === requestedId) : null;
+      const existingByName = editableContent.crafts.find((craft) => craft.district_id === districtId && contentIdentityKey(craft.title) === contentIdentityKey(title));
+      const existing = existingById || (wantsUpdate ? existingByName : null);
+      if ((existingById || existingByName) && !wantsUpdate) throw new Error(existingById ? 'duplicate_craft_id' : 'duplicate_craft_title');
       if (existing && (PRIMARY_HERITAGE_IDS.has(existing.id) || existing.protected || existing.source !== 'admin-import')) throw new Error('protected_existing_craft');
       const existingSteps = existing ? editableContent.craft_steps.filter((step) => step.craft_id === existing.id) : [];
       const canReplaceExisting = existing && !existing.editor_touched && (
@@ -1870,14 +1931,9 @@ async function handleAdminApi(req, res, urlPath) {
       if (existing && !canReplaceExisting) throw new Error('existing_content_modified');
       const craftId = existing?.id || requestedId || `ADMIN_${Date.now().toString(36)}_${randomBytes(3).toString('hex')}`;
       const graph = body.graph_data || body.star_data || {};
-      const overviewImages = (Array.isArray(body.overview_images) ? body.overview_images : []).slice(0, 8).map((item, index) => ({
-        title: cleanText(item?.title, 160) || `概览图 ${index + 1}`,
-        description: cleanText(item?.description, 1000),
-        image_url: cleanImageSource(item?.image_url || item?.url),
-        source_url: cleanPublicUrl(item?.source_url || item?.source || ''),
-        image_status: cleanText(item?.image_status, 80),
-      })).filter((item) => item.image_url && item.description);
-      if (!overviewImages.length) throw new Error('overview_image_required');
+      const projectImages = normalizeProjectImages(body, { max: 12 });
+      const coverPath = cleanImageSource(body.cover_url || body.cover_path) || projectImages[0]?.image_url || '';
+      if (!coverPath) throw new Error('main_image_required');
       const importedSteps = Array.isArray(body.steps) ? body.steps.slice(0, 24).map((step, index) => ({
         id: `${craftId}_step_${String(index + 1).padStart(2, '0')}`,
         source_step_id: `${craftId}_step_${String(index + 1).padStart(2, '0')}`,
@@ -1891,21 +1947,21 @@ async function handleAdminApi(req, res, urlPath) {
         const current = next.crafts.find((craft) => craft.id === craftId);
         const sort = current?.sort || Math.max(0, ...next.crafts.map((craft) => Number(craft.sort) || 0)) + 1;
         const importedCraft = {
-          ...current, id: craftId, sort, title, district_id: cleanText(body.district_id, 80),
+          ...current, id: craftId, sort, title, district_id: districtId,
           category: cleanText(body.category, 100) || '类别待审核', summary,
-          cover_path: cleanImageSource(body.cover_url || body.cover_path),
+          cover_path: coverPath,
           model_path: cleanText(body.model_path || body.model_url, 1200) || current?.model_path || '',
           source_directory: '', source: 'admin-import',
           editor_touched: false, import_managed: true, imported_at: new Date().toISOString(),
           community_details: {
             ...(current?.community_details || {}),
             history: cleanText(body.history, 5000), features: cleanText(body.features, 5000),
-            source_url: cleanPublicUrl(body.source_url), overview_images: overviewImages,
+            source_url: cleanPublicUrl(body.source_url), images: projectImages,
           },
           graph_data: {
             summary: cleanText(graph.summary, 2000),
-            relations: Array.isArray(graph.relations) ? graph.relations.slice(0, 24).map((relation) => ({ type: ['tradition', 'material', 'region'].includes(relation?.type) ? relation.type : 'tradition', title: cleanText(relation?.title || relation, 160), summary: cleanText(relation?.summary, 1000), images: normalizeGraphImages(relation?.images) })).filter((relation) => relation.title) : [],
-            keywords: cleanList(graph.keywords, 30), overview_images: overviewImages, images: normalizeGraphImages(graph.images),
+            relations: Array.isArray(graph.relations) ? graph.relations.slice(0, 24).map((relation) => ({ type: ['tradition', 'material', 'region'].includes(relation?.type) ? relation.type : 'tradition', title: cleanText(relation?.title || relation, 160), summary: cleanText(relation?.summary, 1000), images: [] })).filter((relation) => relation.title) : [],
+            keywords: cleanList(graph.keywords, 30), images: [],
           },
         };
         if (current) Object.assign(current, importedCraft);
@@ -1913,7 +1969,7 @@ async function handleAdminApi(req, res, urlPath) {
         next.craft_steps = next.craft_steps.filter((step) => step.craft_id !== craftId);
         if (importedSteps.length) next.craft_steps.push(...normalizeSteps(craftId, importedSteps, existingSteps));
         next.craft_gallery = next.craft_gallery.filter((item) => item.craft_id !== craftId);
-        overviewImages.forEach((image, index) => next.craft_gallery.push({
+        projectImages.filter((image) => image.image_url !== coverPath).forEach((image, index) => next.craft_gallery.push({
           id: `${craftId}_work_${String(index + 1).padStart(2, '0')}`, sort: index + 1, craft_id: craftId,
           title: image.title, description: image.description, image_url: image.image_url,
           source_url: image.source_url, image_status: image.image_status, source_path: '', evidence_id: '',
@@ -1921,7 +1977,7 @@ async function handleAdminApi(req, res, urlPath) {
       });
       jsonResponse(res, existing ? 200 : 201, { ok: true, craft_id: craftId, updated: Boolean(existing), revision: imported.revision });
     } catch (error) {
-      const conflictErrors = new Set(['duplicate_craft_id', 'protected_existing_craft', 'existing_content_modified']);
+      const conflictErrors = new Set(['duplicate_craft_id', 'duplicate_craft_title', 'protected_existing_craft', 'existing_content_modified']);
       const code = error?.code === 'content_conflict' || conflictErrors.has(error?.message) ? 409 : error?.message === 'body_too_large' ? 413 : 400;
       jsonResponse(res, code, { error: error?.message || 'import_failed', revision: editableContent.revision });
     }
@@ -2021,11 +2077,11 @@ async function handleAdminApi(req, res, urlPath) {
           if ('summary' in body) item.summary = cleanText(body.summary, 10000);
           if ('cover_path' in body || 'cover_url' in body) item.cover_path = cleanImageSource(body.cover_path || body.cover_url);
           if ('claims' in body) item.claims = normalizeCraftClaims(body.claims);
-          if ('overview_images' in body) {
-            const overviewImages = normalizeGraphImages(body.overview_images);
+          if ('images' in body || 'overview_images' in body) {
+            const projectImages = normalizeGraphImages(body.images || body.overview_images);
             next.craft_gallery = next.craft_gallery.filter((entry) => entry.craft_id !== craftMatch[1]);
-            overviewImages.forEach((image, index) => next.craft_gallery.push({
-              craft_id: craftMatch[1], title: image.title || `概览图 ${index + 1}`,
+            projectImages.forEach((image, index) => next.craft_gallery.push({
+              craft_id: craftMatch[1], title: image.title || `项目图片 ${index + 1}`,
               description: image.description || '', image_url: image.image_url,
               source_url: image.source_url || '', sort: index,
             }));
@@ -2038,11 +2094,10 @@ async function handleAdminApi(req, res, urlPath) {
                 id: cleanText(relation?.id, 100),
                 type: ['tradition', 'material', 'region'].includes(relation?.type) ? relation.type : 'tradition',
                 title: cleanText(relation?.title, 160),
-                summary: cleanText(relation?.summary, 1000), images: normalizeGraphImages(relation?.images),
+                summary: cleanText(relation?.summary, 1000), images: [],
               })).filter((relation) => relation.title) : [],
               keywords: cleanList(graph.keywords, 30),
-              overview_images: Array.isArray(graph.overview_images) ? graph.overview_images.slice(0, 8) : [],
-              images: normalizeGraphImages(graph.images),
+              images: [],
             };
           }
           if (item.source === 'admin-import') item.editor_touched = true;
@@ -2210,7 +2265,30 @@ async function handleAgentApi(req, res, { protocol = false } = {}) {
       const system = buildSystemPrompt({ ...(payload.context || {}), retrieved_knowledge: retrievedKnowledge });
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 25000);
-      const upstream = await fetch('https://api.deepseek.com/chat/completions', {
+      const declaredTools = Array.isArray(payload.context?.tool_manifest) ? payload.context.tool_manifest : [];
+      const availableToolNames = declaredTools.length
+        ? declaredTools.map((tool) => tool?.name).filter(Boolean)
+        : (payload.context?.ui_context?.available_actions || []);
+      const tools = modelTools(availableToolNames);
+      const react = payload.react && typeof payload.react === 'object' ? payload.react : null;
+      const conversation = [
+        { role: 'system', content: system },
+        { role: 'user', content: userMsg },
+      ];
+      const reactSteps = Array.isArray(react?.steps) ? react.steps.slice(0, 3) : (react ? [react] : []);
+      for (const step of reactSteps) {
+        if (!step?.assistant_tool_calls?.length || !step?.tool_results?.length) continue;
+        conversation.push({
+          role: 'assistant',
+          content: String(step.assistant_content || ''),
+          tool_calls: step.assistant_tool_calls.slice(0, 3).map((call) => ({
+            id: String(call.id || ''), type: 'function',
+            function: { name: String(call.name || ''), arguments: JSON.stringify(call.arguments || {}) },
+          })),
+        });
+        conversation.push(...toolResultMessages(step.assistant_tool_calls, step.tool_results));
+      }
+      const upstream = await fetch(`${DEEPSEEK_API_BASE}/chat/completions`, {
         method: 'POST',
         signal: ctrl.signal,
         headers: {
@@ -2218,11 +2296,10 @@ async function handleAgentApi(req, res, { protocol = false } = {}) {
           Authorization: `Bearer ${DEEPSEEK_KEY}`,
         },
         body: JSON.stringify({
-          model: 'deepseek-chat',
-          messages: [
-            { role: 'system', content: system },
-            { role: 'user', content: userMsg },
-          ],
+          model: DEEPSEEK_MODEL,
+          messages: conversation,
+          tools,
+          tool_choice: tools.length ? 'auto' : 'none',
           temperature: 0.3,
           max_tokens: 600,
           stream: false,
@@ -2235,12 +2312,25 @@ async function handleAgentApi(req, res, { protocol = false } = {}) {
         return;
       }
       const data = await upstream.json();
-      const content = data?.choices?.[0]?.message?.content || '';
+      const assistantMessage = data?.choices?.[0]?.message || {};
+      const toolCalls = normalizeToolCalls(assistantMessage.tool_calls);
+      if (toolCalls.length) {
+        const trace = {
+          iteration: Math.min(3, Math.max(1, Number(react?.iteration || 0) + 1)),
+          phase: 'act',
+          retrieved_count: retrievedKnowledge.length,
+          tool_count: toolCalls.length,
+        };
+        if (protocol) json(200, { type: 'tool_calls', tool_calls: toolCalls, assistant_content: assistantMessage.content || '', knowledge: retrievedKnowledge, mode: 'model-react', react_trace: trace });
+        else json(200, { type: 'tool_calls', tool_calls: toolCalls, assistant_content: assistantMessage.content || '', knowledge: retrievedKnowledge, mode: 'model-react', react_trace: trace });
+        return;
+      }
+      const content = assistantMessage.content || '';
       if (!content) { localResponse('empty_upstream'); return; }
       if (protocol) {
-        json(200, { type: 'assistant_message', assistant_message: content, knowledge: retrievedKnowledge, session_state: { context_revision: payload.context?.context_revision || 'unknown' } });
+        json(200, { type: 'assistant_message', assistant_message: content, knowledge: retrievedKnowledge, mode: react ? 'model-react' : 'model', react_trace: { iteration: Number(react?.iteration || 0), phase: 'answer', retrieved_count: retrievedKnowledge.length }, session_state: { context_revision: payload.context?.context_revision || 'unknown' } });
       } else {
-        json(200, { content, knowledge: retrievedKnowledge, mode: 'model' });
+        json(200, { content, knowledge: retrievedKnowledge, mode: react ? 'model-react' : 'model', react_trace: { iteration: Number(react?.iteration || 0), phase: 'answer', retrieved_count: retrievedKnowledge.length } });
       }
     } catch (err) {
       if (['invalid_json', 'body_too_large'].includes(err?.message)) {
@@ -2420,7 +2510,7 @@ const voiceGateway = createVoiceGateway({
   maxConnectionsPerIp: Math.min(3, Math.max(1, Number(env('VOICE_MAX_CONNECTIONS_PER_IP', '1')))),
   funasr: {
     connectTimeoutMs: Math.min(10000, Math.max(500, Number(env('VOICE_FUNASR_CONNECT_TIMEOUT_MS', '3000')))),
-    finalTimeoutMs: Math.min(10000, Math.max(1000, Number(env('VOICE_FUNASR_FINAL_TIMEOUT_MS', '5000')))),
+    finalTimeoutMs: Math.min(30000, Math.max(3000, Number(env('VOICE_FUNASR_FINAL_TIMEOUT_MS', '15000')))),
     chunkSize: String(env('VOICE_FUNASR_CHUNK_SIZE', '5,10,5')).split(',').map(Number).filter(Number.isFinite).slice(0, 3),
     chunkInterval: Math.min(30, Math.max(1, Number(env('VOICE_FUNASR_CHUNK_INTERVAL', '10')))),
   },

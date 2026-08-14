@@ -48,7 +48,10 @@ export function createFunASRClient({
       }
     });
     socket.on('error', (error) => { if (!settled) { settled = true; clearTimeout(timeout); reject(new Error('FUNASR_UNAVAILABLE')); } else fail(error); });
-    socket.on('close', () => { if (!stopped && !resolveFinal) return; if (!stopped) fail(new Error('FUNASR_UNAVAILABLE')); });
+    socket.on('close', () => {
+      if (!resolveFinal) return;
+      fail(new Error(stopped ? 'VOICE_UPSTREAM_CLOSED' : 'FUNASR_UNAVAILABLE'));
+    });
   });
   const sendAudio = (frame) => {
     if (stopped || !frame?.byteLength) return;
@@ -60,10 +63,20 @@ export function createFunASRClient({
     if (stopped) return '';
     stopped = true;
     if (socket?.readyState === WebSocket.OPEN) {
+      // Register the final-result waiter before sending the end marker. Some local
+      // recognizers can answer immediately, and the old order lost that response.
+      const resultPromise = new Promise((resolve, reject) => {
+        resolveFinal = resolve;
+        rejectFinal = reject;
+        finalTimer = setTimeout(() => fail(new Error('VOICE_UPSTREAM_TIMEOUT')), finalTimeoutMs);
+      });
       socket.send(JSON.stringify({ is_speaking: false }));
-      const result = await new Promise((resolve, reject) => { resolveFinal = resolve; rejectFinal = reject; finalTimer = setTimeout(() => reject(new Error('VOICE_UPSTREAM_TIMEOUT')), finalTimeoutMs); });
-      try { socket.close(); } catch {}
-      return result;
+      try {
+        return await resultPromise;
+      } finally {
+        cleanupTimer();
+        try { socket.close(); } catch {}
+      }
     }
     return '';
   };

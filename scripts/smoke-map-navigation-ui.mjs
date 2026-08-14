@@ -312,7 +312,7 @@ try {
   if (homeNav.join('|') !== '地图探索|知识星图|数据护照') errors.push('首页公开导航顺序不正确或仍有冗余入口');
   if (!homeBrand.logoLoaded || !isBrandLogo(homeBrand.logoSource)) errors.push('首页左下角未使用探物志 Logo');
   if (nav.adminVisible) errors.push('公开导航仍显示管理入口');
-  if (overviewMarkers.count !== 8 || overviewMarkers.visibleNumbers || overviewMarkers.width > 34 || !decodeURIComponent(overviewMarkers.iconMask).includes('地图,图钉,标记,标点.png')) errors.push('地图未按“一项非遗一个小标记”规则或指定图案渲染');
+  if (overviewMarkers.count < 1 || overviewMarkers.count !== result.passport.rows || overviewMarkers.visibleNumbers || overviewMarkers.width > 34 || !decodeURIComponent(overviewMarkers.iconMask).includes('地图,图钉,标记,标点.png')) errors.push('地图未按“一项非遗一个小标记”规则或指定图案渲染');
   if (!markerFollowing.available || markerFollowing.movedCount < 6 || markerFollowing.maxDragDistance < 8 || markerFollowing.riseDistance < 1) errors.push('非遗标记未持续跟随地图旋转或区块抬升');
   if (!overviewMarkers.nonInteractive || !overviewMarkers.hiddenFromA11y || markerPreview.visible) errors.push('地图数量标记仍可交互或进入辅助技术焦点');
   if (!result.search.visible || !result.search.hasCraft || !listHasMatch) errors.push('地图或列表搜索不可用');

@@ -9,6 +9,39 @@ const DEFAULTS = Object.freeze({
 const PREF_KEY = 'sh-crafted.voice-preferences';
 const WAKE_VARIANT_RE = /小[蕉焦交娇]小[蕉焦交娇]/;
 
+export function createSingleUtteranceDetector({
+  startThreshold = 0.014,
+  continueThreshold = 0.008,
+  endSilenceMs = 900,
+  noSpeechTimeoutMs = 7000,
+  minimumSpeechMs = 260,
+} = {}) {
+  let startedAt = 0;
+  let speechStartedAt = 0;
+  let lastSpeechAt = 0;
+  let peak = 0;
+  return {
+    start(now = Date.now()) { startedAt = now; speechStartedAt = 0; lastSpeechAt = now; peak = 0; },
+    sample(level, now = Date.now()) {
+      const value = Math.max(0, Number(level) || 0);
+      peak = Math.max(value, peak * 0.985);
+      if (!speechStartedAt) {
+        if (value >= startThreshold) { speechStartedAt = now; lastSpeechAt = now; }
+        return now - startedAt >= noSpeechTimeoutMs ? 'no-speech' : 'listening';
+      }
+      const adaptiveFloor = Math.min(startThreshold, Math.max(continueThreshold, peak * 0.22));
+      if (value >= adaptiveFloor) lastSpeechAt = now;
+      if (now - speechStartedAt >= minimumSpeechMs && now - lastSpeechAt >= endSilenceMs) return 'complete';
+      return 'listening';
+    },
+    tick(now = Date.now()) {
+      if (!speechStartedAt && now - startedAt >= noSpeechTimeoutMs) return 'no-speech';
+      if (speechStartedAt && now - speechStartedAt >= minimumSpeechMs && now - lastSpeechAt >= endSilenceMs) return 'complete';
+      return 'listening';
+    },
+  };
+}
+
 function loadPreferences() {
   try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(PREF_KEY) || '{}') }; } catch { return { ...DEFAULTS }; }
 }
@@ -20,6 +53,8 @@ function errorMessage(error) {
     VOICE_SESSION_INVALID: '语音会话已失效，请重新点击麦克风。',
     VOICE_CONNECTION_FAILED: '服务器本地语音识别连接失败，请检查 FunASR 服务。',
     VOICE_CONNECTION_CLOSED: '语音连接已中断，可以重试或改用文字输入。',
+    VOICE_FINAL_TIMEOUT: '这次识别没有及时返回，连接已自动恢复，请再说一次。',
+    VOICE_UPSTREAM_CLOSED: '语音模型连接提前中断，连接已释放，请再试一次。',
     FUNASR_UNAVAILABLE: '服务器本地语音识别暂时不可用，可以改用文字输入。',
     VOICE_AUDIO_CONTEXT_FAILED: '当前浏览器不支持所需的音频采集能力，请使用新版 Chrome、Edge 或 Safari。',
     VOICE_CAPTURE_FAILED: '麦克风暂时不可用，请检查设备连接或改用文字输入。',
@@ -90,7 +125,12 @@ export function createVoiceController({ onTranscript, onPartialTranscript, onSta
   async function recognizeOnce({ wakeScan = false } = {}) {
     if (destroyed) return '';
     const adapter = provider === 'browser' ? browser : funasr;
-    active = { cancelled: false, stopping: false, startedAt: Date.now(), hasSpeech: false, lastVoiceAt: Date.now() };
+    const utterance = createSingleUtteranceDetector({
+      endSilenceMs: wakeScan ? 1100 : 900,
+      noSpeechTimeoutMs: wakeScan ? 12000 : 7000,
+    });
+    utterance.start();
+    active = { cancelled: false, stopping: false, utterance };
     const session = active;
     let timer = 0;
     try {
@@ -102,16 +142,25 @@ export function createVoiceController({ onTranscript, onPartialTranscript, onSta
           onNotice?.(wakeScan ? '正在等待“小蕉小蕉”' : '正在聆听');
         },
         onPartial: (text) => { if (!wakeScan) onPartialTranscript?.(text); },
-        onLevel: (level) => { if (level > 0.018) { session.hasSpeech = true; session.lastVoiceAt = Date.now(); } },
+        onLevel: (level) => {
+          const state = utterance.sample(level);
+          if (state !== 'listening' && !session.cancelled && !session.stopping) {
+            session.stopping = true;
+            transition(VOICE_STATES.TRANSCRIBING, { reason: state });
+            onNotice?.(state === 'complete' ? '已结束录音，正在识别' : '没有听到清晰语音，正在结束');
+            void adapter.stop().catch(() => {});
+          }
+        },
         onError: (code) => { if (!session.cancelled) onNotice?.(errorMessage({ message: code })); },
       });
       timer = window.setInterval(() => {
         if (session.cancelled || session.stopping) return;
-        const silentFor = Date.now() - session.lastVoiceAt;
-        if ((session.hasSpeech && silentFor > 1050) || (!session.hasSpeech && Date.now() - session.startedAt > 6500)) {
+        const state = utterance.tick();
+        if (state !== 'listening') {
           session.stopping = true;
-          void funasr.stop().catch(() => {});
-          browser.stop();
+          transition(VOICE_STATES.TRANSCRIBING, { reason: state });
+          onNotice?.(state === 'complete' ? '已结束录音，正在识别' : '没有听到清晰语音，正在结束');
+          void adapter.stop().catch(() => {});
         }
       }, 200);
       const text = String(await promise || '').trim();

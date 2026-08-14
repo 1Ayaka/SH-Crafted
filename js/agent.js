@@ -13,6 +13,8 @@ import { createCatMascot } from './mascot/cat-mascot.js';
 import { createCompanionDialogue } from './mascot/companion-dialogue.js';
 import { createRelationshipStore } from './mascot/relationship-store.js';
 import { sanitizeAgentText } from './agent/response-sanitizer.js';
+import { isExplorationRecommendationQuery, recommendExploration } from './agent/exploration-recommender.js';
+import { runReactLoop } from './agent/react-runner.js';
 import { BRAND_LOGO_URL, handleBrandLogoError } from './brand.js';
 
 const JIAO_AVATAR_URL = BRAND_LOGO_URL;
@@ -229,6 +231,18 @@ function updateVoiceStatus() {
   if (panel.nodes.wakeButton && panel.voice) panel.nodes.wakeButton.textContent = panel.voice.supported().serverWake
     ? (panel.voice.state() === VOICE_STATES.SUSPENDED ? '恢复“小蕉小蕉”唤醒' : (panel.voice.preferences().wakeEnabled && panel.voice.state() !== VOICE_STATES.DISABLED ? '关闭“小蕉小蕉”唤醒' : '开启“小蕉小蕉”唤醒'))
     : '语音唤醒（服务未就绪）';
+  if (panel.nodes.micButton) {
+    const state = panel.voiceStatus;
+    panel.nodes.micButton.textContent = state === VOICE_STATES.LISTENING
+      ? '正在聆听…'
+      : state === VOICE_STATES.TRANSCRIBING
+        ? '正在识别…'
+        : state === VOICE_STATES.THINKING
+          ? '正在处理…'
+          : '点击说话';
+    panel.nodes.micButton.disabled = [VOICE_STATES.REQUESTING_PERMISSION, VOICE_STATES.TRANSCRIBING, VOICE_STATES.THINKING].includes(state);
+    panel.nodes.micButton.setAttribute('aria-pressed', state === VOICE_STATES.LISTENING ? 'true' : 'false');
+  }
 }
 
 async function runToolCommand(query) {
@@ -378,7 +392,7 @@ function buildAgentContext(retrieved) {
   };
 }
 
-async function askModel(query, retrieved, parentSignal) {
+async function askModel(query, retrieved, parentSignal, react = null) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 20000);
   const relayAbort = () => ctrl.abort();
@@ -386,6 +400,11 @@ async function askModel(query, retrieved, parentSignal) {
   else parentSignal?.addEventListener('abort', relayAbort, { once: true });
   try {
     const exploration = explorationPlan(query, panel.craft);
+    const currentContext = currentAgentContext();
+    const allowedActions = new Set(currentContext.available_actions || []);
+    const toolManifest = ensureRegistry().list().filter((tool) => allowedActions.has(tool.name)).map((tool) => ({
+      name: tool.name, description: tool.description, parameters: tool.schema, risk: tool.risk,
+    }));
     const res = await fetch('/api/agent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -393,20 +412,41 @@ async function askModel(query, retrieved, parentSignal) {
         messages: [{ role: 'user', content: query }],
         context: {
           ...buildAgentContext(retrieved),
-          ui_context: currentAgentContext(),
+          ui_context: currentContext,
           exploration_candidates: exploration.links.map(({ id, title, type, label }) => ({ id, title, type, label })),
+          tool_manifest: toolManifest,
         },
+        ...(react ? { react } : {}),
       }),
       signal: ctrl.signal,
     });
     if (!res.ok) throw new Error(`http_${res.status}`);
     const data = await res.json();
-    if (!data?.content) throw new Error('empty');
+    if (!data?.content && !(data?.type === 'tool_calls' && data.tool_calls?.length)) throw new Error('empty');
     return data;
   } finally {
     clearTimeout(timer);
     parentSignal?.removeEventListener('abort', relayAbort);
   }
+}
+
+function publicToolResult(result) {
+  if (!result || typeof result !== 'object') return { ok: false, error: { code: 'empty_result' } };
+  const clone = { ...result };
+  delete clone.request_id;
+  return clone;
+}
+
+async function askModelWithTools(query, retrieved, parentSignal, onProgress) {
+  const registry = ensureRegistry();
+  return runReactLoop({
+    ask: (react) => askModel(query, retrieved, parentSignal, react),
+    execute: async (name, args) => publicToolResult(await registry.execute(name, args)),
+    describe: (name) => registry.get(name)?.description || name,
+    onProgress,
+    maxIterations: 3,
+    maxToolsPerIteration: 3,
+  });
 }
 
 async function searchKnowledgeBase(query, craftId, signal) {
@@ -515,6 +555,30 @@ function appendExplorationGuidance(nodes, query, craft) {
 function addGuidedAnswer(nodes, query, craft) {
   appendExplorationGuidance(nodes, query, craft);
   addMsg('agent', nodes, '小蕉');
+}
+
+function explorationRecommendationAnswer(query) {
+  const recommendations = recommendExploration(query, currentAgentContext(), 2);
+  if (!recommendations.length) return false;
+  const [primary, alternative] = recommendations;
+  const nodes = [
+    el('p', {}, [
+      el('span', { text: '如果现在选一个开始，我建议先看' }),
+      el('strong', { text: `「${primary.title}」` }),
+      el('span', { text: `：${primary.recommendation_reason}` }),
+    ]),
+  ];
+  if (alternative) nodes.push(el('p', { text: `如果你更想换一种体验，也可以看「${alternative.title}」：${alternative.recommendation_reason}` }));
+  nodes.push(el('div', { class: 'ap-explore-links' }, recommendations.map((item, index) => el('button', {
+    class: 'ap-explore-link', type: 'button',
+    onclick: async () => {
+      const result = await ensureRegistry().execute('open_heritage_detail', { heritage_id: item.id });
+      if (!result.ok) addMsg('agent', [el('p', { text: result.error?.message || '暂时无法打开这个项目。' })], '小蕉');
+    },
+  }, [el('strong', { text: item.title }), el('span', { text: index === 0 ? '从这里开始' : '换一种体验' })]))));
+  nodes.push(el('p', { class: 'small muted', text: '你也可以告诉我更偏爱纸艺、织造、雕刻还是表演，我会按兴趣重新推荐。' }));
+  addMsg('agent', nodes, '小蕉');
+  return true;
 }
 
 function appendKnowledgeHits(nodes, craft, hits, title = '统一知识库命中：') {
@@ -650,6 +714,10 @@ async function answer(query, { showUser = true, allowTools = true } = {}) {
   // 才继续使用原有知识检索/模型问答链路。
   if (allowTools && await runToolCommand(query)) return;
 
+  // 推荐是选择问题，不是事实检索问题。直接使用站内真实且可打开的项目，
+  // 避免把“探索”当作关键词命中资料中的“创新探索”等无关段落。
+  if (isExplorationRecommendationQuery(query) && explorationRecommendationAnswer(query)) return;
+
   // 快路径：资源 / 动作 / 工序等直接读取结构化数据
   if (craft) {
     if (/材料|原料|物件/.test(query)) {
@@ -706,7 +774,10 @@ async function answer(query, { showUser = true, allowTools = true } = {}) {
     if (panel.modelStatus !== 'down') {
       const thinking = addMsg('agent', [el('p', { class: 'ap-thinking', text: '小蕉正在翻资料…' })], '小蕉');
       try {
-        const modelResult = await askModel(query, { evidence, externalFacts }, controller.signal);
+        const modelResult = await askModelWithTools(query, { evidence, externalFacts }, controller.signal, (message) => {
+          const progress = thinking?.querySelector?.('.ap-thinking');
+          if (progress) progress.textContent = message;
+        });
         if (!requestIsCurrent(generation, controller)) return;
         thinking?.remove();
         panel.modelStatus = modelResult.mode === 'local-retrieval' ? 'local' : 'ok';
@@ -857,7 +928,8 @@ function render() {
     class: 'ap-voice-button ap-mic-button', type: 'button', text: '点击说话',
     onclick: async () => {
       const voice = ensureVoice();
-      if ([VOICE_STATES.LISTENING, VOICE_STATES.TRANSCRIBING].includes(voice.state())) { await voice.stopListening(); return; }
+      if ([VOICE_STATES.REQUESTING_PERMISSION, VOICE_STATES.LISTENING, VOICE_STATES.TRANSCRIBING, VOICE_STATES.THINKING].includes(voice.state())) return;
+      showVoiceFeedback('请说一句话，说完后会自动结束录音。', 'info');
       try { await voice.start({ wake: false }); } catch (error) { showVoiceFeedback(voiceFailureText(error), 'error'); }
     },
   });

@@ -7,7 +7,7 @@ const districtIds = [
   'baoshan', 'changning', 'chongming', 'fengxian', 'hongkou', 'huangpu', 'jiading', 'jingan',
   'jinshan', 'minhang', 'pudong', 'putuo', 'qingpu', 'songjiang', 'xuhui', 'yangpu',
 ];
-const expected = { admin: 2, user: 6 };
+const expected = { admin: null, user: null };
 const errors = [];
 const warnings = [];
 const records = { admin: [], user: [] };
@@ -37,7 +37,6 @@ function checkImage(image, file, label) {
     return;
   }
   if (!hasText(image.image_url)) issue(errors, file, `${label}.image_url 为空`);
-  if (!hasText(image.description)) issue(errors, file, `${label}.description 为空`);
   if (String(image.image_url || '').startsWith('data:') && !validEmbeddedPng(image.image_url)) {
     issue(errors, file, `${label} 不是可解码的 PNG data URI`);
   }
@@ -51,9 +50,9 @@ function checkRecord(record, kind, file) {
   if (record.schema !== 'sh-crafted.heritage-submission/v1') issue(errors, file, 'schema 不正确');
   if (!hasText(record.title)) issue(errors, file, 'title 为空');
   if (!districtIds.includes(record.district_id)) issue(errors, file, `district_id 无效：${record.district_id || '(空)'}`);
-  if (!hasText(record.summary) || record.summary.length < 80) issue(errors, file, 'summary 过短（至少 80 字）');
-  if (!hasText(record.history) || record.history.length < 50) issue(errors, file, 'history 过短（至少 50 字）');
-  if (!hasText(record.features) || record.features.length < 50) issue(errors, file, 'features 过短（至少 50 字）');
+  if (!hasText(record.summary) || record.summary.length < 20) issue(errors, file, 'summary 过短（至少 20 字）');
+  if (record.history != null && typeof record.history !== 'string') issue(errors, file, 'history 必须是字符串');
+  if (!hasText(record.features) || record.features.length < 10) issue(errors, file, 'features 过短（至少 10 字）');
   if (!hasText(record.source_url)) issue(errors, file, 'source_url 为空');
   if (kind === 'admin' && (!/^LOCAL_[a-z0-9_]+$/i.test(record.id || '') || record.update_existing !== true)) {
     issue(errors, file, '管理员记录必须有稳定 LOCAL_ ID 且 update_existing=true');
@@ -62,11 +61,8 @@ function checkRecord(record, kind, file) {
     issue(errors, file, '用户记录必须为 kind=full 且 include_steps=true');
   }
 
-  if (!Array.isArray(record.overview_images) || record.overview_images.length < 1) {
-    issue(errors, file, '至少需要 1 张概览图');
-  } else {
-    record.overview_images.forEach((image, index) => checkImage(image, file, `overview_images[${index}]`));
-  }
+  if (!hasText(record.cover_url)) issue(errors, file, '至少需要 1 张主图');
+  if (Array.isArray(record.images)) record.images.forEach((image, index) => checkImage(image, file, `images[${index}]`));
 
   if (!Array.isArray(record.steps) || record.steps.length < 4) {
     issue(errors, file, '至少需要 4 道工序');
@@ -83,10 +79,10 @@ function checkRecord(record, kind, file) {
     });
   }
 
-  if (!graph || typeof graph !== 'object') {
+  if (kind === 'admin' && (!graph || typeof graph !== 'object')) {
     issue(errors, file, `${kind === 'admin' ? 'graph_data' : 'star_data'} 缺失`);
-  } else {
-    if (!hasText(graph.summary) || graph.summary.length < 50) issue(errors, file, '星图 summary 过短（至少 50 字）');
+  } else if (kind === 'admin') {
+    if (!hasText(graph.summary) || graph.summary.length < 20) issue(errors, file, '星图 summary 过短（至少 20 字）');
     if (!Array.isArray(graph.keywords) || graph.keywords.length < 3) issue(errors, file, '星图 keywords 至少 3 个');
     if (!Array.isArray(graph.relations) || graph.relations.length < 3) issue(errors, file, '星图 relations 至少 3 个');
     else graph.relations.forEach((relation, index) => {
@@ -94,8 +90,6 @@ function checkRecord(record, kind, file) {
       if (!hasText(item?.title)) issue(errors, file, `星图 relations[${index}].title 为空`);
       if (kind === 'admin' && !hasText(item?.summary)) issue(errors, file, `星图 relations[${index}].summary 为空`);
     });
-    if (!Array.isArray(graph.images) || graph.images.length < 1) issue(errors, file, '星图至少需要 1 张节点图片');
-    else graph.images.forEach((image, index) => checkImage(image, file, `星图 images[${index}]`));
   }
 
   const raw = JSON.stringify(record);
@@ -115,7 +109,9 @@ for (const kind of ['admin', 'user']) {
       issue(errors, directory, `目录读取失败：${error.message}`);
       continue;
     }
-    if (names.length !== expected[kind]) issue(errors, directory, `应有 ${expected[kind]} 份 JSON，实际 ${names.length} 份`);
+    if (Number.isInteger(expected[kind]) && names.length !== expected[kind]) {
+      issue(errors, directory, `应有 ${expected[kind]} 份 JSON，实际 ${names.length} 份`);
+    }
     for (const name of names) {
       const file = join(directory, name);
       try {

@@ -89,8 +89,8 @@ export async function adminHomeView(root) {
     loadBrandLogo().catch(() => ({ logo_url: '/brand/logo.png', version: '', uploaded: false })),
   ]);
   const pendingCount = submissionData.submissions?.length || 0;
-  const adminImportTemplate = { schema: 'sh-crafted.heritage-submission/v1', id: '', update_existing: false, title: '', district_id: '', category: '', summary: '', history: '', features: '', source_url: '', cover_url: '', model_path: 'assets/models/crafts/example.glb', overview_images: [{ title: '', image_url: '', description: '', source_url: '' }], graph_data: { summary: '', keywords: [], images: [{ title: '', image_url: '', description: '', source_url: '' }], relations: [{ type: 'tradition', title: '', summary: '', images: [{ title: '', image_url: '', description: '' }] }] }, steps: [{ name: '', description: '', result: '', materials: [], tools: [], actions: [], documentary_clips: [{ title: '', video_url: 'https://', start_seconds: 0, end_seconds: 30, description: '', source_url: '' }] }] };
-  const importInput = el('input', { type: 'file', accept: '.json,.jsonl,application/json,application/x-ndjson' });
+  const adminImportTemplate = { schema: 'sh-crafted.heritage-submission/v1', id: '', update_existing: true, title: '', district_id: '', category: '', summary: '', history: '', features: '', source_url: '', cover_url: '', images: [{ title: '', image_url: '', description: '', source_url: '' }], model_path: 'assets/models/crafts/example.glb', graph_data: { summary: '', keywords: [], relations: [{ type: 'tradition', title: '', summary: '' }] }, steps: [{ name: '', description: '', result: '', materials: [], tools: [], actions: [], documentary_clips: [{ title: '', video_url: 'https://', start_seconds: 0, end_seconds: 30, description: '', source_url: '' }] }] };
+  const importInput = el('input', { type: 'file', accept: '.json,.jsonl,application/json,application/x-ndjson', multiple: true });
   const graphPatchInput = el('input', { type: 'file', accept: '.json,application/json' });
   const graphPatchStatus = el('span', { class: 'admin-save-status', text: '星图可增量同步' });
   const reviewCheckbox = el('input', { type: 'checkbox', checked: adminState().contentReviewed });
@@ -108,22 +108,32 @@ export async function adminHomeView(root) {
     } finally { reviewCheckbox.disabled = false; }
   });
   importInput.addEventListener('change', async () => {
-    const file = importInput.files?.[0]; if (!file) return;
+    const files = [...(importInput.files || [])]; if (!files.length) return;
     try {
-      const text = (await file.text()).replace(/^\uFEFF/, '').trim();
-      const rows = /\.jsonl$/i.test(file.name) ? text.split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line)) : [JSON.parse(text)];
-      if (rows.length !== 1) throw new Error('管理员导入一次只支持一个主非遗条目');
-      const record = rows[0]?.heritage || rows[0]?.craft || rows[0];
-      const existing = record.id ? crafts.find((craft) => craft.craftId === record.id) : null;
-      if (existing && !record.update_existing) throw new Error(`稳定 ID ${record.id} 已存在；当前 JSON 未声明 update_existing，已停止导入。`);
-      if (existing && !confirm(`将更新现有项目“${existing.title}”（${record.id}）。\n\n系统只允许更新未被管理员手工维护的旧导入项目；原始 8 项和已编辑内容会由服务端拒绝覆盖。是否继续？`)) return;
-      const result = await importCraft({
-        ...record,
-        graph_data: record.graph_data || record.star_data || {},
-        model_path: record.model_path || record.model_url || record.model || '',
-        overview_images: record.overview_images || [],
-      });
-      alert(result.updated ? '旧导入项目已安全更新，正在刷新管理列表。' : '主非遗导入成功，正在刷新管理列表。');
+      const rows = [];
+      for (const file of files) {
+        const text = (await file.text()).replace(/^\uFEFF/, '').trim();
+        const parsed = /\.jsonl$/i.test(file.name) ? text.split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line)) : JSON.parse(text);
+        rows.push(...(Array.isArray(parsed) ? parsed : [parsed]));
+      }
+      const records = rows.map((row) => row?.heritage || row?.craft || row).filter(Boolean);
+      const identity = (value) => String(value || '').normalize('NFKC').replace(/[\s·•・—_()（）]+/g, '').toLowerCase();
+      const matches = records.map((record) => crafts.find((craft) => (record.id && craft.craftId === record.id)
+        || (craft.config?.districtId === record.district_id && identity(craft.title) === identity(record.title)))).filter(Boolean);
+      if (matches.length && !confirm(`检测到 ${matches.length} 条同地区同名或同 ID 项目，将按现有项目覆盖。\n\n受保护项目和已手工维护项目仍会由服务端拒绝覆盖。是否继续？`)) return;
+      let created = 0; let updated = 0;
+      for (const record of records) {
+        const result = await importCraft({
+          ...record,
+          update_existing: record.update_existing === true || matches.some((craft) => (record.id && craft.craftId === record.id)
+            || (craft.config?.districtId === record.district_id && identity(craft.title) === identity(record.title))),
+          graph_data: record.graph_data || record.star_data || {},
+          model_path: record.model_path || record.model_url || record.model || '',
+          images: record.images || record.overview_images || [],
+        });
+        if (result.updated) updated += 1; else created += 1;
+      }
+      alert(`批量导入完成：新增 ${created} 条，覆盖 ${updated} 条。正在刷新管理列表。`);
       location.reload();
     } catch (error) { alert(`导入失败：${error.message || 'JSON 格式错误'}`); }
     finally { importInput.value = ''; }
@@ -569,10 +579,7 @@ export async function adminCraftView(root, { id }) {
   const graphData = structuredClone(craft.config?.graphData || craft.communityDetails?.star_data || { summary: '', relations: [], keywords: [] });
   graphData.relations = Array.isArray(graphData.relations) ? graphData.relations.map((item) => typeof item === 'string' ? ({ type: 'tradition', title: item, summary: '' }) : item) : [];
   graphData.keywords = Array.isArray(graphData.keywords) ? graphData.keywords : [];
-  // Overview/gallery images and graph-node images have different purposes.
-  // Never copy one collection into the other; an empty node collection is
-  // rendered with the project main image as a runtime fallback.
-  graphData.images = Array.isArray(graphData.images) ? graphData.images : [];
+  graphData.images = [];
   let activeIndex = 0;
   let dirty = false;
   let changeVersion = 0;
@@ -650,7 +657,7 @@ export async function adminCraftView(root, { id }) {
     overviewEditor.replaceChildren();
     const list = el('div', { class: 'admin-image-list' });
     overviewImages.forEach((image, index) => {
-      const title = el('input', { value: image.title || '', placeholder: `概览图 ${index + 1} 标题` });
+      const title = el('input', { value: image.title || '', placeholder: `图片 ${index + 1} 标题` });
       const description = el('textarea', { rows: '2', placeholder: '图片说明' }, [image.description || '']);
       const source = el('input', { value: image.source_url || '', placeholder: '来源链接（可选）' });
       [title, description, source].forEach((control) => control.addEventListener('input', () => {
@@ -658,15 +665,15 @@ export async function adminCraftView(root, { id }) {
         overviewChanged = true; markContentDirty();
       }));
       list.appendChild(el('article', { class: 'admin-documentary-item' }, [
-        el('img', { src: craftAssetUrl(craft, image.image_url), alt: image.title || '概览图', loading: 'lazy' }),
+        el('img', { src: craftAssetUrl(craft, image.image_url), alt: image.title || '项目图片', loading: 'lazy' }),
         el('div', { class: 'admin-documentary-fields' }, [title, description, source]),
-        iconButton('删除概览图', minusSvg, () => { overviewImages.splice(index, 1); overviewChanged = true; markContentDirty(); renderOverviewEditor(); }),
+        iconButton('删除图片', minusSvg, () => { overviewImages.splice(index, 1); overviewChanged = true; markContentDirty(); renderOverviewEditor(); }),
       ]));
     });
     const input = el('input', { class: 'admin-upload-file-input', type: 'file', accept: COMMUNITY_IMAGE_ACCEPT, multiple: true, tabindex: '-1' });
     const progress = createUploadProgress();
-    const drop = el('div', { class: 'admin-image-drop is-compact', role: 'button', tabindex: '0', 'aria-label': '上传项目概览图' }, [
-      el('strong', { text: '添加概览图' }), el('span', { text: '用于详情页作品浏览，最多 8 张' }), input,
+    const drop = el('div', { class: 'admin-image-drop is-compact', role: 'button', tabindex: '0', 'aria-label': '上传项目图片' }, [
+      el('strong', { text: '添加其他图片' }), el('span', { text: '可填写标题、介绍和来源，最多 8 张' }), input,
     ]);
     bindImageDropZone({ zone: drop, input, onFiles: async (files) => {
       const selected = [...files].slice(0, Math.max(0, 8 - overviewImages.length));
@@ -676,9 +683,9 @@ export async function adminCraftView(root, { id }) {
           const uploaded = await uploadCraftImage(craft.craftId, file, { onProgress: progress.update });
           overviewImages.push({ title: file.name.replace(/\.[^.]+$/, ''), image_url: uploaded.image_url, description: '', source_url: '' });
           overviewChanged = true; markContentDirty();
-        } catch (error) { progress.error(error.message || '概览图上传失败'); return; }
+        } catch (error) { progress.error(error.message || '图片上传失败'); return; }
       }
-      progress.success(`${selected.length} 张概览图已上传，保存正文后正式应用`);
+      progress.success(`${selected.length} 张图片已上传，保存正文后正式应用`);
       setTimeout(renderOverviewEditor, 350);
     } });
     overviewEditor.append(drop, progress.el, list);
@@ -713,7 +720,7 @@ export async function adminCraftView(root, { id }) {
         summary: summaryInput.value,
         claims: contentDraft.claims,
         ...(coverChanged ? { cover_path: coverPath } : {}),
-        ...(overviewChanged ? { overview_images: overviewImages } : {}),
+        ...(overviewChanged ? { images: overviewImages } : {}),
       });
       coverChanged = false;
       overviewChanged = false;
@@ -749,11 +756,11 @@ export async function adminCraftView(root, { id }) {
       el('article', {}, [el('span', { text: '03 · 节点图' }), el('strong', { text: '星图专用图' }), el('p', { text: '在下方知识星图维护；不填写时自动使用主图。' })]),
     ]),
     el('section', { class: 'admin-cover-editor' }, [
-      el('div', {}, [el('h3', { text: '主图（项目封面）' }), el('p', { class: 'admin-field-help', text: '项目最重要的一张图，也是节点图缺失时的兜底；上传后还需保存正文。' })]),
+      el('div', {}, [el('h3', { text: '主图' }), el('p', { class: 'admin-field-help', text: '项目唯一的默认图片，用于地图列表、详情封面和星图节点。' })]),
       el('div', { class: 'admin-cover-editor-grid' }, [coverPreview, el('div', {}, [coverDrop, coverProgress.el])]),
     ]),
     el('section', { class: 'admin-cover-editor' }, [
-      el('div', {}, [el('h3', { text: '概览图（作品浏览）' }), el('p', { class: 'admin-field-help', text: '只用于项目详情中的作品浏览，与主图、知识星图节点图相互独立。' })]),
+      el('div', {}, [el('h3', { text: '其他图片' }), el('p', { class: 'admin-field-help', text: '选填。可补充不同角度、工艺细节或活动现场；同一套图片会在详情和星图中复用。' })]),
       overviewEditor,
     ]),
     el('section', {}, [el('h3', { text: '事实陈述' }), el('p', { class: 'admin-field-help', text: '删除后保存即不再出现在用户页面或智能体项目资料中。' }), claimList]),
@@ -835,7 +842,7 @@ export async function adminCraftView(root, { id }) {
       const title = el('input', { value: relation.title || '', placeholder: '关联节点名称' });
       const summary = el('input', { value: relation.summary || '', placeholder: '节点说明（可选）' });
       [type, title, summary].forEach((control) => control.addEventListener('input', () => { relation.type = type.value; relation.title = title.value; relation.summary = summary.value; markGraphDirty(); }));
-      graphRelations.appendChild(el('div', { class: 'admin-graph-relation-row' }, [type, title, summary, el('div', {}, [imageCollectionEditor(relation.images || (relation.images = []), '该关联节点图片'),]), el('button', { type: 'button', class: 'admin-icon-button', text: '删除', onclick: () => { graphData.relations.splice(index, 1); markGraphDirty(); renderGraphRelations(); } })]));
+      graphRelations.appendChild(el('div', { class: 'admin-graph-relation-row' }, [type, title, summary, el('button', { type: 'button', class: 'admin-icon-button', text: '删除', onclick: () => { graphData.relations.splice(index, 1); markGraphDirty(); renderGraphRelations(); } })]));
     });
     graphRelations.appendChild(el('button', { class: 'admin-add-row', type: 'button', text: '添加关联节点', onclick: () => { graphData.relations.push({ type: 'tradition', title: '', summary: '' }); markGraphDirty(); renderGraphRelations(); } }));
   };
@@ -851,7 +858,7 @@ export async function adminCraftView(root, { id }) {
     } catch (error) { adminNotice(error.message, true); }
     graphSaveButton.disabled = false;
   } });
-  graphEditor.append(el('div', { class: 'admin-section-heading' }, [el('div', {}, [el('h2', { text: '知识星图' }), el('p', { text: '节点图只服务星图信息面板；留空会稳定回退到项目主图，不再借用概览图。' })]), el('div', {}, [graphState, graphSaveButton])]), el('label', { class: 'admin-field' }, [el('span', { text: '星图摘要' }), graphSummary]), el('label', { class: 'admin-field' }, [el('span', { text: '星图关键词' }), graphKeywords]), imageCollectionEditor(graphData.images, '节点图（知识星图专用）'), graphRelations);
+  graphEditor.append(el('div', { class: 'admin-section-heading' }, [el('div', {}, [el('h2', { text: '知识星图' }), el('p', { text: '地区关系由项目所在地区自动生成；这里仅维护摘要、关键词和有事实依据的传统或材料关系。节点图片自动复用项目主图和其他图片。' })]), el('div', {}, [graphState, graphSaveButton])]), el('label', { class: 'admin-field' }, [el('span', { text: '星图摘要' }), graphSummary]), el('label', { class: 'admin-field' }, [el('span', { text: '星图关键词' }), graphKeywords]), graphRelations);
   renderGraphRelations();
   const saveButton = el('button', { class: 'btn btn-primary', text: '保存全部工序' });
   const saveStatus = el('span', { class: 'admin-save-status is-saved', text: '已保存' });

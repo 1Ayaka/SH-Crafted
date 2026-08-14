@@ -458,6 +458,9 @@ export function createWorkbenchSurface(container, descriptors = [], options = {}
     if (!ripples.length && container.dataset.ripple === 'active') container.dataset.ripple = 'complete';
     renderer.render(scene, camera);
   };
+  // 先同步提交一帧，再启动动画循环。材料点击会替换工作台 DOM；若首帧
+  // 也等待 requestAnimationFrame，浏览器会先绘制一次没有 WebGL 内容的桌面。
+  renderer.render(scene, camera);
   frame = requestAnimationFrame(render);
 
   return {

@@ -138,6 +138,7 @@ export async function importCraft(payload) {
       state.revision = error.payload?.revision || state.revision;
       const messages = {
         duplicate_craft_id: '该 ID 已存在。若要修复旧管理员导入项目，请使用带 update_existing: true 的新版 JSON。',
+        duplicate_craft_title: '同一地区已有同名项目。若要覆盖该条目，请设置 update_existing: true。',
         protected_existing_craft: '该项目属于原始主非遗或其他来源，管理员 JSON 不允许覆盖。',
         existing_content_modified: '该项目已经被管理员维护过，为保护现有修改，JSON 更新已拒绝。请在编辑页手动合并。',
         content_conflict: '内容版本已变化，请刷新管理员页面后重新导入。',

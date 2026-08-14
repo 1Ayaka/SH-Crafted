@@ -61,6 +61,65 @@ function makeStarField() {
   return group;
 }
 
+function makeMistTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 256;
+  const context = canvas.getContext('2d');
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  const blooms = [
+    [112, 142, 118, .62], [230, 104, 150, .52], [350, 146, 132, .46], [438, 104, 92, .34],
+  ];
+  blooms.forEach(([x, y, radius, alpha]) => {
+    const gradient = context.createRadialGradient(x, y, 0, x, y, radius);
+    gradient.addColorStop(0, `rgba(235,239,227,${alpha})`);
+    gradient.addColorStop(.38, `rgba(222,232,219,${alpha * .62})`);
+    gradient.addColorStop(1, 'rgba(210,224,213,0)');
+    context.fillStyle = gradient;
+    context.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+  });
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  return texture;
+}
+
+function makeMistField() {
+  const group = new THREE.Group();
+  const texture = makeMistTexture();
+  const layers = [
+    [-5.8, 1.8, -5.5, 7.8, 2.5, .14, .08],
+    [4.7, -1.6, -3.2, 8.4, 2.7, .13, -.06],
+    [-4.4, -2.1, .8, 6.8, 2.2, .085, .1],
+    [5.2, 1.9, 2.4, 7.2, 2.4, .07, -.08],
+    [0, -2.8, 4.3, 9.8, 2.5, .055, .045],
+  ];
+  layers.forEach(([x, y, z, width, height, opacity, drift], index) => {
+    const material = new THREE.SpriteMaterial({
+      map: texture,
+      color: index < 2 ? 0xdbe5d7 : 0xeff0df,
+      transparent: true,
+      opacity,
+      depthWrite: false,
+      depthTest: true,
+      toneMapped: true,
+      fog: true,
+    });
+    const sprite = new THREE.Sprite(material);
+    sprite.position.set(x, y, z);
+    sprite.scale.set(width, height, 1);
+    sprite.renderOrder = z > 0 ? 5 : 0;
+    sprite.userData.mistOriginX = x;
+    sprite.userData.mistOriginY = y;
+    sprite.userData.mistDrift = drift;
+    sprite.userData.mistPhase = index * 1.37;
+    group.add(sprite);
+  });
+  group.userData.texture = texture;
+  return group;
+}
+
 function portalPosition(portal, index) {
   const id = portal?.target?.id || portal?.relation || `portal:${index}`;
   const baseAngles = [-Math.PI * 0.84, -Math.PI * 0.16, Math.PI * 0.5];
@@ -170,11 +229,15 @@ export function mountHeritageGraph(container, state, { onSelect, onChange } = {}
   renderer.domElement.dataset.nodeMaterial = 'white-translucent';
   renderer.domElement.dataset.lineLengthMode = 'stable-id-random';
   renderer.domElement.dataset.hoverTransition = 'damped-opacity-scale';
+  renderer.domElement.dataset.mistDepth = 'five-z-layers';
   container.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x83968a, 0.026);
   const starField = makeStarField();
   scene.add(starField);
+  const mistField = makeMistField();
+  scene.add(mistField);
   const camera = new THREE.PerspectiveCamera(39, width / height, 0.1, 120);
   camera.position.set(0, 4.1, 10.2);
   const controls = new OrbitControls(camera, renderer.domElement);
@@ -458,6 +521,13 @@ export function mountHeritageGraph(container, state, { onSelect, onChange } = {}
     starField.position.x = damp(starField.position.x, targetX, 2.8, dt);
     starField.position.y = damp(starField.position.y, targetY, 2.8, dt);
     starField.rotation.y = damp(starField.rotation.y, targetX * 0.06, 1.8, dt);
+    const mistTime = clock.elapsedTime;
+    mistField.children.forEach((mist) => {
+      const phase = mist.userData.mistPhase;
+      const drift = mist.userData.mistDrift;
+      mist.position.x = mist.userData.mistOriginX + Math.sin(mistTime * .12 + phase) * drift * 8;
+      mist.position.y = mist.userData.mistOriginY + Math.cos(mistTime * .09 + phase) * Math.abs(drift) * 2.6;
+    });
     if (cameraTween) {
       const progress = cameraTween.duration ? Math.min(1, (performance.now() - cameraTween.startedAt) / cameraTween.duration) : 1;
       const eased = easeInOutCubic(progress);
@@ -578,6 +648,8 @@ export function mountHeritageGraph(container, state, { onSelect, onChange } = {}
       renderer.domElement.removeEventListener('pointerup', onPointerUp);
       applyHover(null);
       clearGroup();
+      mistField.children.forEach((mist) => mist.material?.dispose?.());
+      mistField.userData.texture?.dispose?.();
       controls.dispose();
       renderer.dispose();
       renderer.domElement.remove();
