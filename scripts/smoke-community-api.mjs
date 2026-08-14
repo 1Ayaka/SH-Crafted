@@ -101,8 +101,8 @@ try {
       summary: '这是一条用于验证社区投稿审核与正式发布链路的测试内容。',
       history: '测试历史说明。', features: '测试特色说明。', include_steps: true,
       steps: [{ name: '准备材料', description: '整理并检查材料。', result: '得到已整理材料', materials: ['材料甲'], tools: ['工具甲'], actions: ['整理'], documentary_clips: [{ title: '准备材料片段', video_url: 'assets/video/test.mp4', start_seconds: 0, end_seconds: 10 }] }],
-      overview_images: [{ title: '测试概览图', image_url: imagePayload.image.image_url, description: '用于验证投稿概览图必填规则。' }],
-      star_data: { summary: '测试星图资料。', keywords: ['测试'], relations: ['测试传统'], images: [{ title: '测试节点图', image_url: imagePayload.image.image_url }] },
+      overview_images: [], cover_url: '',
+      star_data: { summary: '测试星图资料。', keywords: ['测试'], relations: ['测试传统'], images: [] },
       gallery_urls: [], contributor_name: '测试投稿人', contributor_contact: 'test@example.invalid', website: '',
     },
   });
@@ -141,8 +141,12 @@ try {
   });
   const craftId = approved.payload.published_craft_id;
   const content = await json('/api/content');
-  if (!content.payload.crafts.some((craft) => craft.id === craftId)) throw new Error('approved craft was not published');
+  const approvedCraft = content.payload.crafts.find((craft) => craft.id === craftId);
+  if (!approvedCraft) throw new Error('approved craft was not published');
+  if (approvedCraft.cover_path) throw new Error('无图投稿被错误地写入了主图');
   if (!content.payload.craft_steps.some((step) => step.craft_id === craftId)) throw new Error('approved steps were not published');
+  const approvedGraphNode = content.payload.graph_nodes.find((node) => node.id === `heritage:${craftId}`);
+  if (!approvedGraphNode?.detail_available || approvedGraphNode.overview_image) throw new Error('无图地图项目没有正确进入统一星图读模型');
 
   const graphSubmission = await json('/api/community/submissions', {
     method: 'POST', cookie: visitorA,

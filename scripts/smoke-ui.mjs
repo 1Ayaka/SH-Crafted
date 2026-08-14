@@ -187,17 +187,8 @@ try {
         !document.querySelector('.wb-bg.show')
         && !detailBackground?.classList.contains('dimmed')
       ),
-      stepImagePanel: Boolean(document.querySelector('.wb-step-image')),
-      stepImagePlaceholder: document.querySelector('.wb-step-image-media')?.textContent.includes('待补充') || false,
-      stepImageBelowActions: (() => {
-        const actions = document.querySelector('.action-palette')?.getBoundingClientRect();
-        const image = document.querySelector('.wb-step-image')?.getBoundingClientRect();
-        return Boolean(actions && image && image.top >= actions.bottom - 1);
-      })(),
-      stepImageFlat: (() => {
-        const image = document.querySelector('.wb-step-image')?.getBoundingClientRect();
-        return Boolean(image && image.width > image.height);
-      })(),
+      stepImageAbsentWithoutSource: !document.querySelector('.wb-step-image, .wb-step-image-reveal'),
+      stepGuideTitleSize: parseFloat(getComputedStyle(document.querySelector('.wb-step-float h3')).fontSize),
     };
   })()`);
   await wait(850);
@@ -622,7 +613,8 @@ try {
   if (!workbench.backpackScrollStable) errors.push('点击左侧靠下材料后，背包滚动位置发生跳动');
   if (!workbench.materialPointerDrag || !workbench.materialDragAdded) errors.push('左侧材料无法通过指针拖入桌面工作区');
   if (!workbench.actionArrowInsideCard) errors.push('右侧动作箭头仍可能被工作区或滚动容器遮挡');
-  if (!workbench.stepImagePanel || !workbench.stepImagePlaceholder || !workbench.stepImageBelowActions || !workbench.stepImageFlat) errors.push('步骤图片模块未显示在动作模块下方、未保持横向扁平比例，或空图片状态不正确');
+  if (!workbench.stepImageAbsentWithoutSource) errors.push('无步骤图片的工序仍显示了图片模块或占位内容');
+  if (workbench.stepGuideTitleSize < 19) errors.push('桌面上方当前工序标题字号仍然过小');
   if (!firstMaterialUpgradeDetected) errors.push('完成工序后，材料没有原位升级并作为继承材料自动带入下一步');
   if (!firstRippleDetected) errors.push('正确动作落到工作台后没有触发粒子水波扩散');
   if (idlePreview.deferredButton || !idlePreview.canvas || !idlePreview.finishedAssetLoaded) errors.push('三维预览没有在进入工艺页后自动加载');

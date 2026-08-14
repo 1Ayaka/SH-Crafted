@@ -61,7 +61,6 @@ function checkRecord(record, kind, file) {
     issue(errors, file, '用户记录必须为 kind=full 且 include_steps=true');
   }
 
-  if (!hasText(record.cover_url)) issue(errors, file, '至少需要 1 张主图');
   if (Array.isArray(record.images)) record.images.forEach((image, index) => checkImage(image, file, `images[${index}]`));
 
   if (!Array.isArray(record.steps) || record.steps.length < 4) {

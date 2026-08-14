@@ -132,6 +132,20 @@ try {
 
   const initialContent = await request('/api/content');
   expectStatus(initialContent, 200);
+  const initialV1 = await request('/api/v1/content');
+  expectStatus(initialV1, 200);
+  if (initialV1.payload.api_version !== 'v1' || initialV1.payload.revision !== initialContent.payload.revision) throw new Error('v1 内容 API 与兼容 API 基线不一致');
+  const initialProjectNodes = initialV1.payload.graph_nodes.filter((node) => node.content_role === 'map_project');
+  if (initialProjectNodes.length !== initialV1.payload.crafts.length || !initialProjectNodes.every((node) => node.detail_available)) {
+    throw new Error(`地图项目没有一对一进入统一星图读模型（项目 ${initialV1.payload.crafts.length}，项目节点 ${initialProjectNodes.length}）`);
+  }
+  const heritageTitles = initialV1.payload.graph_nodes.filter((node) => node.type === 'heritage').map((node) => String(node.title || '').normalize('NFKC').trim().toLowerCase());
+  if (new Set(heritageTitles).size !== heritageTitles.length) throw new Error('统一星图读模型仍然输出同名重复非遗节点');
+    const districtEdges = new Set(initialV1.payload.graph_edges.filter((edge) => edge.relation === 'LOCATED_IN').map((edge) => `${edge.from}|${edge.to}`));
+    const regionIds = new Set(initialV1.payload.graph_nodes.filter((node) => node.type === 'region').map((node) => node.id));
+    if (!initialV1.payload.graph_nodes.filter((node) => node.type === 'heritage' && regionIds.has(`region:${node.district_id}`)).every((node) => districtEdges.has(`${node.id}|region:${node.district_id}`))) {
+    throw new Error('星图非遗节点没有自动建立地区关系');
+  }
   const originalPrimary = initialContent.payload.crafts.find((craft) => craft.id === 'SHIH_0001');
   if (!originalPrimary) throw new Error('隔离内容库缺少原始主非遗 SHIH_0001');
 
@@ -174,6 +188,10 @@ try {
   content = await request('/api/content');
   const updatedCraft = content.payload.crafts.find((craft) => craft.id === firstId);
   if (!updatedCraft.summary.startsWith('更新后的测试简介')) throw new Error('相同稳定 ID 未更新原记录');
+  const updatedGraphNode = content.payload.graph_nodes.find((node) => node.id === `heritage:${firstId}`);
+  if (updatedGraphNode?.title !== updatedCraft.title || updatedGraphNode?.summary !== updatedCraft.summary || updatedGraphNode?.overview_image !== updatedCraft.cover_path) {
+    throw new Error('地图项目更新后统一星图读模型没有同步使用项目字段');
+  }
   if (updatedCraft.model_path !== 'assets/models/crafts/import-protection-test.glb') throw new Error('空 model_path 清除了服务器已有模型');
   if (content.payload.crafts.filter((craft) => craft.id === firstId).length !== 1) throw new Error('相同稳定 ID 产生了重复项目');
 
@@ -209,9 +227,15 @@ try {
   const staleRevision = content.payload.revision;
   const secondId = 'LOCAL_IMPORT_PROTECTION_02';
   const secondCreated = await request('/api/admin/crafts/import', {
-    method: 'POST', cookie, body: importRecord(secondId, staleRevision),
+    method: 'POST', cookie, body: importRecord(secondId, staleRevision, { cover_url: '', images: [] }),
   });
   expectStatus(secondCreated, 201);
+  let noImageContent = await request('/api/v1/content');
+  const noImageCraft = noImageContent.payload.crafts.find((craft) => craft.id === secondId);
+  const noImageGraphNode = noImageContent.payload.graph_nodes.find((node) => node.id === `heritage:${secondId}`);
+  if (!noImageCraft || noImageCraft.cover_path || !noImageGraphNode?.detail_available || noImageGraphNode.overview_image) {
+    throw new Error(`无图管理员导入未能同时进入地图和统一星图（项目=${Boolean(noImageCraft)}，封面=${noImageCraft?.cover_path || ''}，节点=${Boolean(noImageGraphNode)}，详情=${Boolean(noImageGraphNode?.detail_available)}，节点主图=${noImageGraphNode?.overview_image || ''}）`);
+  }
   const staleUpdate = await request('/api/admin/crafts/import', {
     method: 'POST', cookie, body: importRecord(firstId, staleRevision, { summary: '这次更新故意使用过期 revision，必须被内容冲突保护拒绝，不能覆盖其他管理员刚刚保存的数据。' }),
   });

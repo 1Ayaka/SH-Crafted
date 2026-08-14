@@ -27,14 +27,14 @@ function reasonFor(node) {
   return node?.summary ? `${String(node.summary).slice(0, 56)}${String(node.summary).length > 56 ? '……' : ''}` : '它有可继续展开的项目详情和知识关系，适合作为探索入口。';
 }
 
-export function recommendExploration(input, context = {}, limit = 2) {
+export function recommendExploration(input, context = {}, limit = 2, candidates = graphNodes()) {
   const query = String(input || '');
   const excluded = new Set([
     context.current_root?.id,
     context.selected_node?.id,
     ...(context.history || []).map((item) => typeof item === 'string' ? item : item?.id),
   ].filter(Boolean));
-  const available = graphNodes().filter((node) => (
+  const available = candidates.filter((node) => (
     node.type === 'heritage' && node.detail_available && node.public !== false && !excluded.has(node.id)
   ));
   const preference = PREFERENCES.find((item) => item.pattern.test(query));
@@ -49,4 +49,3 @@ export function recommendExploration(input, context = {}, limit = 2) {
     .sort((a, b) => b.recommendation_score - a.recommendation_score || a.title.localeCompare(b.title, 'zh-CN'))
     .slice(0, Math.max(1, Math.min(3, Number(limit) || 2)));
 }
-

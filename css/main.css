@@ -876,7 +876,7 @@ a:hover { color: var(--terracotta); }
 
 .wb-main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 18px 22px; }
 .wb-step-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
-.wb-step-bar .cur { font-family: var(--serif); font-size: 16.5px; }
+.wb-step-bar .cur { font-family: var(--serif); font-size: 19px; line-height: 1.35; }
 .wb-progress { display: flex; gap: 6px; align-items: center; margin-left: auto; }
 .wb-progress .pg { width: 22px; height: 5px; border-radius: 3px; background: rgba(96,108,56,0.22); }
 .wb-progress .pg.done { background: var(--moss); }
@@ -1008,7 +1008,8 @@ a:hover { color: var(--terracotta); }
   gap: 14px; align-items: stretch;
 }
 .wb-main.has-documentary .wb-stage-layout { grid-template-columns: minmax(0, 1fr) 190px minmax(220px, 28%); }
-.wb-side-rail { min-width: 0; min-height: 0; display: grid; grid-template-rows: minmax(154px, 1fr) clamp(112px, 18vh, 152px); gap: 14px; }
+.wb-side-rail { min-width: 0; min-height: 0; display: grid; grid-template-rows: minmax(154px, 1fr); gap: 14px; }
+.wb-side-rail.has-step-image { grid-template-rows: minmax(154px, 1fr) clamp(112px, 18vh, 152px); }
 .wb-step-image {
   min-width: 0; min-height: 0; display: flex; flex-direction: column; padding: 11px;
   border: 1px solid rgba(96,108,56,.25); border-radius: 18px;
@@ -1021,7 +1022,16 @@ a:hover { color: var(--terracotta); }
   position: relative; flex: 1; min-height: 70px; overflow: hidden; border-radius: 12px;
   border: 1px solid rgba(96,108,56,.2); background: rgba(212,184,149,.28);
 }
-.wb-step-image-media img { display: block; width: 100%; height: 100%; object-fit: contain; background: rgba(96,108,56,.09); }
+.wb-step-image-zoom { position: relative; display: block; width: 100%; height: 100%; overflow: hidden; border-radius: inherit; }
+.wb-step-image-zoom img { display: block; width: 100%; height: 100%; object-fit: contain; background: rgba(96,108,56,.09); transition: transform 320ms ease; }
+.wb-step-image-zoom > span {
+  position: absolute; right: 8px; bottom: 8px; padding: 4px 8px; border: 1px solid rgba(232,220,199,.5);
+  border-radius: 999px; color: var(--sand-light); background: rgba(43,51,39,.72); font-size: 10px;
+  opacity: .82; transition: opacity 240ms ease, transform 240ms ease;
+}
+.wb-step-image-zoom:hover img, .wb-step-image-zoom:focus-visible img { transform: scale(1.025); }
+.wb-step-image-zoom:hover > span, .wb-step-image-zoom:focus-visible > span { opacity: 1; transform: translateY(-2px); }
+.wb-step-image-zoom:focus-visible { outline: 2px solid var(--terracotta); outline-offset: -3px; }
 .wb-step-image-media.is-empty { display: grid; place-items: center; padding: 16px; text-align: center; }
 .wb-step-image-media.is-empty::before {
   content: ''; position: absolute; inset: 9px; border: 1px dashed rgba(96,108,56,.28); border-radius: 9px; pointer-events: none;
@@ -1083,12 +1093,25 @@ a:hover { color: var(--terracotta); }
   from { opacity: 0; transform: translate(-50%, -12px) scale(.985); }
   to { opacity: 1; transform: translate(-50%, 0) scale(1); }
 }
-.wb-step-float-index { position: relative; color: var(--terracotta); font-size: 9.5px; letter-spacing: .2em; }
-.wb-step-float h3 { position: relative; margin: 2px 0 3px; color: var(--moss); font-size: 17px; letter-spacing: .1em; }
-.wb-step-float-copy { position: relative; font-size: 11.5px; line-height: 1.55; white-space: pre-wrap; }
+.wb-step-float-index { position: relative; color: var(--terracotta); font-size: 10.5px; letter-spacing: .2em; }
+.wb-step-float h3 { position: relative; margin: 3px 0 4px; color: var(--moss); font-size: 20px; letter-spacing: .1em; }
+.wb-step-float-copy { position: relative; font-size: 13px; line-height: 1.58; white-space: pre-wrap; }
 .wb-step-float-copy strong { color: var(--ink); font-weight: 700; }
-.wb-step-float-resources { position: relative; margin-top: 3px; color: var(--ink-faint); font-size: 10px; line-height: 1.45; }
+.wb-step-float-resources { position: relative; margin-top: 4px; color: var(--ink-faint); font-size: 11px; line-height: 1.5; }
 .wb-step-float-resources strong { color: var(--moss); font-weight: 700; }
+.wb-step-image-reveal {
+  position: absolute; inset: 12px; z-index: 8; display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 10px; min-width: 0; min-height: 0; padding: 14px; overflow: hidden;
+  border: 1px solid rgba(232,220,199,.5); border-radius: 18px;
+  background: rgba(67,80,64,.94); box-shadow: 0 18px 44px rgba(43,51,39,.3); color: var(--sand-light);
+  animation: wbStepImageRevealIn 360ms cubic-bezier(.2,.8,.25,1) both;
+}
+.wb-step-image-reveal strong { font-family: var(--serif); font-size: 17px; letter-spacing: .08em; }
+.wb-step-image-reveal img { display: block; width: 100%; height: 100%; min-height: 0; object-fit: contain; border-radius: 12px; background: rgba(43,51,39,.26); }
+.wb-step-image-reveal span { font-size: 11px; letter-spacing: .08em; opacity: .8; }
+.wb-step-image-reveal:hover, .wb-step-image-reveal:focus-visible { border-color: var(--ochre); outline: none; }
+.wb-step-image-reveal.is-closing { opacity: 0; transform: scale(.985); transition: opacity 240ms ease, transform 240ms ease; }
+@keyframes wbStepImageRevealIn { from { opacity: 0; transform: scale(.985); } to { opacity: 1; transform: scale(1); } }
 .wb-table-canvas { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
 .wb-table-canvas.is-grabbing { cursor: grabbing; }
 .wb-object-label {
@@ -1417,6 +1440,13 @@ a:hover { color: var(--terracotta); }
 .modal .m-head h3 { font-size: 19px; flex: 1; letter-spacing: 0.06em; }
 .modal .m-close { font-size: 20px; color: var(--ink-faint); padding: 4px 10px; }
 .modal .m-body { padding: 6px 26px 26px; }
+.modal.step-image-modal { max-width: min(1100px, 92vw); overflow: hidden; }
+.step-image-modal .m-body { display: grid; place-items: center; }
+.step-image-lightbox { width: 100%; margin: 0; }
+.step-image-lightbox img {
+  display: block; width: 100%; max-height: 72vh; object-fit: contain; border-radius: var(--radius-md);
+  background: rgba(96,108,56,.1);
+}
 .ev-block { border-top: 1px dashed rgba(96,108,56,0.3); padding: 16px 0; }
 .ev-block:first-child { border-top: none; }
 .ev-block img { width: 100%; border-radius: var(--radius-md); display: block; margin-bottom: 10px; }
@@ -3066,6 +3096,8 @@ body:has(.admin-page) .gesture-toggle { display: none !important; }
   .jiao-toast { right: 12px; bottom: calc(82px + env(safe-area-inset-bottom)); left: 12px; max-width: none; }
   .modal-mask { align-items: flex-end; padding: 0; }
   .modal { width: 100%; max-height: min(88dvh, 760px); border-radius: 26px 26px 0 0; padding-bottom: env(safe-area-inset-bottom); }
+  .modal.step-image-modal { max-width: 100%; }
+  .step-image-lightbox img { max-height: 68dvh; }
   .modal .m-head { position: sticky; top: 0; z-index: 2; padding: 14px 16px 8px; background: rgba(241,232,214,.97); }
   .modal .m-close { width: 44px; height: 44px; }
   .modal .m-body { padding: 6px 16px 20px; }
@@ -3193,7 +3225,7 @@ body:has(.admin-page) .gesture-toggle { display: none !important; }
 /* 2026 visual refinement: layered Jiangnan constellation atmosphere. */
 .heritage-graph-overlay {
   background:
-    radial-gradient(ellipse at 52% 44%, #93a498 0%, #7f9386 42%, #657b6d 76%, #586e61 100%);
+    radial-gradient(ellipse at 52% 44%, #879a8d 0%, #74887b 42%, #5d7265 76%, #506458 100%);
 }
 .heritage-graph-overlay::before { opacity: .055; }
 .heritage-graph-overlay::after {

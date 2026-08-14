@@ -2,9 +2,6 @@
 // 当前正式内容仍以 SHIH_* 工艺包与 districts 配置为准；这里提供稳定的
 // heritage:/region: 命名空间，后续接入 nodes/edges.jsonl 时只替换本模块。
 import { allCrafts, graphContent, graphDataVersion } from '../data.js';
-import { DISTRICTS, DISTRICT_PROFILES, CRAFT_CONFIG } from '../config.js';
-import { GRAPH_SEED_EDGES, GRAPH_SEED_NODES } from '../graph-seed.js';
-import { CURATED_GRAPH_EDGES, CURATED_GRAPH_NODES } from '../graph-curated-catalog.js';
 
 let cachedEdgeVersion = '';
 let cachedEdges = [];
@@ -28,7 +25,7 @@ function allGraphEdges() {
   if (cachedEdgeVersion === version) return cachedEdges;
   const content = graphContent();
   const seen = new Set();
-  cachedEdges = [...(content.edges || []), ...CURATED_GRAPH_EDGES, ...GRAPH_SEED_EDGES].filter((edge) => {
+  cachedEdges = [...(content.edges || [])].filter((edge) => {
     const id = edge.id || `${edge.from}|${edge.relation}|${edge.to}`;
     if (seen.has(id)) return false;
     seen.add(id);
@@ -70,7 +67,7 @@ function craftImageUrl(craft, value) {
 
 function craftNode(craft) {
   const primarySource = craft.externalSources?.[0] || {};
-  const mainImage = craftImageUrl(craft, craft.config?.heroFrame || craft.config?.works?.[0]?.frame || '');
+  const mainImage = craftImageUrl(craft, craft.config?.heroFrame || '');
   const projectImages = Array.isArray(craft.config?.works)
     ? craft.config.works.filter((image) => image?.frame || image?.image_url).map((image, index) => ({
       title: image.name || image.title || `${craft.title}图片 ${index + 1}`,
@@ -79,12 +76,6 @@ function craftNode(craft) {
       image_url: craftImageUrl(craft, image.frame || image.image_url),
     }))
     : [];
-  const displayImages = projectImages.length ? projectImages : (mainImage ? [{
-    title: `${craft.title}主图`,
-    description: '该节点尚未设置专用图片，当前使用项目主图。',
-    image_url: mainImage,
-    display_role: 'main-fallback',
-  }] : []);
   return {
     id: graphId('heritage', craft.craftId),
     raw_id: craft.craftId,
@@ -95,8 +86,8 @@ function craftNode(craft) {
     summary: String(craft.summary || '').slice(0, 180),
     overview_image: mainImage,
     graph_data: craft.config?.graphData || {},
-    images: displayImages,
-    image_display_role: projectImages.length ? 'project-gallery' : (mainImage ? 'main-fallback' : 'empty'),
+    images: projectImages,
+    image_display_role: projectImages.length ? 'project-gallery' : 'empty',
     district_id: craft.config?.districtId || null,
     heritage_level: craft.config?.heritageLevel || (/^SHIH_\d{4}$/.test(craft.craftId) ? 'primary' : 'secondary'),
     public: true,
@@ -106,64 +97,21 @@ function craftNode(craft) {
   };
 }
 
-function districtNode(district) {
-  const profile = DISTRICT_PROFILES[district.id] || {};
-  return {
-    id: graphId('region', district.id),
-    raw_id: district.id,
-    type: 'region',
-    title: profile.name || district.name,
-    aliases: [profile.name || district.name, String(profile.name || district.name).replace(/区$/, '')],
-    summary: String(profile.heritageOverview || '').slice(0, 180),
-    public: true,
-    source_ids: profile.sourceUrl ? [`region_source:${district.id}`] : [],
-    source_title: profile.sourceLabel || `${profile.name || district.name}地区资料`,
-    source_url: profile.sourceUrl || '',
-  };
-}
-
 export function graphNodes() {
   const version = graphDataVersion();
   if (cachedNodeVersion === version) return cachedNodes;
-  // 工艺包是按需异步加载的；配置中的轻量节点保证图谱入口、搜索和
-  // 智能体在首屏或离线测试时仍能识别稳定 ID。真实工艺包加载后优先覆盖它。
-  const configuredCrafts = Object.entries(CRAFT_CONFIG).map(([craftId, config]) => ({
-    craftId,
-    title: config.craftName || craftId,
-    summary: '',
-    config,
-    externalSources: [],
-  }));
-  const crafts = [...allCrafts(), ...configuredCrafts].map(craftNode);
-  const districts = DISTRICTS.map(districtNode);
+  const crafts = allCrafts().map(craftNode);
   const persisted = graphContent().nodes || [];
   const seen = new Set();
-  const seenHeritageTitles = new Set();
-  const graphRelations = crafts.flatMap((craft) => (craft.graph_data?.relations || []).map((relation, index) => ({
-    id: graphId(relation.type || 'tradition', relation.id || `${craft.raw_id}_${index}_${relation.title}`),
-    raw_id: relation.id || `${craft.raw_id}_${index}`,
-    type: relation.type || 'tradition',
-    title: relation.title,
-    aliases: [relation.title],
-    summary: relation.summary || '',
-    images: relation.images || [],
-    public: true,
-  })));
   const detailNodes = new Map(crafts.map((node) => [node.id, node]));
-  // Some legacy/curated graph seeds use a different ID for the same named
-  // heritage project. Resolve those aliases to the canonical craft package
-  // so exploration links can still open the detail page.
-  const detailNodesByTitle = new Map(crafts
-    .filter((node) => node.type === 'heritage' && node.title)
-    .map((node) => [String(node.title).trim(), node]));
-  cachedNodes = [...persisted, ...crafts, ...districts, ...graphRelations, ...GRAPH_SEED_NODES, ...CURATED_GRAPH_NODES]
+  const detailNodesByRawId = new Map(crafts.map((node) => [node.raw_id, node]));
+  cachedNodes = [...persisted, ...crafts]
     .map((node) => {
       const detail = detailNodes.get(node.id)
-        || (node.type === 'heritage' && detailNodesByTitle.get(String(node.title || '').trim()));
-      if (!detail) return node;
+        || (node.type === 'heritage' && detailNodesByRawId.get(node.raw_id));
+      if (!detail) return { ...node, detail_available: false };
       const communityImages = (Array.isArray(node.images) ? node.images : []).filter((image) => image?.submission_id || image?.image_origin === 'community_review');
-      const detailImages = detail.image_display_role === 'main-fallback' && communityImages.length ? [] : detail.images;
-      const images = [...detailImages, ...communityImages]
+      const images = [...detail.images, ...communityImages]
         .filter((image, index, all) => all.findIndex((other) => (other.image_url || other.url) === (image.image_url || image.url)) === index);
       return {
         ...node,
@@ -177,20 +125,16 @@ export function graphNodes() {
         canonical_id: detail.id,
         overview_image: detail.overview_image || node.overview_image || '',
         images,
-        image_display_role: communityImages.length ? 'node' : detail.image_display_role,
+        image_display_role: communityImages.length ? 'community-supplement' : detail.image_display_role,
         graph_data: detail.graph_data,
       };
     }).filter((node) => {
-    if (node.type === 'heritage' && !node.detail_available) return false;
     if (seen.has(node.id)) return false;
-    const titleKey = node.type === 'heritage' ? String(node.title || '').trim() : '';
-    if (titleKey && seenHeritageTitles.has(titleKey)) return false;
     seen.add(node.id);
-    if (titleKey) seenHeritageTitles.add(titleKey);
     return true;
   });
   const visibleHeritage = new Set(cachedNodes.filter((node) => node.type === 'heritage').map((node) => node.id));
-  const relevantRelations = new Set(graphRelations.map((node) => node.id));
+  const relevantRelations = new Set();
   for (const node of cachedNodes) {
     if (node.type === 'heritage' && node.district_id) relevantRelations.add(graphId('region', node.district_id));
   }
@@ -291,33 +235,16 @@ export function isSupportedRelation(relation) {
 export function relationsForNode(id) {
   const node = getGraphNode(id);
   if (!node || node.type !== 'heritage') return [];
-  // 地区归属来自项目配置；传统与材料只来自已核验的种子边，避免把
-  // 未经证据确认的文本推断伪装成正式图谱关系。
-  const config = CRAFT_CONFIG[node.raw_id] || {};
-  const districtId = node.district_id || config.districtId;
-  const edges = districtId
-    ? [{ relation: 'LOCATED_IN', target_id: graphId('region', districtId), source: 'curated_district_mapping' }]
-    : [];
-  const customRelations = (node.graph_data?.relations || []).map((relation, index) => ({
-    relation: relation.type === 'material' ? 'USES_MATERIAL' : relation.type === 'region' ? 'LOCATED_IN' : 'BELONGS_TO_TRADITION',
-    target_id: graphId(relation.type || 'tradition', relation.id || `${node.raw_id}_${index}_${relation.title}`),
-    source: 'admin_graph_data',
-    source_title: node.graph_data?.summary || '',
-  }));
-  return [
-    ...edges,
-    ...customRelations,
-    ...allGraphEdges()
-      .filter((edge) => edge.from === node.id)
-      .map((edge) => ({
-        relation: edge.relation,
-        target_id: edge.to,
-        source: edge.source_id,
-        source_title: edge.source_title,
-        source_url: edge.source_url,
-        evidence: edge.evidence || '',
-      })),
-  ];
+  return allGraphEdges()
+    .filter((edge) => edge.from === node.id)
+    .map((edge) => ({
+      relation: edge.relation,
+      target_id: edge.to,
+      source: edge.source_id || edge.origin || '',
+      source_title: edge.source_title,
+      source_url: edge.source_url,
+      evidence: edge.evidence || '',
+    }));
 }
 
 export function relatedHeritageForRelation(targetId, relation, { excludeId = null } = {}) {
@@ -400,9 +327,7 @@ export function graphNeighborhood(rootId) {
 export function relatedHeritageForRegion(regionId, { excludeId = null } = {}) {
   const parsed = parseGraphId(regionId);
   if (!parsed || parsed.type !== 'region') return [];
-  return allCrafts()
-    .filter((craft) => craft.config?.districtId === parsed.rawId && graphId('heritage', craft.craftId) !== excludeId)
-    .map(craftNode);
+  return graphNodes().filter((node) => node.type === 'heritage' && node.district_id === parsed.rawId && node.id !== excludeId);
 }
 
 export function expandGraphBranch(rootId, relation) {

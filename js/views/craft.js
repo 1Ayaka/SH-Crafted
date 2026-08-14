@@ -4,7 +4,7 @@
 // 本页已接入跨页系统：assets/bg-crafts/<id>/ 分层背景 + 底层环境墨晕 + transitions 转场登记
 // 工作区桌面：assets/t工作台.png；页面大背景始终沿用当前非遗详情页背景。
 // 模型（config.CRAFT_MODEL_PATHS）：未开始态显示松散细碎的成品预览；完成态用高精度成品揭晓。
-import { el, reviewTag, openEvidenceModal, jiaoToast } from '../ui.js';
+import { el, reviewTag, openEvidenceModal, openModal, jiaoToast } from '../ui.js';
 import { InkField, blotTargets, imageTargets, loadImage } from '../particles.js';
 import { craftAssetUrl, ensureCraftLoaded, evidenceTimecode, isContentReviewed } from '../data.js';
 import { MATERIAL_STATES, CRAFT_MODEL_PATHS } from '../config.js';
@@ -142,6 +142,7 @@ export async function craftView(root, { id }) {
     materialItems: new Map(),
     workbenchPhysics: new Map(),
     backpackScrollByStep: new Map(),
+    dismissedStepImages: new Set(),
     actionSlot: null,
     failures: 0,                 // 连续失败
     helpRefusedStep: null,
@@ -399,20 +400,25 @@ export async function craftView(root, { id }) {
 
   function stepImagePanel(step) {
     const image = step?.step_image;
-    const mediaHost = el('div', { class: `wb-step-image-media${image?.image_url ? '' : ' is-empty'}` });
-    if (image?.image_url) {
-      const preview = el('img', {
-        src: craftAssetUrl(craft, image.image_url),
-        alt: image.alt || `工序“${step.displayName}”参考图`,
-      });
-      preview.addEventListener('error', () => {
-        mediaHost.classList.add('is-empty', 'is-error');
-        mediaHost.replaceChildren(el('span', { text: '图片暂时无法显示' }));
-      }, { once: true });
-      mediaHost.appendChild(preview);
-    } else {
-      mediaHost.appendChild(el('span', { text: '本步骤图片待补充' }));
-    }
+    if (!image?.image_url) return null;
+    const mediaHost = el('div', { class: 'wb-step-image-media' });
+    const imageUrl = craftAssetUrl(craft, image.image_url);
+    const imageAlt = image.alt || `工序“${step.displayName}”参考图`;
+    const preview = el('img', { src: imageUrl, alt: imageAlt });
+    preview.addEventListener('error', () => {
+      mediaHost.closest('.wb-step-image')?.remove();
+    }, { once: true });
+    mediaHost.appendChild(el('button', {
+      class: 'wb-step-image-zoom', type: 'button',
+      'aria-label': `放大查看${step.displayName}步骤图片`,
+      onclick: () => openModal({
+        title: `${step.displayName} · 步骤图片`,
+        className: 'step-image-modal',
+        body: el('figure', { class: 'step-image-lightbox' }, [
+          el('img', { src: imageUrl, alt: imageAlt }),
+        ]),
+      }),
+    }, [preview, el('span', { text: '点击放大' })]));
     return el('aside', { class: 'wb-step-image', 'aria-label': '当前工序参考图片' }, [
       el('div', { class: 'wb-step-image-heading' }, [
         el('p', { text: '步骤图片' }),
@@ -420,6 +426,33 @@ export async function craftView(root, { id }) {
       ]),
       mediaHost,
     ]);
+  }
+
+  function stepImageReveal(step) {
+    const image = step?.step_image;
+    if (!image?.image_url) return null;
+    const stepKey = step.step_id || step.id || String(S.stepIndex);
+    if (S.dismissedStepImages.has(stepKey)) return null;
+    const imageUrl = craftAssetUrl(craft, image.image_url);
+    const imageAlt = image.alt || `工序“${step.displayName}”参考图`;
+    let reveal;
+    const dismiss = () => {
+      S.dismissedStepImages.add(stepKey);
+      reveal.classList.add('is-closing');
+      setTimeout(() => reveal.remove(), 260);
+    };
+    const preview = el('img', { src: imageUrl, alt: imageAlt });
+    preview.addEventListener('error', dismiss, { once: true });
+    reveal = el('button', {
+      class: 'wb-step-image-reveal', type: 'button',
+      'aria-label': `收起${step.displayName}步骤图片并开始本步`,
+      onclick: dismiss,
+    }, [
+      el('strong', { text: `${step.displayName} · 步骤图片` }),
+      preview,
+      el('span', { text: '点击图片收起，开始本步' }),
+    ]);
+    return reveal;
   }
 
   function resourceVisual(name, step = currentStep()) {
@@ -1169,6 +1202,7 @@ export async function craftView(root, { id }) {
         el('span', { class: 'wb-table-tip', text: tableObjects.length ? '拖动物体调整位置；点击物体重新落下' : '从左侧背包选择物品' }),
       ]),
       stepFloatingGuide(step, S.stepIndex, craft.steps.length),
+      stepImageReveal(step),
     ]);
 
     let actionPalette;
@@ -1196,7 +1230,8 @@ export async function craftView(root, { id }) {
       el('p', { class: 'action-title', text: '动作' }),
       ...actionCards,
     ]);
-    const sideRail = el('div', { class: 'wb-side-rail' }, [actionPalette, stepImagePanel(step)]);
+    const stepImage = stepImagePanel(step);
+    const sideRail = el('div', { class: `wb-side-rail${stepImage ? ' has-step-image' : ''}` }, [actionPalette, stepImage]);
 
     const progress = el('span', { class: 'wb-progress' }, craft.steps.map((s, i) =>
       el('i', { class: `pg${i < S.stepIndex ? ' done' : i === S.stepIndex ? ' now' : ''}`, title: s.displayName })));
@@ -1541,15 +1576,18 @@ export async function craftView(root, { id }) {
       info.innerHTML = '';
       if (!selected) return;
       const heading = el('div', { class: 'heritage-graph-info-head' }, [
-        el('span', { class: `heritage-graph-type type-${selected.type}`, text: selected.type === 'heritage' ? '非遗项目' : selected.type === 'region' ? '地区' : selected.type === 'tradition' ? '传统' : '材料' }),
+        el('span', { class: `heritage-graph-type type-${selected.type}`, text: selected.content_role === 'graph_supplement' ? '星图补充' : selected.type === 'heritage' ? '非遗项目' : selected.type === 'region' ? '地区' : selected.type === 'tradition' ? '传统' : '材料' }),
         el('h3', { text: selected.title }),
       ]);
       const summary = selected.summary
         ? el('p', { text: selected.summary })
         : el('p', { class: 'is-muted', text: '该节点的详细摘要与来源正在整理中。' });
-      const usesMainFallback = selected.image_display_role === 'main-fallback' || selected.images?.some((image) => image?.display_role === 'main-fallback');
-      info.append(...[heading, selected.images?.length ? el('div', { class: `heritage-graph-image-gallery${usesMainFallback ? ' is-main-fallback' : ''}` }, [
-        usesMainFallback ? el('p', { class: 'heritage-graph-image-role', text: '节点未设置专用图 · 当前使用项目主图' }) : el('p', { class: 'heritage-graph-image-role', text: '节点专用图' }),
+      const galleryLabel = selected.content_role === 'map_project' ? '项目其他图片' : '节点补充图片';
+      info.append(...[heading, selected.overview_image ? el('figure', { class: 'heritage-graph-main-image' }, [
+        el('img', { class: 'heritage-graph-overview-image', src: selected.overview_image, alt: `${selected.title}项目主图`, loading: 'lazy' }),
+        el('figcaption', { text: '项目主图' }),
+      ]) : null, selected.images?.length ? el('div', { class: 'heritage-graph-image-gallery' }, [
+        el('p', { class: 'heritage-graph-image-role', text: galleryLabel }),
         ...selected.images.slice(0, 8).map((image) => el('figure', { class: 'heritage-graph-image-card' }, [el('img', { src: image.image_url || image.url, alt: image.title || selected.title, loading: 'lazy' }), image.title || image.description ? el('figcaption', { text: image.title || image.description }) : null])),
       ]) : null, summary].filter(Boolean));
       if (context.mode === 'root') {
@@ -1699,7 +1737,7 @@ export async function craftView(root, { id }) {
           class: 'btn-ghost', text: '重新体验',
           onclick: () => {
             S.phase = 'reading'; S.stepIndex = 0; S.failures = 0;
-            S.selectedResources.clear(); S.materialItems.clear(); S.workbenchPhysics.clear(); S.actionSlot = null;
+            S.selectedResources.clear(); S.materialItems.clear(); S.workbenchPhysics.clear(); S.dismissedStepImages.clear(); S.actionSlot = null;
             craft.allResources.forEach((name) => S.resourceStates.set(name, 'raw'));
             body.classList.remove('playing');
             setWorkbenchBg(false);

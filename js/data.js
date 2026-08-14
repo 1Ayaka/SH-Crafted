@@ -133,7 +133,7 @@ export async function loadAll(onProgress) {
     fetchJson(base + 'knowledge-base/sources.json'),
     fetchJsonl(base + 'knowledge-base/facts.jsonl'),
     fetchJson(base + 'knowledge-base/stats.json'),
-    fetchJson('/api/content').catch(() => null),
+    fetchJson('/api/v1/content').catch(() => null),
   ]);
   store.catalog = catalog;
   store.knowledgeSources = new Map(sourceDoc.sources.map((source) => [source.source_id, source]));
@@ -514,6 +514,54 @@ export function siteText(key, fallback = '') {
 
 export function contentRevision() {
   return store.revision;
+}
+
+// Keep the current SPA session in step with an admin edit. The server remains
+// authoritative; this only prevents views opened after a successful save from
+// continuing to render the snapshot loaded at application start.
+export function applyCraftEditorialUpdate(craftId, fields = {}, revision = '') {
+  const craft = store.crafts.get(craftId);
+  if (!craft) return null;
+
+  if (Object.hasOwn(fields, 'title')) {
+    craft.title = String(fields.title || '');
+    craft.config.craftName = craft.title;
+  }
+  if (Object.hasOwn(fields, 'category')) craft.config.category = String(fields.category || '');
+  if (Object.hasOwn(fields, 'summary')) {
+    craft.summary = String(fields.summary || '');
+    craft.draft = { ...(craft.draft || {}), summary_candidate: craft.summary };
+  }
+  if (Object.hasOwn(fields, 'claims')) craft.claims = normalizedManagedClaims(fields.claims);
+  if (Object.hasOwn(fields, 'cover_path')) {
+    const cover = String(fields.cover_path || '');
+    const prefix = craft.directory ? `data/${craft.directory}/` : '';
+    craft.config.heroFrame = prefix && cover.startsWith(prefix) ? cover.slice(prefix.length) : cover;
+  }
+  if (Object.hasOwn(fields, 'images')) {
+    craft.config.works = (Array.isArray(fields.images) ? fields.images : []).map((image) => ({
+      frame: image.image_url || image.source_path || '',
+      name: image.title || '',
+      description: image.description || '',
+      sourceUrl: image.source_url || '',
+      evidenceId: image.evidence_id || '',
+    }));
+  }
+  if (Object.hasOwn(fields, 'graph_data')) craft.config.graphData = structuredClone(fields.graph_data || {});
+  if (revision) store.revision = revision;
+  store.graphVersion += 1;
+  return craft;
+}
+
+// Fetch the server's effective graph after an edit. This includes derived map
+// project nodes and region relations, so every view observes one read model.
+export async function refreshGraphContent() {
+  const graph = await fetchJson('/api/v1/graph');
+  store.graphNodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
+  store.graphEdges = Array.isArray(graph?.edges) ? graph.edges : [];
+  if (graph?.revision) store.revision = graph.revision;
+  store.graphVersion += 1;
+  return graphContent();
 }
 
 export function graphContent() {

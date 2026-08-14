@@ -10,7 +10,7 @@ const splitList = (value) => [...new Set(String(value || '').split(/[，,、\n]/
 const IMPORT_TEMPLATE = Object.freeze({
   schema: 'sh-crafted.heritage-submission/v1',
   title: '', category: '', summary: '', history: '', features: '',
-  source_url: '', cover_url: '', images: [{ title: '', image_url: '', description: '', source_url: '' }],
+  source_url: '', cover_url: '', images: [],
   steps: [{ name: '', description: '', result: '', materials: [], tools: [], actions: [] }],
   contributor_name: '', contributor_contact: '',
 });
@@ -94,9 +94,9 @@ export async function contributeView(root, { districtId }) {
   const history = el('textarea', { rows: '4', maxlength: '5000', placeholder: '选填：历史、来历或传承线索' }, [restored.history || '']);
   const features = el('textarea', { rows: '4', maxlength: '5000', placeholder: '选填：形态、用途、地域特色或代表性内容' }, [restored.features || '']);
   const sourceUrl = el('input', { type: 'url', maxlength: '1200', value: restored.source_url || '', placeholder: 'https://…' });
-  const coverUrl = el('input', { type: 'text', inputmode: 'url', maxlength: '1200', required: true, value: restored.cover_url || '', placeholder: '上传后自动填写，也可输入 https:// 图片地址' });
+  const coverUrl = el('input', { type: 'text', inputmode: 'url', maxlength: '1200', value: restored.cover_url || '', placeholder: '选填：上传后自动填写，也可输入 https:// 图片地址' });
   let overviewImages = Array.isArray(restored.images || restored.overview_images || restored.star_data?.images)
-    ? (restored.images || restored.overview_images || restored.star_data?.images).slice(0, 8) : [];
+    ? (restored.images || restored.overview_images || restored.star_data?.images).slice(0, 48) : [];
   const overviewHost = el('div', { class: 'community-overview-images' });
   const coverPreview = el('div', { class: 'community-main-image-preview' });
   const coverInput = el('input', { class: 'community-image-file-input', type: 'file', accept: COMMUNITY_IMAGE_ACCEPT, tabindex: '-1' });
@@ -123,8 +123,8 @@ export async function contributeView(root, { districtId }) {
   ]);
   bindImageDropZone({ zone: coverDrop, input: coverInput, onFiles: uploadCover });
   const mainImageSection = el('section', { class: 'community-image-purpose-section is-primary' }, [
-    el('div', { class: 'community-image-purpose-heading' }, [el('span', { text: '01' }), el('div', {}, [el('h3', { text: '主图' }), el('p', { text: '必填。用于地图列表、项目详情和知识星图。' })])]),
-    coverPreview, coverDrop, coverProgress.el, field('主图地址', coverUrl, '上传本地图片后会自动填写站内地址；也可使用公开的 https:// 图片地址。'),
+    el('div', { class: 'community-image-purpose-heading' }, [el('span', { text: '01' }), el('div', {}, [el('h3', { text: '主图' }), el('p', { text: '选填。没有图片也可以先提交，审核后再补充。' })])]),
+    coverPreview, coverDrop, coverProgress.el, field('主图地址', coverUrl, '选填；上传本地图片后会自动填写站内地址，也可使用公开的 https:// 图片地址。'),
   ]);
   renderCoverPreview();
   const contributorName = el('input', { type: 'text', maxlength: '100', value: restored.contributor_name || '', placeholder: '选填' });
@@ -195,15 +195,16 @@ export async function contributeView(root, { districtId }) {
   const overviewUploadStatus = el('p', { class: 'community-import-status', role: 'status', 'aria-live': 'polite' });
   const overviewProgress = createUploadProgress();
   const addOverviewFiles = async (files) => {
-    const selected = [...files].slice(0, Math.max(0, 8 - overviewImages.length));
+    const selected = [...files].slice(0, Math.max(0, 48 - overviewImages.length));
     if (!selected.length) {
       overviewUploadStatus.className = 'community-import-status error';
-        overviewUploadStatus.textContent = overviewImages.length >= 8 ? '其他图片最多上传 8 张。' : '没有检测到图片文件。';
+      overviewUploadStatus.textContent = overviewImages.length >= 48 ? '其他图片最多上传 48 张。' : '没有检测到图片文件。';
       return;
     }
     overviewInput.disabled = true;
     overviewUploadStatus.className = 'community-import-status';
     let uploaded = 0;
+    let failed = 0;
     for (const [index, file] of selected.entries()) {
       overviewUploadStatus.textContent = `正在上传 ${index + 1}/${selected.length}：${file.name}`;
       overviewProgress.start(`${index + 1}/${selected.length} · ${file.name}`);
@@ -214,17 +215,20 @@ export async function contributeView(root, { districtId }) {
         renderOverviewImages();
         saveDraft();
       } catch (error) {
+        failed += 1;
         overviewProgress.error(`${file.name} 上传失败`);
         overviewUploadStatus.className = 'community-import-status error';
         overviewUploadStatus.textContent = `${file.name}：${error.message}`;
-        break;
+        continue;
       }
     }
     overviewInput.disabled = false;
-    if (uploaded === selected.length) {
+    if (!failed) {
       overviewProgress.success(`${uploaded} 张图片已上传`);
       overviewUploadStatus.className = 'community-import-status';
       overviewUploadStatus.textContent = `已上传 ${uploaded} 张图片，请为每张填写说明。`;
+    } else {
+      overviewUploadStatus.textContent = `已上传 ${uploaded} 张，${failed} 张失败；失败图片可稍后重试，不影响文字提交。`;
     }
   };
   const overviewDrop = el('div', {
@@ -232,7 +236,7 @@ export async function contributeView(root, { districtId }) {
     'aria-label': '上传其他图片',
   }, [
     el('strong', { text: '拖入其他图片，或点击选择' }),
-    el('span', { text: '支持 PNG、JPG、WebP、GIF；单张不超过 6MB，最多 8 张' }),
+    el('span', { text: '支持 PNG、JPG、WebP、GIF；单张不超过 6MB，最多 48 张' }),
     overviewInput,
   ]);
   bindImageDropZone({ zone: overviewDrop, input: overviewInput, onFiles: addOverviewFiles });
@@ -400,7 +404,6 @@ export async function contributeView(root, { districtId }) {
         title_required: '请填写文化遗产名称。',
         summary_required: '内容说明至少需要10个字。',
         steps_required: '已开启工序模块，请至少添加一道工序。',
-        main_image_required: '请上传一张主图，或填写公开图片地址。',
       };
       status.textContent = messages[error.message] || '提交失败，请稍后重试。';
       status.classList.add('error');

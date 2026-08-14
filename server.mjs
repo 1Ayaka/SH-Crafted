@@ -282,24 +282,7 @@ let serverGraphNodeById = new Map();
 const graphNodes = () => {
   const revision = editableContent?.revision || 'seed';
   if (serverGraphCacheRevision === revision) return serverGraphNodes;
-  const galleryByCraft = new Map();
-  for (const item of editableContent?.craft_gallery || []) {
-    if (!galleryByCraft.has(item.craft_id)) galleryByCraft.set(item.craft_id, item.image_url || '');
-  }
-  serverGraphNodes = [
-  ...(editableContent?.crafts || CONTENT_SEED.crafts).map((craft) => ({
-    id: graphId('heritage', craft.id), raw_id: craft.id, type: 'heritage', title: craft.title,
-    aliases: [craft.title], summary: String(craft.summary || '').slice(0, 180),
-    district_id: craft.district_id || null,
-    overview_image: galleryByCraft.get(craft.id) || craft.cover_path || '',
-    public: true,
-  })),
-  ...(editableContent?.districts || CONTENT_SEED.districts).map((district) => ({
-    id: graphId('region', district.id), raw_id: district.id, type: 'region', title: district.name,
-    aliases: [district.name, String(district.name || '').replace(/区$/, '')],
-    summary: String(district.heritage_overview || '').slice(0, 180), public: true,
-  })),
-  ];
+  serverGraphNodes = effectiveGraphContent(editableContent).nodes;
   serverGraphNodeById = new Map(serverGraphNodes.map((node) => [node.id, node]));
   serverGraphCacheRevision = revision;
   return serverGraphNodes;
@@ -543,7 +526,7 @@ function cleanImageSource(value) {
 
 function normalizeGraphImages(value) {
   if (!Array.isArray(value)) return [];
-  return value.slice(0, 12).map((item, index) => ({
+  return value.slice(0, 48).map((item, index) => ({
     title: cleanText(item?.title, 160) || `节点图片 ${index + 1}`,
     image_url: cleanImageSource(item?.image_url || item?.url || item?.source_path),
     description: cleanText(item?.description, 1000),
@@ -551,7 +534,7 @@ function normalizeGraphImages(value) {
   })).filter((item) => item.image_url);
 }
 
-function normalizeProjectImages(body, { max = 12 } = {}) {
+function normalizeProjectImages(body, { max = 48 } = {}) {
   const graph = body?.graph_data || body?.star_data || {};
   const candidates = [
     ...(Array.isArray(body?.images) ? body.images : []),
@@ -638,7 +621,7 @@ function syncGraphFromContent(content, { includeSeed = false } = {}) {
     const current = nodes.get(heritageId);
     const generated = {
       id: heritageId, raw_id: craft.id, type: 'heritage', title: craft.title, aliases: [craft.title].filter(Boolean),
-      summary: craft.graph_data?.summary || craft.summary || '', district_id: craft.district_id || '',
+      summary: craft.summary || '', district_id: craft.district_id || '',
       overview_image: craft.cover_path || '',
       images: normalizeGraphImages((galleryByCraft.get(craft.id) || []).sort((a, b) => (a.sort ?? 999) - (b.sort ?? 999))),
       heritage_level: isPrimary ? 'primary' : 'secondary', protected: isPrimary,
@@ -655,7 +638,7 @@ function syncGraphFromContent(content, { includeSeed = false } = {}) {
       if (current.overview_image !== generated.overview_image) { current.overview_image = generated.overview_image; changed = true; }
       const reviewedCommunityImages = (Array.isArray(current.images) ? current.images : []).filter((image) => image?.submission_id);
       const synchronizedImages = [...generated.images, ...reviewedCommunityImages]
-        .filter((image, index, all) => all.findIndex((other) => other.image_url === image.image_url) === index).slice(0, 12);
+        .filter((image, index, all) => all.findIndex((other) => other.image_url === image.image_url) === index).slice(0, 48);
       if (JSON.stringify(current.images ?? []) !== JSON.stringify(synchronizedImages)) {
         current.images = synchronizedImages; changed = true;
       }
@@ -695,6 +678,138 @@ function syncGraphFromContent(content, { includeSeed = false } = {}) {
   content.graph_edges = [...edges.values()];
   if (JSON.stringify(content.graph_edges) !== originalEdgesJson) changed = true;
   return changed;
+}
+
+// Projects are authoritative for every field shared by the map, detail page
+// and graph. Legacy project-shaped graph rows remain stored for rollback
+// compatibility; this read model prevents clients from reconciling duplicates.
+function effectiveGraphContent(content) {
+  const crafts = Array.isArray(content?.crafts) ? content.crafts : [];
+  const storedNodes = Array.isArray(content?.graph_nodes) ? content.graph_nodes : [];
+  const storedEdges = Array.isArray(content?.graph_edges) ? content.graph_edges : [];
+  const craftById = new Map(crafts.map((craft) => [craft.id, craft]));
+  const galleryByCraft = new Map();
+  for (const image of content?.craft_gallery || []) {
+    if (!galleryByCraft.has(image.craft_id)) galleryByCraft.set(image.craft_id, []);
+    galleryByCraft.get(image.craft_id).push(image);
+  }
+  const nodeById = new Map();
+  for (const stored of storedNodes) {
+    if (!stored?.id) continue;
+    const idCraft = stored.type === 'heritage' && String(stored.id).startsWith('heritage:')
+      ? craftById.get(String(stored.id).slice('heritage:'.length))
+      : null;
+    const craft = stored.type === 'heritage' ? (craftById.get(stored.raw_id) || idCraft) : null;
+    if (!craft) {
+      nodeById.set(stored.id, {
+        ...stored,
+        detail_available: false,
+        content_role: stored.type === 'heritage' ? 'graph_supplement' : 'knowledge_node',
+      });
+      continue;
+    }
+    const projectImages = normalizeGraphImages((galleryByCraft.get(craft.id) || [])
+      .slice().sort((a, b) => (a.sort ?? 999) - (b.sort ?? 999)));
+    const reviewedCommunityImages = (Array.isArray(stored.images) ? stored.images : [])
+      .filter((image) => image?.submission_id || image?.image_origin === 'community_review');
+    const images = [...projectImages, ...reviewedCommunityImages]
+      .filter((image, index, all) => image.image_url && all.findIndex((other) => other.image_url === image.image_url) === index);
+    nodeById.set(stored.id, {
+      ...stored,
+      raw_id: craft.id,
+      type: 'heritage',
+      title: craft.title,
+      aliases: [craft.title].filter(Boolean),
+      summary: craft.summary || '',
+      district_id: craft.district_id || '',
+      overview_image: craft.cover_path || '',
+      images,
+      graph_data: craft.graph_data || {},
+      detail_available: true,
+      content_role: 'map_project',
+    });
+  }
+  for (const craft of crafts) {
+    const id = `heritage:${craft.id}`;
+    if (nodeById.has(id)) continue;
+    nodeById.set(id, {
+      id, raw_id: craft.id, type: 'heritage', title: craft.title,
+      aliases: [craft.title].filter(Boolean), summary: craft.summary || '',
+      district_id: craft.district_id || '', overview_image: craft.cover_path || '',
+      images: normalizeGraphImages((galleryByCraft.get(craft.id) || []).slice().sort((a, b) => (a.sort ?? 999) - (b.sort ?? 999))),
+      graph_data: craft.graph_data || {}, published: true, detail_available: true,
+      content_role: 'map_project',
+    });
+  }
+  const storedDegree = new Map();
+  for (const edge of storedEdges) {
+    storedDegree.set(edge.from, (storedDegree.get(edge.from) || 0) + 1);
+    storedDegree.set(edge.to, (storedDegree.get(edge.to) || 0) + 1);
+  }
+  const duplicateTarget = new Map();
+  const nodesByIdentity = new Map();
+  for (const node of nodeById.values()) {
+    const title = String(node.title || '').normalize('NFKC').trim().toLowerCase();
+    const key = title ? `${node.type}:${title}` : '';
+    if (!key) continue;
+    if (!nodesByIdentity.has(key)) nodesByIdentity.set(key, []);
+    nodesByIdentity.get(key).push(node);
+  }
+  const canonicalPriority = (node) => Number(node.content_role === 'map_project') * 1000
+    + Number(node.type === 'region' && !String(node.id).startsWith('region:shared_')) * 500
+    + (storedDegree.get(node.id) || 0);
+  for (const group of nodesByIdentity.values()) {
+    if (group.length < 2) continue;
+    group.sort((left, right) => canonicalPriority(right) - canonicalPriority(left));
+    // Two map records may legitimately share a display name (for example the
+    // same tradition in different districts). They must each keep their own
+    // project node. Only graph-only duplicates collapse into the best matching
+    // project; groups without projects still collapse normally.
+    const projects = group.filter((node) => node.content_role === 'map_project');
+    const canonical = projects[0] || group[0];
+    const duplicates = projects.length
+      ? group.filter((node) => node.content_role !== 'map_project')
+      : group.slice(1);
+    for (const duplicate of duplicates) {
+      duplicateTarget.set(duplicate.id, canonical.id);
+      canonical.aliases = [...new Set([...(canonical.aliases || []), ...(duplicate.aliases || [])])];
+      canonical.community_knowledge = [...(canonical.community_knowledge || []), ...(duplicate.community_knowledge || [])];
+      canonical.images = [...(canonical.images || []), ...(duplicate.images || [])]
+        .filter((image, index, all) => image?.image_url && all.findIndex((other) => other?.image_url === image.image_url) === index);
+      nodeById.delete(duplicate.id);
+    }
+  }
+  const canonicalNodeId = (id) => duplicateTarget.get(id) || id;
+  const edges = new Map();
+  const edgeTriples = new Set();
+  for (const stored of storedEdges) {
+    const from = canonicalNodeId(stored.from);
+    const to = canonicalNodeId(stored.to);
+    if (!nodeById.has(from) || !nodeById.has(to) || from === to) continue;
+    const triple = `${from}|${stored.relation}|${to}`;
+    if (edgeTriples.has(triple)) continue;
+    const id = from === stored.from && to === stored.to && stored.id
+      ? stored.id
+      : graphEdgeId(from, stored.relation, to);
+    edges.set(id, { ...stored, id, from, to });
+    edgeTriples.add(triple);
+  }
+  for (const node of nodeById.values()) {
+    if (node.type !== 'heritage' || !node.district_id) continue;
+    const to = `region:${node.district_id}`;
+    if (!nodeById.has(to)) continue;
+    const id = graphEdgeId(node.id, 'LOCATED_IN', to);
+    const triple = `${node.id}|LOCATED_IN|${to}`;
+    if (!edgeTriples.has(triple)) {
+      edges.set(id, {
+      id, from: node.id, relation: 'LOCATED_IN', to,
+      origin: 'derived_district', published: true,
+      relationship_summary: `${node.title}的资料归属于${nodeById.get(to)?.title || node.district_id}。`,
+      });
+      edgeTriples.add(triple);
+    }
+  }
+  return { nodes: [...nodeById.values()], edges: [...edges.values()] };
 }
 
 function normalizeGraphPatch(body) {
@@ -813,9 +928,8 @@ function normalizeSubmission(body) {
   const includeSteps = Boolean(body?.include_steps) && kind === 'full';
   const steps = includeSteps ? normalizeSubmissionSteps(body?.steps) : [];
   if (includeSteps && !steps.length) throw new Error('steps_required');
-  const images = normalizeProjectImages(body, { max: 12 });
+  const images = normalizeProjectImages(body, { max: 48 });
   const mainImage = cleanImageSource(body?.cover_url || body?.cover_path) || images[0]?.image_url || '';
-  if (!mainImage) throw new Error('main_image_required');
   return {
     kind,
     district_id: districtId,
@@ -1059,7 +1173,15 @@ function saveEngagementUpdate(craftId, action, visitorHash) {
 }
 
 function publicContent() {
-  return { ...editableContent, content_reviewed: Boolean(editableContent.content_reviewed), source: 'site-admin' };
+  const graph = effectiveGraphContent(editableContent);
+  return {
+    ...editableContent,
+    graph_nodes: graph.nodes,
+    graph_edges: graph.edges,
+    content_reviewed: Boolean(editableContent.content_reviewed),
+    source: 'site-admin',
+    api_version: 'v1',
+  };
 }
 
 let publicContentJsonRevision = '';
@@ -1340,11 +1462,6 @@ const unifiedStore = await createUnifiedContentStore({
 });
 editableContent = unifiedStore.content;
 communityState = unifiedStore.community;
-if (syncGraphFromContent(editableContent, { includeSeed: true })) {
-  editableContent.updated_at = new Date().toISOString();
-  editableContent.revision = makeRevision();
-  editableContent = await writeContentStore(editableContent);
-}
 
 async function handleContentApi(req, res) {
   if (req.method !== 'GET') {
@@ -1364,6 +1481,20 @@ async function handleContentApi(req, res) {
     'Content-Length': Buffer.byteLength(payload.body),
   });
   res.end(payload.body);
+}
+
+async function handleGraphContentApi(req, res) {
+  if (req.method !== 'GET') {
+    res.writeHead(405, { 'Content-Type': 'application/json; charset=utf-8' }).end(JSON.stringify({ error: 'method_not_allowed' }));
+    return;
+  }
+  const graph = effectiveGraphContent(editableContent);
+  jsonResponse(res, 200, {
+    api_version: 'v1',
+    revision: editableContent.revision,
+    nodes: graph.nodes,
+    edges: graph.edges,
+  }, { 'Cache-Control': 'no-cache', ETag: `"${editableContent.revision || 'seed'}"` });
 }
 
 async function handleCommunityApi(req, res, urlPath) {
@@ -1545,7 +1676,7 @@ async function publishGraphSubmission(submission) {
     } else if (!target.summary && submission.contribution_type === 'supplement') target.summary = submission.statement;
     if (submission.contribution_type === 'image') {
       target.images = [...(Array.isArray(target.images) ? target.images : []), ...(submission.images || []).map((image) => ({ ...image, submission_id: submission.id, image_origin: 'community_review' }))]
-        .filter((item, index, all) => all.findIndex((other) => other.image_url === item.image_url) === index).slice(0, 12);
+        .filter((item, index, all) => all.findIndex((other) => other.image_url === item.image_url) === index).slice(0, 48);
       if (!target.overview_image && target.images[0]) target.overview_image = target.images[0].image_url;
     }
     if (submission.contribution_type === 'relation' && submission.relation) {
@@ -1931,9 +2062,11 @@ async function handleAdminApi(req, res, urlPath) {
       if (existing && !canReplaceExisting) throw new Error('existing_content_modified');
       const craftId = existing?.id || requestedId || `ADMIN_${Date.now().toString(36)}_${randomBytes(3).toString('hex')}`;
       const graph = body.graph_data || body.star_data || {};
-      const projectImages = normalizeProjectImages(body, { max: 12 });
-      const coverPath = cleanImageSource(body.cover_url || body.cover_path) || projectImages[0]?.image_url || '';
-      if (!coverPath) throw new Error('main_image_required');
+      const projectImages = normalizeProjectImages(body, { max: 48 });
+      const replaceProjectImages = projectImages.length > 0 || body.replace_images === true;
+      const coverPath = cleanImageSource(body.cover_url || body.cover_path)
+        || existing?.cover_path
+        || '';
       const importedSteps = Array.isArray(body.steps) ? body.steps.slice(0, 24).map((step, index) => ({
         id: `${craftId}_step_${String(index + 1).padStart(2, '0')}`,
         source_step_id: `${craftId}_step_${String(index + 1).padStart(2, '0')}`,
@@ -1956,7 +2089,8 @@ async function handleAdminApi(req, res, urlPath) {
           community_details: {
             ...(current?.community_details || {}),
             history: cleanText(body.history, 5000), features: cleanText(body.features, 5000),
-            source_url: cleanPublicUrl(body.source_url), images: projectImages,
+            source_url: cleanPublicUrl(body.source_url),
+            images: replaceProjectImages ? projectImages : (current?.community_details?.images || []),
           },
           graph_data: {
             summary: cleanText(graph.summary, 2000),
@@ -1968,12 +2102,14 @@ async function handleAdminApi(req, res, urlPath) {
         else next.crafts.push(importedCraft);
         next.craft_steps = next.craft_steps.filter((step) => step.craft_id !== craftId);
         if (importedSteps.length) next.craft_steps.push(...normalizeSteps(craftId, importedSteps, existingSteps));
-        next.craft_gallery = next.craft_gallery.filter((item) => item.craft_id !== craftId);
-        projectImages.filter((image) => image.image_url !== coverPath).forEach((image, index) => next.craft_gallery.push({
-          id: `${craftId}_work_${String(index + 1).padStart(2, '0')}`, sort: index + 1, craft_id: craftId,
-          title: image.title, description: image.description, image_url: image.image_url,
-          source_url: image.source_url, image_status: image.image_status, source_path: '', evidence_id: '',
-        }));
+        if (replaceProjectImages) {
+          next.craft_gallery = next.craft_gallery.filter((item) => item.craft_id !== craftId);
+          projectImages.filter((image) => image.image_url !== coverPath).forEach((image, index) => next.craft_gallery.push({
+            id: `${craftId}_work_${String(index + 1).padStart(2, '0')}`, sort: index + 1, craft_id: craftId,
+            title: image.title, description: image.description, image_url: image.image_url,
+            source_url: image.source_url, image_status: image.image_status, source_path: '', evidence_id: '',
+          }));
+        }
       });
       jsonResponse(res, existing ? 200 : 201, { ok: true, craft_id: craftId, updated: Boolean(existing), revision: imported.revision });
     } catch (error) {
@@ -2408,7 +2544,8 @@ async function serveBrandLogo(req, res) {
 const server = http.createServer(async (req, res) => {
   try {
     const urlPath = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-    if (urlPath === '/api/content') { await handleContentApi(req, res); return; }
+    if (urlPath === '/api/content' || urlPath === '/api/v1/content') { await handleContentApi(req, res); return; }
+    if (urlPath === '/api/v1/graph') { await handleGraphContentApi(req, res); return; }
     if (urlPath === '/api/graph/search' || urlPath.startsWith('/api/graph/node/')) { await handleGraphApi(req, res, urlPath); return; }
     if (urlPath === '/api/agent/session') { await handleAgentSessionApi(req, res); return; }
     if (urlPath === '/api/agent/context') { await handleAgentContextApi(req, res); return; }

@@ -31,6 +31,7 @@
     "community:test": "node scripts/smoke-community-api.mjs",
     "content:migrate": "node scripts/migrate-content-store.mjs",
     "content:backup": "node scripts/backup-content-store.mjs",
+    "content:audit": "node scripts/audit-content-baseline.mjs",
     "agent:test-tools": "node scripts/test-agent-tools.mjs",
     "agent:test-local-api": "node scripts/smoke-agent-local-api.mjs",
     "agent:test-recommendation": "node scripts/test-agent-exploration-recommendation.mjs",

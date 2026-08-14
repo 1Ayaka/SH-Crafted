@@ -43,14 +43,14 @@ export function brandLogo(cls = 'brand-logo', alt = '探物志') {
 }
 
 let escHandler = null;
-export function openModal({ title, body, onClose }) {
+export function openModal({ title, body, onClose, className = '' }) {
   const root = document.getElementById('modal-root');
   root.innerHTML = '';
   const close = () => { root.innerHTML = ''; document.removeEventListener('keydown', escHandler); onClose?.(); };
   escHandler = (e) => { if (e.key === 'Escape') close(); };
   document.addEventListener('keydown', escHandler);
   const mask = el('div', { class: 'modal-mask', onclick: (e) => { if (e.target === mask) close(); } }, [
-    el('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': title }, [
+    el('div', { class: `modal${className ? ` ${className}` : ''}`, role: 'dialog', 'aria-modal': 'true', 'aria-label': title }, [
       el('div', { class: 'm-head' }, [
         el('h3', { text: title }),
         el('button', { class: 'm-close', text: '×', 'aria-label': '关闭', onclick: close }),
