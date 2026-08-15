@@ -6,21 +6,26 @@ import {
   graphNodes,
 } from './agent/graph-adapter.js';
 
-export function createHeritageGraphOverviewState() {
-  const heritage = graphNodes().filter((node) => node.type === 'heritage');
-  const primary = heritage.filter((node) => node.heritage_level === 'primary').slice(0, 10);
-  const secondaryPool = heritage.filter((node) => node.heritage_level !== 'primary');
+export function createHeritageGraphOverviewState(candidates = graphNodes()) {
+  const heritage = candidates.filter((node) => node.type === 'heritage');
+  // Every map project must be present in the overview. Graph-only supplements
+  // remain discoverable through their factual region/tradition/material branch
+  // instead of competing with map projects for a limited overview slot.
+  const projects = heritage.filter((node) => node.content_role === 'map_project' || node.detail_available);
+  const projectIds = new Set(projects.map((project) => project.id));
+  const supplementPool = heritage.filter((node) => !projectIds.has(node.id));
   const links = [];
-  const secondary = [];
-  primary.forEach((main) => {
+  const supplements = [];
+  projects.forEach((main) => {
     const mainTerms = new Set([...(main.graph_data?.keywords || []), ...(main.graph_data?.relations || []).map((item) => item.title)].filter(Boolean));
-    secondaryPool.map((node) => {
+    supplementPool.map((node) => {
       let score = node.district_id && node.district_id === main.district_id ? 3 : 0;
       const terms = [...(node.graph_data?.keywords || []), ...(node.graph_data?.relations || []).map((item) => item.title)].filter(Boolean);
       terms.forEach((term) => { if (mainTerms.has(term)) score += 2; });
       return { node, score };
-    }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score || a.node.title.localeCompare(b.node.title, 'zh-CN')).slice(0, 2).forEach(({ node }) => {
-      if (!secondary.some((item) => item.id === node.id)) secondary.push(node);
+    }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score || a.node.title.localeCompare(b.node.title, 'zh-CN')).slice(0, 1).forEach(({ node }) => {
+      if (supplements.length >= 12) return;
+      if (!supplements.some((item) => item.id === node.id)) supplements.push(node);
       links.push({ from: main.id, to: node.id });
     });
   });
@@ -29,7 +34,10 @@ export function createHeritageGraphOverviewState() {
     root: null,
     initialRoot: null,
     selected: null,
-    overviewNodes: [...primary.map((node) => ({ ...node, overview_role: 'primary' })), ...secondary.map((node) => ({ ...node, overview_role: 'secondary' }))],
+    overviewNodes: [
+      ...projects.map((node) => ({ ...node, overview_role: 'map-project' })),
+      ...supplements.map((node) => ({ ...node, overview_role: 'graph-supplement' })),
+    ],
     overviewLinks: links,
     branch: null,
     branchTarget: null,

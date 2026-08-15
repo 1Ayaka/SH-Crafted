@@ -14,6 +14,7 @@ import { createCompanionDialogue } from './mascot/companion-dialogue.js';
 import { createRelationshipStore } from './mascot/relationship-store.js';
 import { sanitizeAgentText } from './agent/response-sanitizer.js';
 import { isExplorationRecommendationQuery, recommendExploration } from './agent/exploration-recommender.js';
+import { currentStepGuidance, isCurrentStepGuidanceQuery } from './agent/step-guidance.js';
 import { runReactLoop } from './agent/react-runner.js';
 import { BRAND_LOGO_URL, handleBrandLogoError } from './brand.js';
 
@@ -360,9 +361,7 @@ function addMsg(kind, contentNodes, who) {
 // 组装发给 /api/agent 的上下文：当前状态 + 本工艺结构化知识（服务端再包系统提示）
 function buildAgentContext(retrieved) {
   const craft = panel.craft;
-  const step = panel.context.current_step_id
-    ? (craft?.steps.find((s) => s.step_id === panel.context.current_step_id)?.displayName || null)
-    : null;
+  const stepGuidance = currentStepGuidance(craft, panel.context);
   return {
     craft: craft ? {
       id: craft.craftId,
@@ -386,7 +385,8 @@ function buildAgentContext(retrieved) {
         })),
       })),
     } : null,
-    current_step: step,
+    current_step: stepGuidance?.name || null,
+    current_step_detail: stepGuidance,
     inventory: panel.context.inventory_states.map((i) => `${i.name}(${i.state})`).join('、'),
     failure_count: panel.context.failure_count || 0,
   };
@@ -720,6 +720,26 @@ async function answer(query, { showUser = true, allowTools = true } = {}) {
 
   // 快路径：资源 / 动作 / 工序等直接读取结构化数据
   if (craft) {
+    const stepGuidance = currentStepGuidance(craft, panel.context);
+    if (stepGuidance && isCurrentStepGuidanceQuery(query)) {
+      const nodes = [
+        el('p', {}, [
+          el('span', { text: `你现在在第 ${stepGuidance.number}/${stepGuidance.total} 步「${stepGuidance.name}」。` }),
+        ]),
+      ];
+      if (stepGuidance.resourceInstructions.length) {
+        nodes.push(el('p', { text: `先选择本步需要的资源：${stepGuidance.resourceInstructions.join('；')}。` }));
+      }
+      nodes.push(el('p', {}, [
+        el('span', { text: `然后执行「${stepGuidance.action}」。` }),
+        stepGuidance.guide && stepGuidance.guide !== stepGuidance.action
+          ? el('span', { text: ` ${stepGuidance.guide}` })
+          : null,
+      ]));
+      if (stepGuidance.result) nodes.push(el('p', { class: 'small muted', text: `完成后应得到：${stepGuidance.result}` }));
+      addGuidedAnswer(nodes, query, craft);
+      return;
+    }
     if (/材料|原料|物件/.test(query)) {
       addGuidedAnswer([
         el('p', {}, [

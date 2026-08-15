@@ -177,6 +177,28 @@ try {
   })()`);
   await evaluate(`(async () => {
     const host = document.createElement('div');
+    host.id = 'graph-overview-smoke-host';
+    Object.assign(host.style, { position: 'fixed', inset: '0', zIndex: '99999', background: '#5d705f' });
+    document.body.appendChild(host);
+    const [{ createHeritageGraphOverviewState }, { mountHeritageGraph }, { allCrafts }] = await Promise.all([
+      import('/js/heritage-graph.js'), import('/js/heritage-graph-3d.js'), import('/js/data.js'),
+    ]);
+    window.__graphOverviewExpected = allCrafts().length;
+    window.__graphOverviewHandle = mountHeritageGraph(host, createHeritageGraphOverviewState());
+  })()`);
+  await wait(1800);
+  const overview = await evaluate(`(() => ({
+    expectedProjects: Number(window.__graphOverviewExpected || 0),
+    renderedProjects: document.querySelectorAll('#graph-overview-smoke-host .heritage-graph-label.map-project').length,
+    titles: [...document.querySelectorAll('#graph-overview-smoke-host .heritage-graph-label.map-project')].map((node) => node.textContent),
+  }))()`);
+  await evaluate(`(() => {
+    window.__graphOverviewHandle?.dispose();
+    window.__graphOverviewHandle = null;
+    document.querySelector('#graph-overview-smoke-host')?.remove();
+  })()`);
+  await evaluate(`(async () => {
+    const host = document.createElement('div');
     host.id = 'graph-smoke-host';
     Object.assign(host.style, { position: 'fixed', inset: '0', zIndex: '99999', background: '#5d705f' });
     document.body.appendChild(host);
@@ -338,6 +360,7 @@ try {
   })()`);
   standalone.browserErrors = browserErrors;
   const errors = [];
+  if (overview.expectedProjects < 1 || overview.renderedProjects !== overview.expectedProjects) errors.push('星图总览没有显示全部地图项目');
   if (!standalone.navCollapsed || standalone.navTransform === 'none' || !standalone.navToggleVisible || standalone.shellTop !== '0px') errors.push('独立星图顶部菜单未默认向上折叠或星图未全屏铺开');
   if (!navigationFold.expanded || !navigationFold.collapsedAgain) errors.push('独立星图顶部菜单无法可靠展开并再次收起');
   if (!root.canvas || root.ringCount < 6 || root.nodeCount < 4) errors.push('根星图、六层天环或三门户未完成渲染');
@@ -359,7 +382,7 @@ try {
   if (!mapGesture.expected || mapGesture.hovered !== mapGesture.expected || mapGesture.selected !== mapGesture.expected) errors.push('地图手势没有命中、悬停或选择同一地区');
   if (!mapGesture.directDrag || !(mapGesture.dragDistance > 0.01)) errors.push('张掌直接拖拽没有改变地图相机位置');
   if (!modelGesture.changed || !modelGesture.released) errors.push('张掌直接拖拽没有旋转或释放完成品模型');
-  console.log(JSON.stringify({ root, hoveredNode, graphDragDistance, branchNodeCount, disposed, standalone, contributionForm, navigationFold, gestureWorker, mapGesture, modelGesture, gestureOverlay, virtualPointer, screenshotPath, errors }, null, 2));
+  console.log(JSON.stringify({ overview, root, hoveredNode, graphDragDistance, branchNodeCount, disposed, standalone, contributionForm, navigationFold, gestureWorker, mapGesture, modelGesture, gestureOverlay, virtualPointer, screenshotPath, errors }, null, 2));
   if (errors.length) process.exitCode = 1;
 } finally {
   try { ws?.close(); } catch { /* Ignore close errors. */ }

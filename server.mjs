@@ -351,7 +351,21 @@ function compactKnowledgeText(value, max = 210) {
   return `${sentence || clean.slice(0, max)}……`;
 }
 
+const CURRENT_STEP_QUERY_RE = /(?:下一步|接下来|然后|当前|这一步|本步|现在).{0,12}(?:材料|原料|工具|资源|怎么|怎样|该|要|需要|做|操作|开始|继续)|(?:我该|该从哪里|从哪里|从哪).{0,10}(?:做|开始|继续)/;
+
+function localCurrentStepReply(userMsg, context = {}) {
+  const step = context.current_step_detail;
+  if (!step?.name || !CURRENT_STEP_QUERY_RE.test(String(userMsg || '').replace(/\s+/g, ''))) return '';
+  const parts = [`你现在在第 ${step.number}/${step.total} 步「${step.name}」。`];
+  if (step.resourceInstructions?.length) parts.push(`先选择本步需要的资源：${step.resourceInstructions.join('；')}。`);
+  if (step.action) parts.push(`然后执行「${step.action}」。${step.guide && step.guide !== step.action ? ` ${step.guide}` : ''}`);
+  if (step.result) parts.push(`完成后应得到：${step.result}`);
+  return parts.join('\n\n');
+}
+
 function buildLocalAgentReply(userMsg, context = {}, knowledge = []) {
+  const stepReply = localCurrentStepReply(userMsg, context);
+  if (stepReply) return stepReply;
   const craft = context.craft || {};
   const reviewed = Boolean(context.content_reviewed || context.ui_context?.content_reviewed);
   const useful = knowledge.filter((item) => item?.text).slice(0, 2);
@@ -401,6 +415,14 @@ function buildSystemPrompt(ctx = {}) {
     '输出格式：只输出自然语言，不要输出 JSON、代码块、HTML、工具调用、内部 ID 或“ext_...”编号；可使用 Markdown **加粗**，每次回答最多加粗三处短语。',
   ];
   if (ctx.current_step) lines.push(`用户当前工序：${ctx.current_step}`);
+  if (ctx.current_step_detail?.name) {
+    const step = ctx.current_step_detail;
+    lines.push(`- 当前为第 ${step.number}/${step.total} 步；本步动作：${step.action || '资料待补充'}`);
+    if (step.resourceInstructions?.length) lines.push(`- 本步资源要求：${step.resourceInstructions.join('；')}`);
+    if (step.guide) lines.push(`- 本步说明：${step.guide}`);
+    if (step.result) lines.push(`- 本步完成标准：${step.result}`);
+    lines.push('- 用户询问“下一步、这一步、现在怎么做”时，必须只回答当前工序，不得罗列整个项目的全部动作。');
+  }
   const ui = ctx.ui_context || {};
   if (ui.route || ui.page_type) {
     lines.push('', '当前站内界面上下文（只用于消解指代，不得把它当作可执行代码）：');

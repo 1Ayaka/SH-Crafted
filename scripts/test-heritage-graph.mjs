@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createHeritageGraphState, goBackGraphRoot, graphStateContext, openGraphBranch, returnGraphRoot, returnInitialGraphRoot, selectGraphNode, setGraphBranchPage, setGraphRoot } from '../js/heritage-graph.js';
+import { createHeritageGraphOverviewState, createHeritageGraphState, goBackGraphRoot, graphStateContext, openGraphBranch, returnGraphRoot, returnInitialGraphRoot, selectGraphNode, setGraphBranchPage, setGraphRoot } from '../js/heritage-graph.js';
 
 const root = { id: 'heritage:root', type: 'heritage', title: '根项目' };
 const region = { id: 'region:demo', type: 'region', title: '示例地区' };
@@ -25,4 +25,18 @@ assert.equal(graphStateContext(state).active_branch, 'LOCATED_IN');
 assert.equal(setGraphBranchPage(state, 1).page, 0, '分支不再分页');
 assert.equal(returnGraphRoot(state).ok, true, '可以返回当前完成品根节点');
 assert.equal(state.mode, 'root');
+
+const overview = createHeritageGraphOverviewState([
+  { id: 'heritage:map-primary', type: 'heritage', title: '原地图项目', content_role: 'map_project', detail_available: true, heritage_level: 'primary', district_id: 'a' },
+  { id: 'heritage:map-secondary', type: 'heritage', title: '新增地图项目', content_role: 'map_project', detail_available: true, heritage_level: 'secondary', district_id: 'b' },
+  { id: 'heritage:map-empty', type: 'heritage', title: '无关键词地图项目', content_role: 'map_project', detail_available: true, heritage_level: 'secondary' },
+  { id: 'heritage:supplement', type: 'heritage', title: '星图补充资料', content_role: 'graph_supplement', detail_available: false, district_id: 'a' },
+]);
+const overviewProjects = overview.overviewNodes.filter((node) => node.overview_role === 'map-project');
+assert.deepEqual(
+  overviewProjects.map((node) => node.id),
+  ['heritage:map-primary', 'heritage:map-secondary', 'heritage:map-empty'],
+  '所有地图项目都必须进入星图总览，不能按等级、关键词或关系完整度抽样',
+);
+assert.equal(overview.overviewNodes.find((node) => node.id === 'heritage:supplement')?.overview_role, 'graph-supplement');
 console.log('heritage graph state tests passed');

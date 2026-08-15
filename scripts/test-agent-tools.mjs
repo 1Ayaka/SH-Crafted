@@ -4,6 +4,7 @@ import { createVoiceStateMachine, VOICE_STATES } from '../js/voice/voice-state-m
 import { resolveIntent } from '../js/agent/intent-resolver.js';
 import { graphIndexStats, heritageDetailTarget, heritageForGraphTarget, searchGraph } from '../js/agent/graph-adapter.js';
 import { sanitizeAgentText } from '../js/agent/response-sanitizer.js';
+import { currentStepGuidance, isCurrentStepGuidanceQuery } from '../js/agent/step-guidance.js';
 
 globalThis.document = { documentElement: { lang: 'zh-CN' } };
 globalThis.location = { hash: '#/explore' };
@@ -43,6 +44,22 @@ const ivoryIntent = resolveIntent('我想看一下还有什么象牙非遗', int
 assert.equal(ivoryIntent, null, 'API 尚未加载时不能从旧种子推断星图节点');
 
 assert.equal(sanitizeAgentText('【0480000_0674000】'), '', '纯数字内部时间段引用不应显示给用户');
+const stepGuidance = currentStepGuidance({ steps: [
+  { step_id: 'first', displayName: '第一步', action: '旧动作' },
+  {
+    step_id: 'current', displayName: '续线染色', guide_text: '先固定经线，再均匀染色。', result: '颜色均匀的经线',
+    interactionRule: {
+      resource_groups: [{ label: '染料', mode: 'any', min: 1, options: ['靛蓝', '植物染料'] }],
+      correctAction: { id: 'dye', label: '均匀染色' },
+    },
+  },
+] }, { current_step_id: 'current', inventory_states: [] });
+assert.equal(isCurrentStepGuidanceQuery('下一步我该怎么做'), true);
+assert.equal(isCurrentStepGuidanceQuery('这一步需要什么材料'), true);
+assert.equal(stepGuidance.name, '续线染色');
+assert.equal(stepGuidance.action, '均匀染色');
+assert.deepEqual(stepGuidance.resourceInstructions, ['染料任选 1 项：靛蓝、植物染料']);
+assert.equal(JSON.stringify(stepGuidance).includes('旧动作'), false, '当前步骤指导不得混入其他工序动作');
 assert.equal(
   sanitizeAgentText('可以继续看[嘉定竹刻](#/craft/not-a-real-id)，也可访问 https://invalid.example/missing。'),
   '可以继续看嘉定竹刻，也可访问。',

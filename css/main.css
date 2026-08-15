@@ -1980,8 +1980,8 @@ a:hover { color: var(--terracotta); }
 .heritage-graph-image-card { margin: 0; scroll-snap-align: start; }
 .heritage-graph-image-card img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 12px; border: 1px solid rgba(96,108,56,.25); }
 .heritage-graph-image-card figcaption { margin-top: 5px; color: var(--ink-faint); font-size: 10px; line-height: 1.35; }
-.heritage-graph-label.overview-node.primary { font-size: 13px; opacity: .96; }
-.heritage-graph-label.overview-node.secondary { font-size: 10px; opacity: .68; }
+.heritage-graph-label.overview-node.map-project { font-size: 13px; opacity: .96; }
+.heritage-graph-label.overview-node.graph-supplement { font-size: 10px; opacity: .68; }
 .heritage-graph-type { color: var(--terracotta); font-size: 11px; }
 .heritage-graph-root-button, .heritage-graph-back-button { width: 100%; justify-content: center; margin-top: 15px; }
 .heritage-graph-contribute-button { width: 100%; justify-content: center; margin-top: 10px; border-color: rgba(198,107,61,.42); color: var(--terracotta); }

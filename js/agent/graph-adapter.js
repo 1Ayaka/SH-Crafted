@@ -80,6 +80,7 @@ function craftNode(craft) {
     id: graphId('heritage', craft.craftId),
     raw_id: craft.craftId,
     detail_available: true,
+    content_role: 'map_project',
     type: 'heritage',
     title: craft.title,
     aliases: [craft.title, craft.config?.craftName].filter(Boolean),

@@ -330,13 +330,14 @@ export function mountHeritageGraph(container, state, { onSelect, onChange } = {}
     if (disposed) return;
     if (state.mode === 'overview') {
       const nodes = (state.overviewNodes || []).filter((node) => node?.type === 'heritage');
-      const primary = nodes.filter((node) => node.overview_role === 'primary');
-      const secondary = nodes.filter((node) => node.overview_role !== 'primary');
+      const primary = nodes.filter((node) => node.overview_role === 'map-project');
+      const secondary = nodes.filter((node) => node.overview_role !== 'map-project');
       const positions = new Map();
-      primary.forEach((node, index) => positions.set(node.id, nodePosition(node, index, primary.length, 1.4, 2.55, 0.08)));
-      secondary.forEach((node, index) => positions.set(node.id, nodePosition(node, index, secondary.length, 3.8, 5.8, 0.02)));
+      primary.forEach((node, index) => positions.set(node.id, nodePosition(node, index, primary.length, 1.65, 5.15, 0.08)));
+      secondary.forEach((node, index) => positions.set(node.id, nodePosition(node, index, secondary.length, 5.45, 7.25, 0.02)));
       nodes.forEach((node, index) => {
-        const group = registerNode(makeNodeMesh(node, 0.62, 0.46));
+        const isProject = node.overview_role === 'map-project';
+        const group = registerNode(makeNodeMesh(node, isProject ? 0.68 : 0.52, isProject ? 0.52 : 0.38));
         const position = positions.get(node.id) || nodePosition(node, index, nodes.length, 2.1, 5.8, 0.05);
         group.position.copy(position);
         graphGroup.add(group);
