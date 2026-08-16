@@ -29,6 +29,7 @@ try {
       query: '这项工艺的材料和制作过程有什么特点？',
       context: { craft: { id: 'SHIH_0001', title: '嘉定竹刻', claims: [] } },
       expected: ['嘉定竹刻'],
+      forbidden: ['关于', '现有资料可以先从这一点理解', '另一条相关记录补充道'],
     },
     {
       query: '下一步我该怎么做？',

@@ -372,15 +372,15 @@ function buildLocalAgentReply(userMsg, context = {}, knowledge = []) {
   const subject = craft.title || useful[0]?.title || '这个问题';
   const parts = [];
   if (useful.length) {
-    parts.push(`关于**${subject}**，现有资料可以先从这一点理解：${compactKnowledgeText(useful[0].text)}`);
-    if (useful[1]) parts.push(`另一条相关记录补充道：${compactKnowledgeText(useful[1].text, 150)}`);
+    parts.push(compactKnowledgeText(useful[0].text));
+    if (useful[1]) parts.push(compactKnowledgeText(useful[1].text, 150));
     const sourceNames = [...new Set(useful.flatMap((item) => (item.sources || []).map((source) => source.publisher || source.title)).filter(Boolean))].slice(0, 2);
     if (sourceNames.length) parts.push(`这些信息可在${sourceNames.join('、')}的资料中继续核对。`);
     if (!reviewed && useful.some((item) => item.review_status !== 'verified_external')) parts.push('其中项目整理内容仍待人工复核，适合先作为理解线索。');
   } else {
     const contextual = [craft.summary, ...(craft.claims || []).map((claim) => typeof claim === 'string' ? claim : claim?.statement)]
       .filter(Boolean).slice(0, 2).map((item) => compactKnowledgeText(item, 170));
-    if (contextual.length) parts.push(`关于**${subject}**，当前项目资料记录了：${contextual.join('；')}`);
+    if (contextual.length) parts.push(contextual.join('；'));
     else parts.push(`我暂时没有在项目知识库中找到能直接回答“${compactKnowledgeText(userMsg, 52)}”的可靠条目。为了不把猜测说成事实，我先不补造细节。`);
   }
   const wantsExploration = /(想看|打开|还有哪些|带我探索|接下来|继续看|推荐|了解什么|去哪看)/.test(userMsg);
@@ -410,6 +410,7 @@ function buildSystemPrompt(ctx = {}) {
     '8. 即使使用 AI 通识补充，也不得编造具体传承人、精确年份、名录等级、机构结论、引文或来源链接。',
     '9. 你可以使用随请求提供的站内工具。涉及打开页面、跳转、返回、朗读或展开关系时，必须调用工具，不要只用文字声称已经完成。节点不确定时先 search_graph，再依据返回的真实 ID 调用导航工具。',
     '10. 采用“观察—行动—反馈—回答”的工作方式，但不要向用户输出隐藏推理过程。工具失败时根据结构化错误调整一次；仍失败则清楚说明，不得伪造成功。',
+    '11. 第一段直接回应用户意图。不要用“关于……”“现有资料可以先从这一点理解”“另一条相关记录补充道”等模板化开场，也不要把“直接回答、关系与背景、一个小故事”原样写成小标题。',
     '',
     `当前项目：${craft.title || '未知'}（${craft.id || ''}）`,
     '输出格式：只输出自然语言，不要输出 JSON、代码块、HTML、工具调用、内部 ID 或“ext_...”编号；可使用 Markdown **加粗**，每次回答最多加粗三处短语。',

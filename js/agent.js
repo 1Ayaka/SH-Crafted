@@ -558,7 +558,10 @@ function addGuidedAnswer(nodes, query, craft) {
 }
 
 function explorationRecommendationAnswer(query) {
-  const recommendations = recommendExploration(query, currentAgentContext(), 2);
+  const recommendations = recommendExploration(query, {
+    ...currentAgentContext(),
+    current_craft_id: panel.craft?.craftId || null,
+  }, 2);
   if (!recommendations.length) return false;
   const [primary, alternative] = recommendations;
   const nodes = [

@@ -3,6 +3,9 @@ import { isExplorationRecommendationQuery, recommendExploration } from '../js/ag
 
 assert.equal(isExplorationRecommendationQuery('我现在探索哪一个比较好'), true);
 assert.equal(isExplorationRecommendationQuery('第一次看非遗，从哪个开始？'), true);
+assert.equal(isExplorationRecommendationQuery('有啥好玩的'), true);
+assert.equal(isExplorationRecommendationQuery('带我逛逛'), true);
+assert.equal(isExplorationRecommendationQuery('随便推荐一个'), true);
 assert.equal(isExplorationRecommendationQuery('月份牌年画是什么时候形成的？'), false);
 
 const candidates = [
@@ -23,5 +26,8 @@ assert.match(textile[0].title, /土布|纺织|药斑布/);
 
 const excluded = recommendExploration('接下来探索哪一个', { current_root: { id: generic[0].id } }, 2, candidates);
 assert.equal(excluded.some((item) => item.id === generic[0].id), false);
+
+const currentCraftExcluded = recommendExploration('有啥好玩的', { current_craft_id: 'test_bamboo' }, 2, candidates);
+assert.equal(currentCraftExcluded.some((item) => item.id === 'heritage:test_bamboo'), false, '推荐不应把用户正在看的项目再次推荐给用户');
 
 console.log('agent exploration recommendation tests passed');

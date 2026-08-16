@@ -1,6 +1,6 @@
 import { graphNodes } from './graph-adapter.js';
 
-const RECOMMENDATION_RE = /(?:推荐|建议|适合).*(?:非遗|项目|探索|看看|了解)|(?:现在|接下来|第一次|先).*(?:探索|看|了解).*(?:哪|什么|比较好)|探索哪(?:一|个)|从哪(?:一|个|里)开始/;
+const RECOMMENDATION_RE = /(?:推荐|建议|适合).*(?:非遗|项目|探索|看看|了解|好玩|有趣)|(?:现在|接下来|第一次|先).*(?:探索|看|了解|玩).*(?:哪|什么|比较好)|探索哪(?:一|个)|从哪(?:一|个|里)开始|有(?:啥|什么).{0,4}(?:好玩|有趣|值得看)|哪(?:个|项).{0,4}(?:好玩|有趣|值得看)|带我(?:逛逛|看看|探索)|随便(?:推荐|选)(?:一个|个)?/;
 
 const PREFERENCES = Object.freeze([
   { pattern: /表演|故事|戏|亲子|儿童/, terms: ['皮影', '戏'] },
@@ -32,6 +32,7 @@ export function recommendExploration(input, context = {}, limit = 2, candidates 
   const excluded = new Set([
     context.current_root?.id,
     context.selected_node?.id,
+    context.current_craft_id ? `heritage:${context.current_craft_id}` : null,
     ...(context.history || []).map((item) => typeof item === 'string' ? item : item?.id),
   ].filter(Boolean));
   const available = candidates.filter((node) => (
