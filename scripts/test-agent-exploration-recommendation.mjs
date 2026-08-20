@@ -21,6 +21,9 @@ assert.equal(generic.every((item) => item.recommendation_reason.length > 12), tr
 const performance = recommendExploration('我比较喜欢故事和表演，推荐一个', {}, 2, candidates);
 assert.match(performance[0].title, /皮影|戏/);
 
+const casual = recommendExploration('有什么好玩的', {}, 2, candidates);
+assert.equal(casual[0].title, '崇明土布纺织技艺', '轻松体验型推荐应优先展示完成度更高的崇明土布项目');
+
 const textile = recommendExploration('我想看看织造和生活有关的项目，哪个比较好', {}, 2, candidates);
 assert.match(textile[0].title, /土布|纺织|药斑布/);
 

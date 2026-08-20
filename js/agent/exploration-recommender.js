@@ -11,6 +11,7 @@ const PREFERENCES = Object.freeze([
 ]);
 
 const DEFAULT_ORDER = ['嘉定竹刻', '七宝皮影戏', '上海月份牌年画', '崇明土布纺织技艺', '南桥撕纸'];
+const CASUAL_EXPERIENCE_RE = /好玩|有趣|体验|逛逛|随便(?:推荐|选)/;
 
 export function isExplorationRecommendationQuery(input) {
   return RECOMMENDATION_RE.test(String(input || '').replace(/\s+/g, ''));
@@ -39,11 +40,13 @@ export function recommendExploration(input, context = {}, limit = 2, candidates 
     node.type === 'heritage' && node.detail_available && node.public !== false && !excluded.has(node.id)
   ));
   const preference = PREFERENCES.find((item) => item.pattern.test(query));
+  const wantsCasualExperience = CASUAL_EXPERIENCE_RE.test(query);
   const rank = (node) => {
     const title = String(node.title || '');
     const preferenceScore = preference ? Math.max(0, ...preference.terms.map((term) => title.includes(term) ? 100 : 0)) : 0;
+    const featuredExperienceScore = wantsCasualExperience && title.includes('崇明土布纺织技艺') ? 80 : 0;
     const defaultIndex = DEFAULT_ORDER.findIndex((term) => title.includes(term));
-    return preferenceScore + (defaultIndex >= 0 ? 20 - defaultIndex : 0) + (node.summary ? 2 : 0);
+    return preferenceScore + featuredExperienceScore + (defaultIndex >= 0 ? 20 - defaultIndex : 0) + (node.summary ? 2 : 0);
   };
   return available
     .map((node) => ({ ...node, recommendation_reason: reasonFor(node), recommendation_score: rank(node) }))
