@@ -11,6 +11,7 @@ export function createGestureToggle({ onToggle, onSettings } = {}) {
   let mounted = false;
   let toggleCallback = onToggle || null;
   let settingsCallback = onSettings || null;
+  let settingsLongPressTriggered = false;
 
   function ensureElement() {
     if (el?.isConnected) return;
@@ -41,6 +42,10 @@ export function createGestureToggle({ onToggle, onSettings } = {}) {
     el.appendChild(labelEl);
 
     el.addEventListener('click', () => {
+      if (settingsLongPressTriggered) {
+        settingsLongPressTriggered = false;
+        return;
+      }
       const isActive = currentState !== GESTURE_STATES.DISABLED
         && currentState !== GESTURE_STATES.ERROR
         && currentState !== GESTURE_STATES.SUSPENDED;
@@ -50,7 +55,9 @@ export function createGestureToggle({ onToggle, onSettings } = {}) {
     // 长按打开设置
     let longPressTimer = 0;
     el.addEventListener('pointerdown', () => {
+      settingsLongPressTriggered = false;
       longPressTimer = setTimeout(() => {
+        settingsLongPressTriggered = true;
         settingsCallback?.();
       }, 800);
     });
@@ -123,6 +130,7 @@ export function createGestureToggle({ onToggle, onSettings } = {}) {
     labelEl = null;
     toggleCallback = null;
     settingsCallback = null;
+    settingsLongPressTriggered = false;
   }
 
   return {
