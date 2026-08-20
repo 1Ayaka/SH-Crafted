@@ -970,6 +970,9 @@ export async function exploreView(root) {
           getTargets: () => adapter.getRaycastTargets(),
           getInteractiveGroups: () => adapter.getDistrictNames(),
           rendererDomElement: adapter.rendererDomElement,
+          // 地图覆盖面积大，放松张掌很容易持续命中画布。仅允许明确的
+          // 捏合长按旋转，避免自然手抖接管相机；短捏合点击保持不变。
+          allowDirectPalmDrag: false,
           onHover: (group, mesh) => adapter.onHover(mesh || group),
           onHoverClear: () => adapter.onHoverClear(),
           onClick: (group, mesh) => adapter.onClick(mesh || group),

@@ -8,6 +8,9 @@ import { createInputCoordinator } from '../js/interaction/input-coordinator.js';
 import { createDirectDragSession } from '../js/gesture/direct-drag-session.js';
 import { createThreeTargetAdapter } from '../js/interaction/three-target-adapter.js';
 import { createCameraManager } from '../js/gesture/camera-manager.js';
+import { createTargetResolver } from '../js/interaction/target-resolver.js';
+import { shouldBeginDirectPalmDrag } from '../js/gesture/gesture-drag-policy.js';
+import { createGestureDiagnostics } from '../js/gesture/gesture-diagnostics.js';
 
 const events = [];
 const classifier = createGestureClassifier({ onGesture: (event) => events.push(event) });
@@ -108,6 +111,14 @@ nonStationaryHold.move({ x: 146, y: 100 }, 180);
 nonStationaryHold.move({ x: 100, y: 100 }, 600);
 assert.equal(nonStationaryHold.state(), POINTER_GESTURE_STATES.PRESSED, '离开长按容差区后即使回到原点也不应误触发长按');
 
+const thresholdClick = createPointerGestureStateMachine({ longPressMs: 700, smoothing: 1 });
+thresholdClick.start({ x: 100, y: 100 }, 0);
+thresholdClick.move({ x: 102, y: 101 }, 650);
+assert.equal(thresholdClick.end({ x: 102, y: 101 }, 660).wasClick, true, '低于阈值的捏合只能在松开时点击');
+const thresholdHold = createPointerGestureStateMachine({ longPressMs: 700, smoothing: 1 });
+thresholdHold.start({ x: 100, y: 100 }, 0);
+assert.ok(thresholdHold.move({ x: 102, y: 101 }, 710).some((event) => event.type === 'long-press-start'), '只有持续捏合超过阈值才能进入长按');
+
 const coordinator = createInputCoordinator();
 assert.equal(coordinator.isGestureTypeAllowed('pinch-start'), true);
 assert.equal(coordinator.isGestureTypeAllowed('air-drag-end'), true);
@@ -118,6 +129,51 @@ directDrag.start({ x: 100, y: 100 });
 const directMove = directDrag.move({ x: 114, y: 106 });
 assert.deepEqual({ dx: directMove.dx, dy: directMove.dy }, { dx: 14, dy: 6 }, '张掌移动必须首帧直接产生拖拽增量');
 assert.equal(directDrag.end({ x: 114, y: 106 }).type, 'drag-end');
+
+// 全屏地图可以关闭张掌直接拖拽，但不改变其他 Three.js 场景的默认行为。
+const originalDocument = globalThis.document;
+const mapCanvas = {
+  isConnected: true,
+  getBoundingClientRect: () => ({ left: 0, top: 0, right: 800, bottom: 600, width: 800, height: 600 }),
+};
+globalThis.document = {
+  elementFromPoint: () => mapCanvas,
+  querySelector: () => null,
+  querySelectorAll: () => [],
+};
+try {
+  const dragPolicyResolver = createTargetResolver();
+  dragPolicyResolver.registerThreeContext('map3d', {
+    rendererDomElement: mapCanvas,
+    interactiveCanvas: true,
+    allowDirectPalmDrag: false,
+  });
+  dragPolicyResolver.setActiveThreeContext('map3d');
+  assert.equal(
+    dragPolicyResolver.resolve(400, 300)?.allowDirectPalmDrag,
+    false,
+    '地图目标必须保留禁止张掌直接拖拽的场景策略',
+  );
+  assert.equal(
+    shouldBeginDirectPalmDrag(dragPolicyResolver.resolve(400, 300)),
+    false,
+    '地图的放松张掌不得开始场景拖拽',
+  );
+
+  dragPolicyResolver.registerThreeContext('craft-model', {
+    rendererDomElement: mapCanvas,
+    interactiveCanvas: true,
+  });
+  dragPolicyResolver.setActiveThreeContext('craft-model');
+  assert.equal(
+    dragPolicyResolver.resolve(400, 300)?.allowDirectPalmDrag,
+    true,
+    '其他 Three.js 场景应继续默认允许张掌直接拖拽',
+  );
+  assert.equal(shouldBeginDirectPalmDrag(dragPolicyResolver.resolve(400, 300)), true);
+} finally {
+  globalThis.document = originalDocument;
+}
 
 const directThree = createThreeTargetAdapter();
 const directThreeEvents = [];
@@ -163,14 +219,7 @@ for (let frame = 0; frame < 10; frame += 1) poseClassifier.update(poseHand('fist
 poseClassifier.update(poseHand('palm'), 380);
 for (let frame = 0; frame < 17; frame += 1) poseClassifier.update(poseHand('palm'), 420 + frame * 34);
 assert.ok(poseEvents.some((event) => event.type === 'fist' && event.phase === 'start'), '稳定握拳应触发缩小手势');
-assert.ok(poseEvents.some((event) => event.type === 'palm' && event.phase === 'start'), '稳定张掌应触发按下手势');
-assert.ok(poseEvents.some((event) => event.type === 'palm' && event.phase === 'move'), '张掌保持期间应持续输出按下移动事件');
-poseClassifier.update(poseHand('fist'), 1100);
-poseClassifier.update(poseHand('fist'), 1134);
-poseClassifier.update(poseHand('fist'), 1168);
-assert.ok(!poseEvents.some((event) => event.type === 'palm' && event.phase === 'end'), '短暂手型抖动不应释放张掌拖拽');
-poseClassifier.update(poseHand('fist'), 1202);
-assert.ok(poseEvents.some((event) => event.type === 'palm' && event.phase === 'end'), '收掌应释放张掌按下状态');
+assert.ok(!poseEvents.some((event) => event.type === 'palm'), '稳定张掌必须保持闲置，不得产生按下、移动或释放事件');
 
 const edgeMapper = createCoordinateMapper({
   viewportWidth: 1000,
@@ -246,7 +295,6 @@ resolvePendingMedia({
 await assert.rejects(pendingCameraStart, /camera_manager_destroyed/);
 assert.equal(lateTrackStopped, true, '关闭后才返回的摄像头流必须立即停止');
 
-const { createTargetResolver } = await import('../js/interaction/target-resolver.js');
 const resolver = createTargetResolver();
 const mesh = { uuid: 'mesh-1', userData: { node: { id: 'heritage:test' } } };
 const renderer = {
@@ -315,7 +363,7 @@ assert.equal(
   '冷却吞掉的捏合松开后，再次捏合应正常触发',
 );
 
-// 张掌时拇指放松搭在食指附近（距离比落在捏合起止阈值之间）不应压制旋转手势。
+// 自然张掌和拇指放松靠近食指都应保持闲置，不得产生按下或长按。
 const relaxedPalmEvents = [];
 const relaxedPalmClassifier = createGestureClassifier({ onGesture: (event) => relaxedPalmEvents.push(event) });
 const relaxedPalmHand = () => Array.from({ length: 21 }, (_, index) => {
@@ -327,13 +375,18 @@ const relaxedPalmHand = () => Array.from({ length: 21 }, (_, index) => {
   return { x: 0.44 + (index % 4) * 0.04, y: 0.3, z: 0 }; // 其余指尖伸直
 });
 for (let frame = 0; frame < 8; frame += 1) relaxedPalmClassifier.update(relaxedPalmHand(), frame * 40);
-assert.ok(
-  relaxedPalmEvents.some((event) => event.type === 'palm' && event.phase === 'start'),
-  '拇指放松靠近食指不应压制张掌按下',
-);
+assert.ok(!relaxedPalmEvents.some((event) => event.type === 'palm'), '自然张掌不得再解释为按下或拖拽');
 assert.ok(
   !relaxedPalmEvents.some((event) => event.type === 'pinch' && event.phase === 'start'),
   '放松的拇指不应被误判为捏合',
 );
+
+const diagnostics = createGestureDiagnostics({ limit: 8 });
+diagnostics.record('classification-sample', { filtered_pinch_ratio: 0.31, landmarks: [{ x: 1, y: 2 }] });
+diagnostics.record('pointer-semantic', { type: 'long-press-start', elapsed_ms: 710 });
+const diagnosticPayload = JSON.parse(diagnostics.exportText());
+assert.equal(diagnosticPayload.schema, 'sh-crafted-gesture-diagnostics/v1');
+assert.equal(diagnosticPayload.entries.some((entry) => entry.type === 'long-press-start'), true);
+assert.equal(diagnosticPayload.entries.some((entry) => Object.hasOwn(entry, 'landmarks')), false, '诊断日志不得保存原始手部关键点或摄像头内容');
 
 console.log('gesture tests: PASS');

@@ -82,7 +82,7 @@ function normalizeLandmarks(input) {
   return points;
 }
 
-export function createGestureClassifier({ onGesture, config } = {}) {
+export function createGestureClassifier({ onGesture, onDiagnostic, config } = {}) {
   const cfg = config || {};
 
   // 捏合状态机
@@ -239,6 +239,7 @@ export function createGestureClassifier({ onGesture, config } = {}) {
       // 张掌稳定帧，避免“其他手指伸直的慢速捏合”被张掌抢占；拇指只是
       // 放松搭在食指附近（起始阈值以外）不影响张掌。
       const palmOpen = isOpenPalm(landmarks) && pinchDist >= pinchStartRatio;
+      const palmInteractionEnabled = cfg.palmInteractionEnabled === true;
       const palmEvent = (phase) => ({
         type: 'palm',
         phase,
@@ -315,8 +316,8 @@ export function createGestureClassifier({ onGesture, config } = {}) {
         fistStableCount = Math.max(0, fistStableCount - 1);
       }
 
-      // ---- 张掌按下检测：张掌相当于鼠标按下，移动期间可旋转/拖动 ----
-      if (palmOpen && pinchState === 'idle' && !fistActive) {
+      // ---- 可选张掌交互（生产配置关闭；自然张掌保持闲置） ----
+      if (palmInteractionEnabled && palmOpen && pinchState === 'idle' && !fistActive) {
         palmReleaseStableCount = 0;
         palmStableCount++;
         if (palmStableCount >= palmPressStableFrames && !palmActive) {
@@ -339,7 +340,7 @@ export function createGestureClassifier({ onGesture, config } = {}) {
           // the hand turns sideways during a drag.
           onGesture?.(palmEvent('move'));
         }
-      } else if (!palmOpen) {
+      } else if (!palmOpen || !palmInteractionEnabled) {
         palmStableCount = Math.max(0, palmStableCount - 1);
       }
 
@@ -401,6 +402,23 @@ export function createGestureClassifier({ onGesture, config } = {}) {
       } else if (pinchState === 'idle' && pinchDist >= pinchStartRatio) {
         pinchStableCount = 0;
       }
+
+      onDiagnostic?.({
+        timestamp,
+        raw_pinch_ratio: rawPinchDist,
+        filtered_pinch_ratio: pinchDist,
+        pinch_start_ratio: pinchStartRatio,
+        pinch_release_ratio: pinchReleaseRatio,
+        pinch_state: pinchState,
+        pinch_stable_frames: pinchStableCount,
+        pinch_release_frames: pinchReleaseStableCount,
+        pinch_candidate: pinchDist < pinchStartRatio,
+        palm_candidate: palmOpen,
+        palm_interaction_enabled: palmInteractionEnabled,
+        palm_active: palmActive,
+        fist_candidate: fistClosed,
+        fist_active: fistActive,
+      });
 
       // ---- 指针移动 ----
       // 指针锚定在掌心：指尖在任何手型变化（捏合、收指）下都会移动，

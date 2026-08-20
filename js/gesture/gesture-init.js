@@ -15,6 +15,8 @@ import { createGestureHelp } from './gesture-help.js';
 import { createGestureHandOverlay } from './gesture-hand-overlay.js';
 import { createVirtualPointer } from './virtual-pointer.js';
 import { loadGestureSettings, saveGestureSettings, effectiveConfig } from './gesture-settings.js';
+import { shouldBeginDirectPalmDrag } from './gesture-drag-policy.js';
+import { createGestureDiagnostics } from './gesture-diagnostics.js';
 
 let instance = null;
 
@@ -39,6 +41,7 @@ export function initGesture({ onVoiceStateChange } = {}) {
   const handOverlay = createGestureHandOverlay();
   const virtualPointer = createVirtualPointer();
   const help = createGestureHelp();
+  const diagnostics = createGestureDiagnostics();
 
   let currentHovered = null;
   let currentDragTarget = null;
@@ -122,6 +125,14 @@ export function initGesture({ onVoiceStateChange } = {}) {
     onEvent(event) {
       if (event.type === 'hand-landmarks') { handOverlay.update(event.landmarks); return; }
       if (event.type === 'hand-landmarks-clear') { handOverlay.hide(); return; }
+      if (!['pointer-move', 'pinch-move'].includes(event.type)) {
+        diagnostics.record('input-event', {
+          type: event.type,
+          was_click: event.wasClick,
+          duration_ms: event.duration,
+          source: event.source || '',
+        });
+      }
       if (!coordinator.isGestureTypeAllowed(event.type)) return;
 
       switch (event.type) {
@@ -194,6 +205,7 @@ export function initGesture({ onVoiceStateChange } = {}) {
             at: Date.now(),
           };
           document.dispatchEvent(new CustomEvent('sh-crafted:gesture-action', { detail: window.__gestureLastAction }));
+          diagnostics.record('action', window.__gestureLastAction);
 
           actionRegistry.execute('gesture-click', {
             target: resolved,
@@ -213,6 +225,12 @@ export function initGesture({ onVoiceStateChange } = {}) {
           virtualPointer.down(resolved, event.screenX, event.screenY);
           cursor.setPinching(true);
           handOverlay.setAction('pinching');
+          diagnostics.record('press-target', {
+            gesture: 'thumb-index-pinch',
+            layer: resolved?.layer || 'empty',
+            context: resolved?.context || resolved?.name || '',
+            target: targetLabel(resolved),
+          });
           break;
         }
 
@@ -229,7 +247,7 @@ export function initGesture({ onVoiceStateChange } = {}) {
           endSceneDrag();
           cursor.setPinching(false);
           if (!longPressActive) {
-            handOverlay.setAction('tracking');
+            handOverlay.setAction('idle');
             currentPressTarget = null;
           }
           break;
@@ -239,6 +257,12 @@ export function initGesture({ onVoiceStateChange } = {}) {
           longPressActive = true;
           cursor.setLongPress(true);
           handOverlay.setAction('longpress');
+          diagnostics.record('long-press', {
+            phase: 'start',
+            duration_ms: event.duration,
+            layer: currentPressTarget?.layer || 'empty',
+            target: targetLabel(currentPressTarget),
+          });
           // 只有锁定在 Three 画布上的长按才能取得场景拖拽所有权。
           // DOM 控件（尤其地图上的非遗图片）永远不会穿透旋转后方地图。
           if (currentPressTarget?.layer === 'three_scene' && !currentDragTarget) {
@@ -258,7 +282,7 @@ export function initGesture({ onVoiceStateChange } = {}) {
           cursor.setLongPress(false);
           currentPressTarget = null;
           pendingClickTarget = null;
-          handOverlay.setAction('tracking');
+          handOverlay.setAction('idle');
           break;
         }
 
@@ -280,7 +304,7 @@ export function initGesture({ onVoiceStateChange } = {}) {
 
         case 'air-drag-end': {
           endSceneDrag();
-          handOverlay.setAction('tracking');
+          handOverlay.setAction('idle');
           break;
         }
 
@@ -290,9 +314,10 @@ export function initGesture({ onVoiceStateChange } = {}) {
           pendingClickTarget = null;
           longPressActive = false;
           virtualPointer.down(resolved, event.screenX, event.screenY);
-          // 张掌是明确的直接操作手势，仍可立即接管 Three 画布；DOM
-          // 目标则由虚拟指针独占，不允许兜底到画布。
-          beginSceneDrag(resolved);
+          // 部分全屏场景（地图）把自然放松的张掌识别成持续按下时，会被
+          // 摄像头抖动带着移动。此类场景关闭直接张掌拖拽，但仍保留捏合
+          // 长按后的精确拖拽；其他场景继续沿用原有的张掌直接操作。
+          if (shouldBeginDirectPalmDrag(resolved)) beginSceneDrag(resolved);
           cursor.setPinching(true);
           handOverlay.setAction('palmpress');
           break;
@@ -310,7 +335,7 @@ export function initGesture({ onVoiceStateChange } = {}) {
           }
           cursor.setPinching(false);
           if (!longPressActive) {
-            handOverlay.setAction('tracking');
+            handOverlay.setAction('idle');
             currentPressTarget = null;
           }
           break;
@@ -325,7 +350,7 @@ export function initGesture({ onVoiceStateChange } = {}) {
         }
 
         case 'fist-end': {
-          handOverlay.setAction('tracking');
+          handOverlay.setAction('idle');
           break;
         }
 
@@ -380,6 +405,11 @@ export function initGesture({ onVoiceStateChange } = {}) {
       if (window.__gestureMetrics) {
         window.__gestureMetrics = summary;
       }
+    },
+
+    onDiagnostic(category, data, sampled = false) {
+      if (sampled) diagnostics.sample(category, data, 200);
+      else diagnostics.record(category, data);
     },
   });
 
@@ -506,6 +536,7 @@ export function initGesture({ onVoiceStateChange } = {}) {
     cursor,
     toggle,
     status,
+    diagnostics,
 
     // 视图注册其交互上下文
     registerViewContext(viewId, { threeContexts = [], scrollZones = [], clickTargets = [] } = {}) {
@@ -588,9 +619,11 @@ export function initGesture({ onVoiceStateChange } = {}) {
       currentHovered = null;
       currentDragTarget = null;
       window.__gestureSystem = null;
+      window.__gestureDiagnostics = null;
       instance = null;
     },
   };
+  window.__gestureDiagnostics = diagnostics;
 
   window.__gestureSystem = instance;
   document.dispatchEvent(new CustomEvent('sh-crafted:gesture-ready', { detail: { system: instance } }));

@@ -29,6 +29,7 @@ export function createTargetResolver({ hitSlopPx = 28, threeHitSlopPx = 24 } = {
       targets: context.targets,       // Array of meshes (live reference)
       getTargets: context.getTargets,
       interactiveCanvas: context.interactiveCanvas !== false,
+      allowDirectPalmDrag: context.allowDirectPalmDrag !== false,
       rendererDomElement: context.rendererDomElement,
     });
   }
@@ -213,6 +214,7 @@ export function createTargetResolver({ hitSlopPx = 28, threeHitSlopPx = 24 } = {
           screen: { x: screenX, y: screenY },
           hitScreen,
           gestureExpanded: hitScreen.x !== screenX || hitScreen.y !== screenY,
+          allowDirectPalmDrag: ctx.allowDirectPalmDrag,
         };
       }
 
@@ -226,6 +228,7 @@ export function createTargetResolver({ hitSlopPx = 28, threeHitSlopPx = 24 } = {
           element: ctx.rendererDomElement,
           mesh: null,
           group: null,
+          allowDirectPalmDrag: ctx.allowDirectPalmDrag,
           ndc: { x: ndcX, y: ndcY },
           screen: { x: screenX, y: screenY },
         };

@@ -2806,9 +2806,11 @@ body:has(.admin-page) .gesture-toggle { display: none !important; }
 
 .gs-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   margin-top: 10px;
 }
+.gs-actions button { flex: 1 1 46%; }
 
 /* ---- 帮助覆盖层 ---- */
 .gh-head {

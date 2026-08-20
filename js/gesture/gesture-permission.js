@@ -20,7 +20,7 @@ export function createGesturePermission({ onAccept, onDecline } = {}) {
     overlay = el('div', { class: 'gesture-permission-overlay', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'gp-heading' }, [
       el('div', { class: 'gesture-permission-card' }, [
         el('h2', { id: 'gp-heading', text: '隔空手势' }),
-        el('p', { class: 'gp-lead', text: '开启摄像头后，页面会显示跟随你的半透明虚拟手：食指移动，张掌按住并移动可旋转，收掌释放，握拳缩小，捏合用于点击和长按。' }),
+        el('p', { class: 'gp-lead', text: '开启摄像头后，页面会显示跟随你的半透明虚拟手：移动手掌控制指针，拇指与食指捏合用于点击和长按，其他普通姿态保持闲置。' }),
 
         el('div', { class: 'gp-section' }, [
           el('h3', { text: '我们会做什么' }),

@@ -10,6 +10,7 @@ const DEFAULTS = Object.freeze({
   calibration: null,          // { centerX, centerY, rangeX, rangeY } | null
   firstTimeCompleted: false,
   showHelpOnStart: true,
+  longPressMs: 700,
   palmPressStableFrames: 5,
   palmReleaseStableFrames: 4,
   palmDragSmoothing: 0.58,
@@ -101,7 +102,10 @@ export function effectiveConfig(settings) {
     // 手掌锚点的逐帧平滑系数
     dragSmoothing: 0.38,
     // 持续捏合进入长按的时间
-    longPressMs: 520,
+    longPressMs: Math.max(400, Math.min(1400, Number(s.longPressMs) || 700)),
+    // 自然张掌只用于保持手部追踪，不再解释为鼠标按下。所有点击与
+    // 长按都必须从拇指/食指捏合状态机开始。
+    palmInteractionEnabled: false,
     // 张掌进入鼠标按下状态的稳定帧数
     palmPressStableFrames: Math.max(2, Math.min(10, Number(s.palmPressStableFrames) || 5)),
     // 张掌短暂识别抖动不会立即释放拖拽

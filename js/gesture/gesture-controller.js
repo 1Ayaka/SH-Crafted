@@ -35,6 +35,7 @@ export function createGestureController({
   onNotice,
   onError,
   onMetrics,
+  onDiagnostic,
   getActiveThreeContext, // () => 当前活跃的 Three.js 场景信息
   getHoveredTarget,      // () => 当前已解析的悬停目标
 } = {}) {
@@ -78,6 +79,12 @@ export function createGestureController({
 
   function emitPointerSemanticEvents(events, screen, timestamp) {
     for (const semantic of events || []) {
+      onDiagnostic?.('pointer-semantic', {
+        type: semantic.type,
+        elapsed_ms: semantic.elapsed,
+        distance_px: semantic.distance,
+        pointer_state: pointerGesture.state(),
+      });
       if (semantic.type === 'long-press-start' || semantic.type === 'long-press-end') {
         onEvent?.({
           type: semantic.type,
@@ -113,6 +120,13 @@ export function createGestureController({
     const now = performance.now();
     lastGestureType = event.type;
     lastGestureAt = now;
+    if (event.type !== 'cursor') {
+      onDiagnostic?.('classifier-event', {
+        type: event.type,
+        phase: event.phase || '',
+        distance: event.distance,
+      });
+    }
 
     switch (event.type) {
       case 'cursor': {
@@ -355,6 +369,15 @@ export function createGestureController({
     try {
       // 初始化组件
       const effConfig = config();
+      onDiagnostic?.('gesture-config', {
+        pinch_start_ratio: effConfig.pinchStartRatio,
+        pinch_release_ratio: effConfig.pinchReleaseRatio,
+        pinch_stable_frames: effConfig.pinchStableFrames,
+        long_press_ms: effConfig.longPressMs,
+        click_slop_px: effConfig.clickSlopPx,
+        hold_slop_px: effConfig.holdSlopPx,
+        palm_interaction_enabled: effConfig.palmInteractionEnabled,
+      });
       camera = createCameraManager({ onFrame, onError: onCameraError });
       mapper = createCoordinateMapper({
         viewportWidth: window.innerWidth,
@@ -370,6 +393,7 @@ export function createGestureController({
 
       classifier = createGestureClassifier({
         onGesture: handleGesture,
+        onDiagnostic: (data) => onDiagnostic?.('classification-sample', data, true),
         config: effConfig,
       });
 

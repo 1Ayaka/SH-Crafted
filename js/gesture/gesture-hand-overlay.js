@@ -7,7 +7,7 @@ const CONNECTIONS = [
 ];
 
 const ACTION_LABELS = {
-  tracking: '食指移动指针',
+  idle: '闲置 · 移动手掌控制指针',
   pinching: '捏合中 · 松开点击',
   palmpress: '张掌按住 · 松开',
   dragging: '按住移动 · 旋转',
@@ -29,7 +29,7 @@ export function createGestureHandOverlay() {
   let badge = null;
   let guide = null;
   let points = null;
-  let action = 'tracking';
+  let action = 'idle';
   let visible = false;
 
   function mount() {
@@ -41,15 +41,15 @@ export function createGestureHandOverlay() {
     badge.className = 'gesture-hand-action';
     badge.setAttribute('role', 'status');
     badge.setAttribute('aria-live', 'polite');
-    badge.textContent = ACTION_LABELS.tracking;
+    badge.textContent = ACTION_LABELS.idle;
     guide = document.createElement('aside');
     guide.className = 'gesture-live-guide';
     guide.setAttribute('aria-label', '手势操作说明');
     guide.innerHTML = `
       <strong>隔空手势</strong>
-      <span>食指移动指针</span>
-      <span>张掌按住旋转 · 收掌释放</span>
-      <span>捏合点击/长按 · 握拳缩小</span>
+      <span>移动手掌控制指针</span>
+      <span>拇指与食指短捏合：点击</span>
+      <span>持续捏合：长按 · 握拳：缩小</span>
       <button type="button" aria-label="隐藏手势说明">知道了</button>`;
     guide.querySelector('button').addEventListener('click', () => guide.classList.remove('is-visible'));
     document.body.append(canvas, badge, guide);
@@ -109,8 +109,8 @@ export function createGestureHandOverlay() {
     draw();
   }
 
-  function setAction(next = 'tracking') {
-    action = ACTION_LABELS[next] ? next : 'tracking';
+  function setAction(next = 'idle') {
+    action = ACTION_LABELS[next] ? next : 'idle';
     mount();
     badge.textContent = ACTION_LABELS[action];
     badge.dataset.action = action;

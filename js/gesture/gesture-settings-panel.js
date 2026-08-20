@@ -11,10 +11,12 @@ export function createGestureSettingsPanel({ onClose } = {}) {
     const cursorSpeedLabel = el('span', { class: 'gs-range-label' });
     const pinchLabel = el('span', { class: 'gs-range-label' });
     const hitSlopLabel = el('span', { class: 'gs-range-label' });
+    const longPressLabel = el('span', { class: 'gs-range-label' });
     sensitivityLabel.textContent = `${Number(settings.sensitivity ?? 0.5).toFixed(1)}×`;
     cursorSpeedLabel.textContent = `${Number(settings.cursorSpeed ?? 0.5).toFixed(1)}×`;
     pinchLabel.textContent = Number(settings.pinchStartRatio ?? 0.29).toFixed(2);
     hitSlopLabel.textContent = `${Math.round(Number(settings.hitSlopPx ?? 30))}px`;
+    longPressLabel.textContent = `${Math.round(Number(settings.longPressMs ?? 700))}ms`;
 
     return el('div', { class: 'gesture-settings-overlay', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'gs-heading' }, [
       el('div', { class: 'gesture-settings-card' }, [
@@ -89,6 +91,22 @@ export function createGestureSettingsPanel({ onClose } = {}) {
           hitSlopLabel,
         ]),
 
+        el('div', { class: 'gs-field' }, [
+          el('label', { text: '持续捏合进入长按' }),
+          el('input', {
+            type: 'range', min: '400', max: '1400', step: '50',
+            'aria-label': '持续捏合进入长按的时间',
+            value: String(settings.longPressMs ?? 700),
+            oninput: (e) => {
+              settings.longPressMs = parseInt(e.target.value, 10);
+              longPressLabel.textContent = `${settings.longPressMs}ms`;
+              persist();
+            },
+          }),
+          longPressLabel,
+          el('small', { class: 'muted', text: '调整后刷新页面生效。' }),
+        ]),
+
         // 手势开关
         el('div', { class: 'gs-field gs-field-check' }, [
           el('label', { text: '开机自启手势' }),
@@ -104,6 +122,12 @@ export function createGestureSettingsPanel({ onClose } = {}) {
 
         // 重置
         el('div', { class: 'gs-actions' }, [
+          el('button', { class: 'btn-ghost', text: '导出诊断日志', onclick: () => {
+            window.__gestureDiagnostics?.download?.();
+          } }),
+          el('button', { class: 'btn-ghost', text: '清空日志', onclick: () => {
+            window.__gestureDiagnostics?.clear?.();
+          } }),
           el('button', { class: 'btn-ghost', text: '恢复默认', onclick: () => {
             resetGestureSettings();
             dismiss();
