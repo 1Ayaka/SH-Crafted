@@ -1,7 +1,7 @@
 // 小蕉智能体侧栏 —— DeepSeek 模型应答 + 检索式降级
 // 慢路径（非材料/动作/工序直读）优先走 server.mjs 的 /api/agent 代理（密钥只在服务器侧）；
 // 代理不可用（无密钥/超时/5xx）时静默降级为基于资料库的检索式占位应答，并提示降级状态
-import { el, jiaoToast, openEvidenceModal } from './ui.js';
+import { el, openEvidenceModal } from './ui.js';
 import { evidenceTimecode, isContentReviewed } from './data.js';
 import { buildAgentContext as buildUIAgentContext } from './agent/context-builder.js';
 import { createToolRegistry } from './agent/tool-registry.js';
@@ -164,7 +164,10 @@ function ensureVoice() {
     },
     onWake() {
       api.open();
-      jiaoToast('哎，我在呢', [], { duration: 2400, className: 'jiao-toast-wake' });
+      panel.nodes.log?.querySelector('.ap-wake-ack')?.remove();
+      const acknowledgement = addMsg('agent', [el('p', { text: '哎，我在呢' })], '小蕉');
+      acknowledgement?.classList.add('ap-wake-ack');
+      setTimeout(() => acknowledgement?.isConnected && acknowledgement.remove(), 2400);
     },
     getContext: () => currentAgentContext(),
     getHotwords: () => [panel.craft?.title, ...(panel.craft?.aliases || [])].filter(Boolean),

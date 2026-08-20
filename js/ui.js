@@ -90,10 +90,10 @@ export function openEvidenceModal(craft, evidenceIds, { title = '纪录片证据
   return openModal({ title, body });
 }
 
-export function jiaoToast(message, actions = [], { duration = 12000, className = '' } = {}) {
+export function jiaoToast(message, actions = []) {
   const root = document.getElementById('toast-root');
   root.querySelector('.jiao-toast')?.remove();
-  const toast = el('div', { class: `jiao-toast${className ? ` ${className}` : ''}`, role: 'status' }, [
+  const toast = el('div', { class: 'jiao-toast', role: 'status' }, [
     catSVG(),
     el('div', { style: { flex: '1' } }, [
       el('p', { text: message }),
@@ -105,5 +105,5 @@ export function jiaoToast(message, actions = [], { duration = 12000, className =
     el('button', { class: 'jt-dismiss', text: '×', 'aria-label': '暂不', onclick: () => toast.remove() }),
   ]);
   root.appendChild(toast);
-  setTimeout(() => toast.isConnected && toast.remove(), duration);
+  setTimeout(() => toast.isConnected && toast.remove(), 12000);
 }

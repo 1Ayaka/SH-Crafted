@@ -1422,12 +1422,6 @@ a:hover { color: var(--terracotta); }
 .jiao-toast .jt-actions { display: flex; gap: 8px; margin-top: 8px; }
 .jiao-toast .jt-actions button { font-size: 12px; color: var(--moss); text-decoration: underline; }
 .jiao-toast .jt-dismiss { color: var(--ink-faint); font-size: 15px; line-height: 1; padding: 2px; }
-.jiao-toast-wake {
-  align-items: center; min-width: 190px; padding: 12px 15px;
-  border-color: rgba(166,84,57,0.46); box-shadow: 0 14px 36px rgba(43,51,39,0.2);
-}
-.jiao-toast-wake p { color: var(--ink); font-size: 15px; font-weight: 600; }
-.jiao-toast-wake .jt-dismiss { display: none; }
 
 /* ---------- 证据浮窗 ---------- */
 .modal-mask {
