@@ -164,7 +164,10 @@ function ensureVoice() {
       if (response) panel.voice?.speak?.(response.slice(0, 220));
     },
     onWake() {
-      panel.companion?.show('哎，我在呢 👋', { duration: 2400, withAction: false });
+      panel.companion?.show('哎，我在呢 👋', { duration: 1100, withAction: false });
+      setTimeout(() => {
+        if (panel.nodes.panel?.isConnected) api.open();
+      }, 900);
     },
     getContext: () => currentAgentContext(),
     getHotwords: () => [panel.craft?.title, ...(panel.craft?.aliases || [])].filter(Boolean),
