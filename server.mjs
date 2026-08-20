@@ -2377,7 +2377,7 @@ async function handleVoiceConfigApi(req, res) {
     provider: VOICE_STT_PROVIDER,
     local_wake_word: false,
     wake_word_mode: VOICE_STT_PROVIDER === 'funasr-local' ? 'server_phrase_gate_single_turn' : 'browser_phrase_gate_single_turn',
-    wake_word_status: VOICE_STT_PROVIDER === 'funasr-local' ? 'available_with_opt_in' : 'fallback_only',
+    wake_word_status: VOICE_STT_PROVIDER === 'funasr-local' ? 'enabled_by_default' : 'fallback_only',
     wake_single_turn: true,
     browser_speech_fallback: true,
     tts: 'browser',
