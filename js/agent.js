@@ -157,17 +157,14 @@ function ensureVoice() {
   if (panel.voice) return panel.voice;
   panel.voice = createVoiceController({
     async onTranscript(text) {
+      api.open({ skipGreeting: true });
       await answer(text);
       if (panel.voice?.state?.() === VOICE_STATES.SPEAKING || /^(停|别说了|停止朗读|取消)$/.test(String(text).trim())) return;
       const response = [...(panel.nodes.log?.querySelectorAll('.ap-msg.agent .bubble') || [])].at(-1)?.innerText?.trim();
       if (response) panel.voice?.speak?.(response.slice(0, 220));
     },
     onWake() {
-      api.open();
-      panel.nodes.log?.querySelector('.ap-wake-ack')?.remove();
-      const acknowledgement = addMsg('agent', [el('p', { text: '哎，我在呢' })], '小蕉');
-      acknowledgement?.classList.add('ap-wake-ack');
-      setTimeout(() => acknowledgement?.isConnected && acknowledgement.remove(), 2400);
+      panel.companion?.show('哎，我在呢 👋', { duration: 2400, withAction: false });
     },
     getContext: () => currentAgentContext(),
     getHotwords: () => [panel.craft?.title, ...(panel.craft?.aliases || [])].filter(Boolean),

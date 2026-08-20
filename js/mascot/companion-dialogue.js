@@ -8,6 +8,16 @@ const clip = (value, length = 62) => {
   return `${short.slice(0, stop > 28 ? stop + 1 : length)}…`;
 };
 
+const EMOTION_EMOJI = Object.freeze({
+  walk: '🐾', sleep: '💤', deep_sleep: '💤', wake: '👋', tap: '🐾',
+  grab: '😳', drop: '💨', land: '😵', recover: '✨', joy_jump: '✨', platform_jump: '🐾',
+});
+
+const express = (type, text) => {
+  const emoji = EMOTION_EMOJI[type];
+  return emoji && text ? `${text} ${emoji}` : text;
+};
+
 function messageFor(type, payload = {}) {
   if (type === 'walk') return pick([
     '我去旁边转转，你慢慢看。',
@@ -242,7 +252,7 @@ export function createCompanionDialogue({ anchor, onOpenAgent } = {}) {
     if (semantic && key === lastSemanticKey && now - lastSemanticAt < 4500) return;
     if (semantic && now - lastSemanticAt < 1300) return;
     if (semantic) { lastSemanticKey = key; lastSemanticAt = now; }
-    const text = messageFor(type, payload);
+    const text = express(type, messageFor(type, payload));
     const continuation = { type, payload: { ...payload }, text };
     if (semantic) {
       lastSemanticContinuation = continuation;
