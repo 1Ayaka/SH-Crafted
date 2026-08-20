@@ -44,6 +44,7 @@
     "graph:test-ui": "node scripts/smoke-heritage-graph-ui.mjs",
     "gesture:test": "node scripts/test-gesture.mjs",
     "voice:test": "node scripts/test-voice-state-machine.mjs",
+    "voice:test-wake": "node scripts/test-voice-wake-word.mjs",
     "voice:test-single": "node scripts/test-voice-single-utterance.mjs",
     "voice:test-lifecycle": "node scripts/test-voice-session-lifecycle.mjs",
     "voice:test-protocol": "node scripts/test-funasr-protocol.mjs",

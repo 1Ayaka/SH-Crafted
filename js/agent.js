@@ -227,11 +227,21 @@ function updateVoiceStatus() {
     AWAKENED: '已唤醒，请说话', LISTENING: '正在聆听', TRANSCRIBING: '正在识别', THINKING: '正在思考',
     CONFIRMING: '等待确认', EXECUTING: '正在执行', SPEAKING: '正在朗读', SUSPENDED: '已暂停，请点击恢复', ERROR: '语音暂不可用',
   };
-  node.textContent = labels[panel.voiceStatus] || panel.voiceStatus;
+  const voicePreferences = panel.voice?.preferences?.();
+  node.textContent = panel.voiceStatus === VOICE_STATES.DISABLED && voicePreferences?.wakeEnabled
+    ? '语音唤醒默认开启，正在准备麦克风'
+    : (labels[panel.voiceStatus] || panel.voiceStatus);
   node.dataset.voiceState = panel.voiceStatus;
-  if (panel.nodes.wakeButton && panel.voice) panel.nodes.wakeButton.textContent = panel.voice.supported().serverWake
-    ? (panel.voice.state() === VOICE_STATES.SUSPENDED ? '恢复“小蕉小蕉”唤醒' : (panel.voice.preferences().wakeEnabled && panel.voice.state() !== VOICE_STATES.DISABLED ? '关闭“小蕉小蕉”唤醒' : '开启“小蕉小蕉”唤醒'))
-    : '语音唤醒（服务未就绪）';
+  if (panel.nodes.wakeButton && panel.voice) {
+    const voiceState = panel.voice.state();
+    const wakeRunning = panel.voice.preferences().wakeEnabled
+      && ![VOICE_STATES.DISABLED, VOICE_STATES.SUSPENDED, VOICE_STATES.ERROR].includes(voiceState);
+    panel.nodes.wakeButton.textContent = panel.voice.supported().serverWake
+      ? (voiceState === VOICE_STATES.SUSPENDED
+        ? '恢复“小蕉小蕉”唤醒'
+        : (wakeRunning ? '关闭“小蕉小蕉”唤醒' : '开启“小蕉小蕉”唤醒'))
+      : '语音唤醒（服务未就绪）';
+  }
   if (panel.nodes.micButton) {
     const state = panel.voiceStatus;
     panel.nodes.micButton.textContent = state === VOICE_STATES.LISTENING
@@ -936,7 +946,7 @@ function render() {
     onclick: async () => {
       const voice = ensureVoice();
       try {
-        if (voice.preferences().wakeEnabled && voice.state() !== VOICE_STATES.DISABLED && voice.state() !== VOICE_STATES.SUSPENDED) {
+        if (voice.preferences().wakeEnabled && ![VOICE_STATES.DISABLED, VOICE_STATES.SUSPENDED, VOICE_STATES.ERROR].includes(voice.state())) {
           voice.setPreferences({ wake_enabled: false });
         } else {
           await voice.start({ wake: true });
@@ -994,8 +1004,16 @@ function render() {
     relationshipText.textContent = value.label;
   });
   refreshNotice();
+  const voice = ensureVoice();
   updateVoiceStatus();
   setMascotState(mascotStateForVoice());
+  if (voice.preferences().wakeEnabled && voice.supported().serverWake && voice.state() === VOICE_STATES.DISABLED) {
+    // 默认启动唤醒监听。首次访问仍由浏览器负责展示并记住麦克风授权。
+    queueMicrotask(() => voice.start({ wake: true }).catch((error) => {
+      showVoiceFeedback(voiceFailureText(error), 'error');
+      updateVoiceStatus();
+    }));
+  }
 }
 
 const api = {

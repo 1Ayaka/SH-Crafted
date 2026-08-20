@@ -3,11 +3,16 @@ import { BrowserSpeechToTextAdapter, BrowserTextToSpeechAdapter } from './adapte
 import { FunASRSpeechToTextAdapter } from './funasr-speech-to-text-adapter.js';
 
 const DEFAULTS = Object.freeze({
-  wakeWords: ['小蕉小蕉'], wakeEnabled: false, speechRate: 1, promptSound: true,
+  wakeWords: ['小蕉小蕉'], wakeEnabled: true, speechRate: 1, promptSound: true,
   continuousSeconds: 20, ttsEnabled: true, sttProvider: 'funasr-local', singleTurnWake: true,
+  preferenceVersion: 2,
 });
 const PREF_KEY = 'sh-crafted.voice-preferences';
-const WAKE_VARIANT_RE = /小[蕉焦交娇]小[蕉焦交娇]/;
+const WAKE_VARIANT_CHARACTERS = '蕉焦交娇胶椒礁骄脚叫';
+const WAKE_SEPARATOR = '[\\s，。！？、：；,.!?;·~～—-]*';
+const WAKE_DOUBLE_RE = new RegExp(`小[${WAKE_VARIANT_CHARACTERS}]${WAKE_SEPARATOR}小[${WAKE_VARIANT_CHARACTERS}]`);
+const WAKE_SINGLE_RE = new RegExp(`^${WAKE_SEPARATOR}小[${WAKE_VARIANT_CHARACTERS}]`);
+const WAKE_HOTWORDS = ['小蕉小蕉', '小焦小焦', '小娇小娇', '小胶小胶', '小椒小椒', '小蕉', '小焦'];
 
 export function createSingleUtteranceDetector({
   startThreshold = 0.014,
@@ -42,8 +47,22 @@ export function createSingleUtteranceDetector({
   };
 }
 
+export function resolveVoicePreferences(stored = {}) {
+  const source = stored && typeof stored === 'object' ? stored : {};
+  const resolved = { ...DEFAULTS, ...source, preferenceVersion: DEFAULTS.preferenceVersion };
+  // 旧版把“关闭”作为出厂默认并存入了浏览器。升级时统一迁移为默认开启；
+  // 新版之后用户主动关闭仍会被正常保留。
+  if (Number(source.preferenceVersion || 0) < DEFAULTS.preferenceVersion) resolved.wakeEnabled = true;
+  return resolved;
+}
+
 function loadPreferences() {
-  try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(PREF_KEY) || '{}') }; } catch { return { ...DEFAULTS }; }
+  try {
+    const stored = JSON.parse(localStorage.getItem(PREF_KEY) || '{}');
+    const resolved = resolveVoicePreferences(stored);
+    if (JSON.stringify(stored) !== JSON.stringify(resolved)) localStorage.setItem(PREF_KEY, JSON.stringify(resolved));
+    return resolved;
+  } catch { return { ...DEFAULTS }; }
 }
 
 function errorMessage(error) {
@@ -62,14 +81,18 @@ function errorMessage(error) {
   return messages[code] || `语音识别暂时不可用（${code}），可以改用文字输入。`;
 }
 
-function wakeMatch(text, wakeWords) {
+export function wakeMatch(text, wakeWords = DEFAULTS.wakeWords) {
   const source = String(text || '').trim();
   for (const word of wakeWords) {
     const index = source.indexOf(word);
     if (index >= 0) return { matched: true, command: source.slice(index + word.length).replace(/^[，。！？、：,.!?\s]+/, '') };
   }
-  const variant = source.match(WAKE_VARIANT_RE);
-  return variant ? { matched: true, command: source.slice((variant.index || 0) + variant[0].length).replace(/^[，。！？、：,.!?\s]+/, '') } : { matched: false, command: '' };
+  const doubled = source.match(WAKE_DOUBLE_RE);
+  if (doubled) return { matched: true, command: source.slice((doubled.index || 0) + doubled[0].length).replace(/^[，。！？、：；,.!?;\s]+/, '') };
+  // 语音模型偶尔会吞掉一次重复。只在句首接受单个“小蕉/同音词”，避免正文中偶然提及误唤醒。
+  const single = source.match(WAKE_SINGLE_RE);
+  if (single) return { matched: true, command: source.slice(single[0].length).replace(/^[，。！？、：；,.!?;\s]+/, '') };
+  return { matched: false, command: '' };
 }
 
 export function createVoiceController({ onTranscript, onPartialTranscript, onStateChange, onNotice, onWake, getContext, getHotwords } = {}) {
@@ -126,8 +149,11 @@ export function createVoiceController({ onTranscript, onPartialTranscript, onSta
     if (destroyed) return '';
     const adapter = provider === 'browser' ? browser : funasr;
     const utterance = createSingleUtteranceDetector({
+      startThreshold: wakeScan ? 0.010 : 0.014,
+      continueThreshold: wakeScan ? 0.006 : 0.008,
       endSilenceMs: wakeScan ? 1100 : 900,
-      noSpeechTimeoutMs: wakeScan ? 12000 : 7000,
+      noSpeechTimeoutMs: wakeScan ? 15000 : 7000,
+      minimumSpeechMs: wakeScan ? 180 : 260,
     });
     utterance.start();
     active = { cancelled: false, stopping: false, utterance };
@@ -136,7 +162,7 @@ export function createVoiceController({ onTranscript, onPartialTranscript, onSta
     try {
       const promise = adapter.listen({
         context: getContext?.() || {},
-        hotwords: [...preferences.wakeWords, ...(getHotwords?.() || [])].filter(Boolean).slice(0, 24),
+        hotwords: [...preferences.wakeWords, ...WAKE_HOTWORDS, ...(getHotwords?.() || [])].filter(Boolean).slice(0, 24),
         onStart: () => {
           transition(wakeScan ? VOICE_STATES.WAKE_LISTENING : VOICE_STATES.LISTENING);
           onNotice?.(wakeScan ? '正在等待“小蕉小蕉”' : '正在聆听');
@@ -205,8 +231,6 @@ export function createVoiceController({ onTranscript, onPartialTranscript, onSta
       } catch (error) {
         if (generation !== loopGeneration || destroyed || !preferences.wakeEnabled || String(error?.message).includes('CANCELLED')) return;
         onNotice?.(errorMessage(error));
-        preferences.wakeEnabled = false;
-        persist();
         transition(VOICE_STATES.ERROR, { error: error?.message });
         return;
       }
@@ -298,13 +322,20 @@ export function createVoiceController({ onTranscript, onPartialTranscript, onSta
     cancelRecognition();
     transition(VOICE_STATES.SUSPENDED, { reason });
   };
-  const onVisibility = () => { if (document.hidden) suspend('page_hidden'); };
+  const onVisibility = () => {
+    if (document.hidden) suspend('page_hidden');
+    else if (preferences.wakeEnabled && machine.state() === VOICE_STATES.SUSPENDED) {
+      void start({ wake: true }).catch((error) => {
+        onNotice?.(errorMessage(error));
+        transition(VOICE_STATES.ERROR, { error: error?.message });
+      });
+    }
+  };
   const onPageHide = () => suspend('page_unload');
   document.addEventListener('visibilitychange', onVisibility);
   window.addEventListener('pagehide', onPageHide);
   const destroy = () => {
     destroyed = true;
-    preferences.wakeEnabled = false;
     stop();
     document.removeEventListener('visibilitychange', onVisibility);
     window.removeEventListener('pagehide', onPageHide);
