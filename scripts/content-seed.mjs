@@ -49,6 +49,8 @@ export async function buildContentSeed() {
     const draft = await readJson(join(directory, 'knowledge', 'knowledge_draft.json'));
     const claims = await readJsonl(join(directory, 'knowledge', 'claims.jsonl'));
     const steps = await readJsonl(join(directory, 'knowledge', 'process_steps.jsonl'));
+    const stepKeyframeDoc = await readJson(join(directory, 'media', 'step_keyframes.json'));
+    const stepKeyframes = new Map((stepKeyframeDoc.steps || []).map((item) => [item.step_id, item]));
     const curated = config.CRAFT_CONFIG[pkg.video_id] || {};
     crafts.push({
       id: pkg.video_id,
@@ -71,10 +73,13 @@ export async function buildContentSeed() {
       .sort((a, b) => (a.order_candidate ?? 999) - (b.order_candidate ?? 999))
       .forEach((step, stepIndex) => {
         const interaction = config.INTERACTION_OVERRIDES[step.step_id] || step.interaction_mapping || {};
+        const keyframe = stepKeyframes.get(step.step_id);
+        const keyframeUrl = keyframe?.frame_path ? `data/${pkg.directory}/${keyframe.frame_path}` : '';
         const action = interaction.action || {
           id: `${step.step_id}_action`,
           label: step.name || String(step.action || '').split(/[，。；,.;]/)[0].slice(0, 18) || `工序 ${stepIndex + 1}`,
         };
+        const stepLabel = step.name || action.label || `工序 ${stepIndex + 1}`;
         craftSteps.push({
           id: step.step_id,
           sort: stepIndex + 1,
@@ -91,6 +96,15 @@ export async function buildContentSeed() {
           correct_action_id: action.id,
           quick_fill: interaction.quick_fill || null,
           evidence_ids: step.evidence_ids || [],
+          step_image: keyframeUrl ? {
+            image_url: keyframeUrl,
+            alt: `${stepLabel}纪录片关键帧`,
+            source_time_ms: Number(keyframe.time_ms || 0),
+            evidence_id: keyframe.evidence_id || step.evidence_ids?.[0] || '',
+            match_level: keyframe.match_level || 'representative',
+            note: keyframe.note || '',
+          } : null,
+          documentary_clips: [],
           review_status: step.review_status || 'needs_review',
         });
       });

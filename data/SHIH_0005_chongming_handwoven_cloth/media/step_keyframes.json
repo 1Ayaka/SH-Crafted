@@ -1,0 +1,15 @@
+{
+  "schema": "sh-crafted.step-keyframes/v1",
+  "video_id": "SHIH_0005",
+  "source_status": "original_video_reviewed",
+  "source_name": "崇明土布纺织技艺.mp4",
+  "steps": [
+    { "step_id": "step_SHIH_0005_001", "frame_path": "media/keyframes/000508000.jpg", "time_ms": 508000, "evidence_id": "ev_SHIH_0005_0492000_0657000", "match_level": "direct", "note": "木锤敲击弓弦、弹松棉絮的操作画面。" },
+    { "step_id": "step_SHIH_0005_002", "frame_path": "media/keyframes/000528000.jpg", "time_ms": 528000, "evidence_id": "ev_SHIH_0005_0492000_0657000", "match_level": "direct", "note": "使用竹栅条将棉絮搓卷成棉条的画面。" },
+    { "step_id": "step_SHIH_0005_003", "frame_path": "media/keyframes/000546000.jpg", "time_ms": 546000, "evidence_id": "ev_SHIH_0005_0492000_0657000", "match_level": "direct", "note": "染缸内翻动纱线并完成上色的画面。" },
+    { "step_id": "step_SHIH_0005_004", "frame_path": "media/keyframes/000568000.jpg", "time_ms": 568000, "evidence_id": "ev_SHIH_0005_0492000_0657000", "match_level": "direct", "note": "不同颜色纱筒按设计要求排列整经的画面。" },
+    { "step_id": "step_SHIH_0005_005", "frame_path": "media/keyframes/000604000.jpg", "time_ms": 604000, "evidence_id": "ev_SHIH_0005_0492000_0657000", "match_level": "direct", "note": "织棕吊装到织布机活动支架的局部画面。" },
+    { "step_id": "step_SHIH_0005_006", "frame_path": "media/keyframes/000620000.jpg", "time_ms": 620000, "evidence_id": "ev_SHIH_0005_0492000_0657000", "match_level": "direct", "note": "将纱绕至芦苇短茎制成纱坨的画面。" },
+    { "step_id": "step_SHIH_0005_007", "frame_path": "media/keyframes/000636000.jpg", "time_ms": 636000, "evidence_id": "ev_SHIH_0005_0492000_0657000", "match_level": "direct", "note": "操作织布机并穿梭织布的完整场景。" }
+  ]
+}

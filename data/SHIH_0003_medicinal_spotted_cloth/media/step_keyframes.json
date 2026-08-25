@@ -1,0 +1,14 @@
+{
+  "schema": "sh-crafted.step-keyframes/v1",
+  "video_id": "SHIH_0003",
+  "source_status": "existing_evidence_frames",
+  "steps": [
+    { "step_id": "step_SHIH_0003_001", "frame_path": "media/keyframes/000536000.jpg", "time_ms": 536000, "evidence_id": "ev_SHIH_0003_0522000_0550000", "match_level": "direct", "note": "采收蓝草并制备染料原料的画面。" },
+    { "step_id": "step_SHIH_0003_002", "frame_path": "media/keyframes/000573750.jpg", "time_ms": 573750, "evidence_id": "ev_SHIH_0003_0566000_0628000", "match_level": "direct", "note": "按比例调配蓝靛与石灰的画面。" },
+    { "step_id": "step_SHIH_0003_003", "frame_path": "media/keyframes/000604750.jpg", "time_ms": 604750, "evidence_id": "ev_SHIH_0003_0566000_0628000", "match_level": "direct", "note": "观察染缸水色与状态的画面。" },
+    { "step_id": "step_SHIH_0003_004", "frame_path": "media/keyframes/000676000.jpg", "time_ms": 676000, "evidence_id": "ev_SHIH_0003_0653000_0699000", "match_level": "direct", "note": "使用专用工具刻制花版的画面。" },
+    { "step_id": "step_SHIH_0003_005", "frame_path": "media/keyframes/000742250.jpg", "time_ms": 742250, "evidence_id": "ev_SHIH_0003_0701000_0767000", "match_level": "direct", "note": "在布面刮制防染浆的操作画面。" },
+    { "step_id": "step_SHIH_0003_006", "frame_path": "media/keyframes/000779250.jpg", "time_ms": 779250, "evidence_id": "ev_SHIH_0003_0770000_0844000", "match_level": "direct", "note": "将布料放入染缸上色的画面。" },
+    { "step_id": "step_SHIH_0003_007", "frame_path": "media/keyframes/000816250.jpg", "time_ms": 816250, "evidence_id": "ev_SHIH_0003_0770000_0844000", "match_level": "direct", "note": "染后清洗布料的后处理画面。" }
+  ]
+}

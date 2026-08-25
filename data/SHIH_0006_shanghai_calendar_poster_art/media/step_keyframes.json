@@ -1,0 +1,11 @@
+{
+  "schema": "sh-crafted.step-keyframes/v1",
+  "video_id": "SHIH_0006",
+  "source_status": "original_video_reviewed",
+  "source_name": "月份牌年画.mp4",
+  "steps": [
+    { "step_id": "step_SHIH_0006_001", "frame_path": "media/keyframes/000705000.jpg", "time_ms": 705000, "evidence_id": "ev_SHIH_0006_0681000_0772000", "match_level": "direct", "note": "依据照片确定人物轮廓的画面。" },
+    { "step_id": "step_SHIH_0006_002", "frame_path": "media/keyframes/000709000.jpg", "time_ms": 709000, "evidence_id": "ev_SHIH_0006_0681000_0772000", "match_level": "direct", "note": "使用扎笔蘸炭精粉擦出明暗体积的近景。" },
+    { "step_id": "step_SHIH_0006_003", "frame_path": "media/keyframes/000713000.jpg", "time_ms": 713000, "evidence_id": "ev_SHIH_0006_0681000_0772000", "match_level": "direct", "note": "在完成明暗的画面上罩透明水彩色。" }
+  ]
+}

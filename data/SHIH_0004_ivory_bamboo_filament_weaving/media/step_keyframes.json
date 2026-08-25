@@ -1,0 +1,12 @@
+{
+  "schema": "sh-crafted.step-keyframes/v1",
+  "video_id": "SHIH_0004",
+  "source_status": "original_video_reviewed",
+  "source_name": "象牙篾丝编织.mp4",
+  "steps": [
+    { "step_id": "step_SHIH_0004_001", "frame_path": "media/keyframes/000663000.jpg", "time_ms": 663000, "evidence_id": "ev_SHIH_0004_0595000_0702000", "match_level": "representative", "note": "原片以传承人讲解片材与韧性为主，未完整呈现水刀切片过程。" },
+    { "step_id": "step_SHIH_0004_002", "frame_path": "media/keyframes/000615000.jpg", "time_ms": 615000, "evidence_id": "ev_SHIH_0004_0595000_0702000", "match_level": "representative", "note": "处理后的细牙丝近景，能够辨认材料尺度。" },
+    { "step_id": "step_SHIH_0004_003", "frame_path": "media/keyframes/000667000.jpg", "time_ms": 667000, "evidence_id": "ev_SHIH_0004_0595000_0702000", "match_level": "representative", "note": "传承人讲解防裂与韧性调节，原片未拍到独立浸泡镜头。" },
+    { "step_id": "step_SHIH_0004_004", "frame_path": "media/keyframes/000683000.jpg", "time_ms": 683000, "evidence_id": "ev_SHIH_0004_0595000_0702000", "match_level": "direct", "note": "使用处理好的牙丝进行编织的局部特写。" }
+  ]
+}

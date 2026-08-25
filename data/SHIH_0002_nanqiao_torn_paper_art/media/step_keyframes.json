@@ -1,0 +1,12 @@
+{
+  "schema": "sh-crafted.step-keyframes/v1",
+  "video_id": "SHIH_0002",
+  "source_status": "original_video_reviewed",
+  "source_name": "南桥撕纸技艺.mp4",
+  "steps": [
+    { "step_id": "step_SHIH_0002_001", "frame_path": "media/keyframes/000504000.jpg", "time_ms": 504000, "evidence_id": "ev_SHIH_0002_0480000_0674000", "match_level": "representative", "note": "原片未单独拍摄构思过程，以系列作品呈现主题与造型方向。" },
+    { "step_id": "step_SHIH_0002_002", "frame_path": "media/keyframes/000648000.jpg", "time_ms": 648000, "evidence_id": "ev_SHIH_0002_0480000_0674000", "match_level": "direct", "note": "创作者持纸并开始处理材料的画面。" },
+    { "step_id": "step_SHIH_0002_003", "frame_path": "media/keyframes/000652000.jpg", "time_ms": 652000, "evidence_id": "ev_SHIH_0002_0480000_0674000", "match_level": "direct", "note": "双手撕纸的近景，能够辨认手部动作。" },
+    { "step_id": "step_SHIH_0002_004", "frame_path": "media/keyframes/000552750.jpg", "time_ms": 552750, "evidence_id": "ev_SHIH_0002_0480000_0674000", "match_level": "representative", "note": "完成作品的装裱与载体呈现画面。" }
+  ]
+}

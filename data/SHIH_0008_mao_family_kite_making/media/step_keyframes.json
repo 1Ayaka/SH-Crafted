@@ -1,0 +1,12 @@
+{
+  "schema": "sh-crafted.step-keyframes/v1",
+  "video_id": "SHIH_0008",
+  "source_status": "original_video_reviewed",
+  "source_name": "风筝制作 技艺.mp4",
+  "steps": [
+    { "step_id": "step_SHIH_0008_001", "frame_path": "media/keyframes/000272000.jpg", "time_ms": 272000, "evidence_id": "ev_SHIH_0008_0248000_0305000", "match_level": "direct", "note": "使用毛笔描线并为风筝蒙面着色的特写。" },
+    { "step_id": "step_SHIH_0008_002", "frame_path": "media/keyframes/000344000.jpg", "time_ms": 344000, "evidence_id": "ev_SHIH_0008_0334000_0397000", "match_level": "direct", "note": "用刀将竹条削至适当粗度的画面。" },
+    { "step_id": "step_SHIH_0008_003", "frame_path": "media/keyframes/000408000.jpg", "time_ms": 408000, "evidence_id": "ev_SHIH_0008_0398000_0460000", "match_level": "direct", "note": "沿轮廓裁剪风筝蒙面的画面。" },
+    { "step_id": "step_SHIH_0008_004", "frame_path": "media/keyframes/000468500.jpg", "time_ms": 468500, "evidence_id": "ev_SHIH_0008_0461000_0476000", "match_level": "direct", "note": "依据骨架结构绑栓提线的画面。" }
+  ]
+}

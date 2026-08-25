@@ -1,0 +1,11 @@
+{
+  "schema": "sh-crafted.step-keyframes/v1",
+  "video_id": "SHIH_0007",
+  "source_status": "original_video_reviewed",
+  "source_name": "七宝皮影艺术.mp4",
+  "steps": [
+    { "step_id": "step_SHIH_0007_001", "frame_path": "media/keyframes/000475000.jpg", "time_ms": 475000, "evidence_id": "ev_SHIH_0007_0395000_0523000", "match_level": "representative", "note": "传承人手持传统影人讲解材料、结构与制作环节。" },
+    { "step_id": "step_SHIH_0007_002", "frame_path": "media/keyframes/000804000.jpg", "time_ms": 804000, "evidence_id": "ev_SHIH_0007_0696000_0813000", "match_level": "direct", "note": "后台操纵影人并与演出配合的现场画面。" },
+    { "step_id": "step_SHIH_0007_003", "frame_path": "media/keyframes/001275000.jpg", "time_ms": 1275000, "evidence_id": "ev_SHIH_0007_1159000_1430000", "match_level": "direct", "note": "以重彩画方式绘制现代七宝皮影画的局部特写。" }
+  ]
+}

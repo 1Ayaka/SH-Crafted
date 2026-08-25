@@ -1,0 +1,13 @@
+{
+  "schema": "sh-crafted.step-keyframes/v1",
+  "video_id": "SHIH_0001",
+  "source_status": "existing_evidence_frames",
+  "steps": [
+    { "step_id": "step_SHIH_0001_001", "frame_path": "media/keyframes/000308000.jpg", "time_ms": 308000, "evidence_id": "ev_SHIH_0001_0290000_0326000", "match_level": "direct", "note": "竹林选取竹材的纪录片画面。" },
+    { "step_id": "step_SHIH_0001_002", "frame_path": "media/keyframes/000352000.jpg", "time_ms": 352000, "evidence_id": "ev_SHIH_0001_0326000_0378000", "match_level": "direct", "note": "竹材截取与初步处理画面。" },
+    { "step_id": "step_SHIH_0001_003", "frame_path": "media/keyframes/000410000.jpg", "time_ms": 410000, "evidence_id": "ev_SHIH_0001_0397000_0423000", "match_level": "direct", "note": "锻制竹刻刀具的纪录片画面。" },
+    { "step_id": "step_SHIH_0001_004", "frame_path": "media/keyframes/000443000.jpg", "time_ms": 443000, "evidence_id": "ev_SHIH_0001_0436000_0471000", "match_level": "representative", "note": "根据构思确定雕刻内容大体轮廓的画面。" },
+    { "step_id": "step_SHIH_0001_005", "frame_path": "media/keyframes/000453500.jpg", "time_ms": 453500, "evidence_id": "ev_SHIH_0001_0436000_0471000", "match_level": "direct", "note": "沿轮廓进行打胚的局部画面。" },
+    { "step_id": "step_SHIH_0001_006", "frame_path": "media/keyframes/000464000.jpg", "time_ms": 464000, "evidence_id": "ev_SHIH_0001_0436000_0471000", "match_level": "direct", "note": "修光与精刻细节的纪录片特写。" }
+  ]
+}
