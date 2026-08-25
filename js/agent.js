@@ -16,6 +16,11 @@ import { sanitizeAgentText } from './agent/response-sanitizer.js';
 import { isExplorationRecommendationQuery, recommendExploration } from './agent/exploration-recommender.js';
 import { currentStepGuidance, isCurrentStepGuidanceQuery } from './agent/step-guidance.js';
 import { runReactLoop } from './agent/react-runner.js';
+import {
+  isWorkbenchAutomationQuery,
+  planWorkbenchStep,
+  summarizeWorkbenchRun,
+} from './agent/workbench-orchestrator.js';
 import { BRAND_LOGO_URL, handleBrandLogoError } from './brand.js';
 
 const JIAO_AVATAR_URL = BRAND_LOGO_URL;
@@ -108,6 +113,7 @@ const panel = {
   lastCompanionAction: '',
   relationshipUnsubscribe: null,
   fabMascot: null,
+  workbenchRunning: false,
 };
 
 function recordRelationship(type, options) {
@@ -145,7 +151,7 @@ function contextSignature(value = {}) {
     .map((item) => typeof item === 'string' ? item : `${item?.id || item?.name || ''}:${item?.state || item?.status || ''}`)
     .join('|');
   return [
-    value.route, value.page, value.page_type, value.current_step_id, value.failure_count,
+    value.route, value.page, value.page_type, value.workbench_phase, value.current_step_id, value.failure_count,
     value.context_revision, value.revision, value.current_root?.id, value.selected_node?.id,
     value.active_branch?.relation || value.active_branch,
     compactList(value.inventory_states, 12), compactList(value.visible_nodes, 12),
@@ -372,6 +378,116 @@ function addMsg(kind, contentNodes, who) {
   log.appendChild(msg);
   log.scrollTop = log.scrollHeight;
   return msg;
+}
+
+function appendWorkbenchAudit(entry) {
+  const audit = Array.isArray(window.__workbenchAgentAudit) ? window.__workbenchAgentAudit : [];
+  audit.push({ timestamp: new Date().toISOString(), ...entry });
+  if (audit.length > 160) audit.splice(0, audit.length - 160);
+  window.__workbenchAgentAudit = audit;
+}
+
+function executionTrace(plan) {
+  const title = el('summary', { text: `执行轨迹 · ${plan.actions.length} 步` });
+  const list = el('ol', { class: 'ap-execution-steps' }, plan.actions.map((action) => el('li', {
+    'data-state': 'pending',
+  }, [el('span', { text: action.label }), el('small', { text: '等待' })])));
+  const details = el('details', { class: 'ap-execution-trace', open: true }, [title, list]);
+  return {
+    element: details,
+    update(index, state, note = '') {
+      const row = list.children[index];
+      if (!row) return;
+      row.dataset.state = state;
+      const status = { running: '执行中', success: '完成', error: '失败', pending: '等待' }[state] || state;
+      row.querySelector('small').textContent = note ? `${status} · ${note}` : status;
+    },
+    finish(ok) {
+      details.open = !ok;
+      title.textContent = `${ok ? '执行完成' : '执行未完成'} · ${plan.actions.length} 步`;
+    },
+  };
+}
+
+async function runWorkbenchAutomation(query, { source = 'conversation' } = {}) {
+  const registry = ensureRegistry();
+  const inspected = await registry.execute('inspect_workbench', {});
+  if (!inspected.ok) {
+    addMsg('agent', [el('p', { text: inspected.error?.message || '当前页面没有可操作的工作台。' })], '小蕉');
+    return { ok: false, error: inspected.error || { code: 'workbench_unavailable' } };
+  }
+  const before = inspected.snapshot;
+  const plan = planWorkbenchStep(before);
+  if (!plan.ok) {
+    const message = ['finishing', 'completed'].includes(before.phase)
+      ? '当前工序已经全部完成，不需要重复执行。'
+      : '当前没有可以演示的工序。';
+    addMsg('agent', [el('p', { text: message })], '小蕉');
+    return { ok: false, error: { code: plan.reason, message } };
+  }
+
+  const trace = executionTrace(plan);
+  const summary = el('p', { class: 'ap-execution-summary', text: `我会先准备${plan.resources.join('、') || '已有材料'}，再执行“${plan.expected_action.label}”，最后核验工作台状态。` });
+  addMsg('agent', [summary, trace.element], '小蕉');
+  const runId = crypto.randomUUID?.() || `workbench-${Date.now()}`;
+  const run = { run_id: runId, source, query, goal: plan.goal, started_at: new Date().toISOString(), before, plan: plan.actions, events: [] };
+  window.__workbenchAgentLastRun = run;
+  appendWorkbenchAudit({ run_id: runId, type: 'plan_created', goal: plan.goal, action_count: plan.actions.length });
+  panel.host.setAgentBusy?.(true);
+  setMascotState('thinking');
+  let lastResult = null;
+  try {
+    for (const [index, action] of plan.actions.entries()) {
+      const started = performance.now();
+      trace.update(index, 'running');
+      appendWorkbenchAudit({ run_id: runId, type: 'action_started', tool: action.tool, args: action.args });
+      lastResult = await registry.execute(action.tool, action.args);
+      const durationMs = Math.round((performance.now() - started) * 10) / 10;
+      const event = {
+        tool: action.tool,
+        args: action.args,
+        ok: lastResult.ok !== false,
+        duration_ms: durationMs,
+        message: lastResult.message || lastResult.error?.message || '',
+        evidence: lastResult.verification?.evidence || lastResult.evidence_ids || [],
+      };
+      run.events.push(event);
+      appendWorkbenchAudit({ run_id: runId, type: 'action_finished', ...event });
+      trace.update(index, event.ok ? 'success' : 'error', event.message);
+      if (!event.ok) break;
+      await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    }
+  } catch (error) {
+    lastResult = { ok: false, error: { code: 'automation_exception', message: error?.message || '执行过程异常。' } };
+    appendWorkbenchAudit({ run_id: runId, type: 'run_exception', message: lastResult.error.message });
+  } finally {
+    panel.host.setAgentBusy?.(false);
+    setMascotState(mascotStateForVoice());
+  }
+
+  run.finished_at = new Date().toISOString();
+  run.ok = lastResult?.ok === true && lastResult?.tool_name === 'verify_craft_step';
+  const finalInspection = await registry.execute('inspect_workbench', {});
+  run.after = finalInspection.snapshot || lastResult?.snapshot;
+  trace.finish(run.ok);
+  summary.textContent = run.ok
+    ? summarizeWorkbenchRun(plan, lastResult.verification)
+    : `我在“${run.events.at(-1)?.message || '结果核验'}”处停止了，没有继续猜测或重复操作。`;
+  appendWorkbenchAudit({ run_id: runId, type: 'run_finished', ok: run.ok, event_count: run.events.length, after: run.after });
+  panel.fabMascot?.play(run.ok ? 'celebrate' : 'look_around', { duration: run.ok ? 1100 : 800 });
+  return { ok: run.ok, run, verification: lastResult?.verification, error: run.ok ? null : lastResult?.error };
+}
+
+async function triggerWorkbenchAutomation(query, { source = 'conversation', openPanel = false } = {}) {
+  if (openPanel) api.open({ skipGreeting: true });
+  if (panel.workbenchRunning) {
+    appendWorkbenchAudit({ type: 'concurrent_request_rejected', source, query });
+    addMsg('agent', [el('p', { text: '当前工序正在执行，我会先完成并核验这一轮，避免两套操作互相覆盖。' })], '小蕉');
+    return { ok: false, error: { code: 'workbench_busy', message: '当前工序正在执行。' } };
+  }
+  panel.workbenchRunning = true;
+  try { return await runWorkbenchAutomation(query, { source }); }
+  finally { panel.workbenchRunning = false; }
 }
 
 // 组装发给 /api/agent 的上下文：当前状态 + 本工艺结构化知识（服务端再包系统提示）
@@ -729,6 +845,11 @@ async function answer(query, { showUser = true, allowTools = true } = {}) {
     recordRelationship('question');
   }
 
+  if (allowTools && panel.craft && isWorkbenchAutomationQuery(query)) {
+    await triggerWorkbenchAutomation(query);
+    return;
+  }
+
   // 导航与语音控制优先通过白名单工具执行；无法识别为站内操作时，
   // 才继续使用原有知识检索/模型问答链路。
   if (allowTools && await runToolCommand(query)) return;
@@ -895,7 +1016,9 @@ function continueFromCompanion(continuation) {
 
 function contextBanner() {
   const c = panel.context;
-  const step = c.current_step_id
+  const step = ['finishing', 'completed'].includes(c.workbench_phase)
+    ? '全部工序已完成'
+    : c.current_step_id
     ? (panel.craft?.steps.find((s) => s.step_id === c.current_step_id)?.displayName || c.current_step_id)
     : '未开始';
   const inventory = Array.isArray(c.inventory_states) ? c.inventory_states : [];
@@ -1022,6 +1145,51 @@ function render() {
   }
 }
 
+async function choreograph({ target, label = '正在操作', phase = 'act' } = {}) {
+  if (!(target instanceof Element) || !target.isConnected) return { ok: true, skipped: true };
+  const targetRect = target.getBoundingClientRect();
+  if (!targetRect.width || !targetRect.height) return { ok: true, skipped: true };
+  target.classList.add('agent-action-target');
+  target.dataset.agentPhase = phase;
+
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const originRect = panel.nodes.fab?.getBoundingClientRect();
+  const startX = originRect ? originRect.left + originRect.width * 0.5 : innerWidth - 72;
+  const startY = originRect ? originRect.top + originRect.height * 0.38 : innerHeight - 90;
+  const endX = targetRect.left + targetRect.width * 0.5;
+  const endY = targetRect.top + Math.min(targetRect.height * 0.45, 80);
+  const flight = el('div', { class: 'agent-action-flight', 'aria-hidden': 'true', 'data-phase': phase }, [
+    el('img', { src: JIAO_AVATAR_URL, alt: '', onerror: handleBrandLogoError }),
+    el('span', { text: label }),
+  ]);
+  flight.style.left = `${startX}px`;
+  flight.style.top = `${startY}px`;
+  document.body.appendChild(flight);
+
+  if (!reduced && typeof flight.animate === 'function') {
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const lift = Math.min(120, Math.max(44, Math.abs(dx) * 0.12));
+    const animation = flight.animate([
+      { transform: 'translate(-50%, -50%) scale(.72)', opacity: 0 },
+      { transform: `translate(calc(-50% + ${dx * 0.46}px), calc(-50% + ${dy * 0.46 - lift}px)) scale(1.05)`, opacity: 1, offset: .55 },
+      { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(.86)`, opacity: 1 },
+    ], { duration: 250, easing: 'cubic-bezier(.22,.84,.28,1)', fill: 'forwards' });
+    await new Promise((resolve) => {
+      let settled = false;
+      const finish = () => { if (!settled) { settled = true; resolve(); } };
+      animation.onfinish = finish;
+      animation.oncancel = finish;
+      setTimeout(finish, 380);
+    });
+  }
+  await new Promise((resolve) => setTimeout(resolve, reduced ? 30 : 60));
+  flight.remove();
+  target.classList.remove('agent-action-target');
+  delete target.dataset.agentPhase;
+  return { ok: true };
+}
+
 const api = {
   mount() {
     if (!panel.nodes.fab) render();
@@ -1075,7 +1243,7 @@ const api = {
     panel.nodes.ctxLine.append(contextBanner());
     if (!skipGreeting && !panel.nodes.log.children.length) {
       addMsg('agent', [
-        el('p', { text: `你好，我是小蕉，一只从皮影和剪纸中诞生、正在收集上海非遗资料的小猫。${panel.craft ? `关于「${panel.craft.title}」，我找到了纪录片转写和知识草稿，可以帮你检索。` : '我会结合你当前看到的地区、节点或工艺内容寻找线索。'}我不会替你完成操作，但可以在你卡住时提供线索。` }),
+        el('p', { text: `你好，我是小蕉，一只从皮影和剪纸中诞生、正在收集上海非遗资料的小猫。${panel.craft ? `关于「${panel.craft.title}」，我可以检索资料，也能按你的明确指令演示当前工序。` : '我会结合你当前看到的地区、节点或工艺内容寻找线索。'}每一步操作都会经过规则校验和结果核验。` }),
       ], '小蕉');
     }
     panel.onToggle?.(true);
@@ -1137,8 +1305,12 @@ const api = {
   stopSpeaking() { ensureVoice().stopSpeaking(); },
   setVoicePreferences(next) { return ensureVoice().setPreferences(next); },
   voiceState() { return panel.voice?.state?.() || VOICE_STATES.DISABLED; },
+  completeCurrentStep({ source = 'quick_fill' } = {}) {
+    return triggerWorkbenchAutomation('点击“一键填入”，请小蕉完成当前工序。', { source, openPanel: true });
+  },
   react(type, payload = {}, options = {}) { companionRespond(type, payload, options); },
   say(text) { if (panel.open) addMsg('agent', [el('p', { text })], '小蕉'); },
+  choreograph,
   onToggle(fn) { panel.onToggle = fn; },
 };
 

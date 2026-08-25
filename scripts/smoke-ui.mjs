@@ -120,10 +120,16 @@ try {
     return true;
   })()`);
   for (let attempt = 0; attempt < 30; attempt++) {
-    const answered = await evaluate(`(() => (
-      !document.querySelector('.ap-thinking')
-      && Boolean(document.querySelector('.ap-kb-details, .ap-explore-link, .ap-followup'))
-    ))()`);
+    const answered = await evaluate(`(() => {
+      const messages = [...document.querySelectorAll('.ap-msg')];
+      const userIndex = messages.findLastIndex((node) => node.classList.contains('user') && node.textContent.includes('竹子'));
+      if (userIndex < 0) return false;
+      return messages.slice(userIndex + 1).some((node) => (
+        node.classList.contains('agent')
+        && !node.querySelector('.ap-thinking')
+        && Boolean(node.querySelector('.ap-kb-details, .ap-explore-link, .ap-followup'))
+      ));
+    })()`);
     if (answered) break;
     await wait(1000);
   }
@@ -187,7 +193,7 @@ try {
         !document.querySelector('.wb-bg.show')
         && !detailBackground?.classList.contains('dimmed')
       ),
-      stepImageAbsentWithoutSource: !document.querySelector('.wb-step-image, .wb-step-image-reveal'),
+      stepImageVisible: Boolean(document.querySelector('.wb-step-image, .wb-step-image-reveal')),
       stepGuideTitleSize: parseFloat(getComputedStyle(document.querySelector('.wb-step-float h3')).fontSize),
     };
   })()`);
@@ -276,6 +282,7 @@ try {
   await evaluate("document.querySelector('.bp-item.selected')?.click()");
   let firstMaterialUpgradeDetected = false;
   let firstRippleDetected = false;
+  let previousWorkbenchRunId = '';
   for (let index = 0; index < 12; index++) {
     const finished = await evaluate(`(() => {
       const finish = document.querySelector('.btn-finish');
@@ -293,44 +300,22 @@ try {
       return true;
     })()`);
     if (!filled) throw new Error('未找到一键填入按钮');
-    await wait(80);
+    let completedRun = null;
+    for (let attempt = 0; attempt < 180; attempt++) {
+      if (index === 0 && !firstRippleDetected) {
+        firstRippleDetected = await evaluate("document.querySelector('.wb-table-surface')?.dataset.ripple === 'active'");
+      }
+      completedRun = await evaluate(`(() => {
+        const run = window.__workbenchAgentLastRun;
+        return run?.finished_at && run.run_id !== ${JSON.stringify(previousWorkbenchRunId)} ? run : null;
+      })()`);
+      if (completedRun) break;
+      await wait(60);
+    }
+    if (!completedRun?.ok) throw new Error(`小蕉未能完成第 ${index + 1} 道工序`);
+    previousWorkbenchRunId = completedRun.run_id;
     if (index === 0) {
       workbench.restoredCount = await evaluate("Number(document.querySelector('.wb-table-surface')?.dataset.restoredCount || 0)");
-    }
-    await evaluate(`(() => {
-      const action = document.querySelector('.action-card.selected') || document.querySelector('.action-card');
-      const table = document.querySelector('.wb-table-surface');
-      if (!action || !table) return false;
-      const actionRect = action.getBoundingClientRect();
-      const tableRect = table.getBoundingClientRect();
-      const pointerId = ${20 + index};
-      const startX = actionRect.left + actionRect.width / 2;
-      const startY = actionRect.top + actionRect.height / 2;
-      const endX = tableRect.left + tableRect.width * 0.68;
-      const endY = tableRect.top + tableRect.height * 0.62;
-      action.dispatchEvent(new PointerEvent('pointerdown', {
-        bubbles: true, cancelable: true, pointerId, pointerType: 'mouse', button: 0, buttons: 1, clientX: startX, clientY: startY,
-      }));
-      window.dispatchEvent(new PointerEvent('pointermove', {
-        bubbles: true, cancelable: true, pointerId, pointerType: 'mouse', button: 0, buttons: 1,
-        clientX: (startX + endX) / 2, clientY: (startY + endY) / 2,
-      }));
-      window.dispatchEvent(new PointerEvent('pointermove', {
-        bubbles: true, cancelable: true, pointerId, pointerType: 'mouse', button: 0, buttons: 1, clientX: endX, clientY: endY,
-      }));
-      window.dispatchEvent(new PointerEvent('pointerup', {
-        bubbles: true, cancelable: true, pointerId, pointerType: 'mouse', button: 0, buttons: 0, clientX: endX, clientY: endY,
-      }));
-      return true;
-    })()`);
-    if (index === 0) {
-      await wait(90);
-      firstRippleDetected = await evaluate("document.querySelector('.wb-table-surface')?.dataset.ripple === 'active'");
-      await wait(560);
-    } else {
-      await wait(650);
-    }
-    if (index === 0) {
       firstMaterialUpgradeDetected = await evaluate(`(() => {
         const surface = document.querySelector('.wb-table-surface');
         const carried = document.querySelector('.bp-item.is-carried:disabled');
@@ -613,7 +598,7 @@ try {
   if (!workbench.backpackScrollStable) errors.push('点击左侧靠下材料后，背包滚动位置发生跳动');
   if (!workbench.materialPointerDrag || !workbench.materialDragAdded) errors.push('左侧材料无法通过指针拖入桌面工作区');
   if (!workbench.actionArrowInsideCard) errors.push('右侧动作箭头仍可能被工作区或滚动容器遮挡');
-  if (!workbench.stepImageAbsentWithoutSource) errors.push('无步骤图片的工序仍显示了图片模块或占位内容');
+  if (!workbench.stepImageVisible) errors.push('已配置步骤图片的工序没有显示图片模块');
   if (workbench.stepGuideTitleSize < 19) errors.push('桌面上方当前工序标题字号仍然过小');
   if (!firstMaterialUpgradeDetected) errors.push('完成工序后，材料没有原位升级并作为继承材料自动带入下一步');
   if (!firstRippleDetected) errors.push('正确动作落到工作台后没有触发粒子水波扩散');

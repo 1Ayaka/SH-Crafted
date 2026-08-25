@@ -47,6 +47,21 @@ export const TOOL_SCHEMAS = Object.freeze({
     prompt_sound: { type: 'boolean' }, continuous_seconds: { type: 'integer', minimum: 15, maximum: 30 },
   }},
   show_help: { type: 'object', additionalProperties: false, properties: {}, required: [] },
+  inspect_workbench: { type: 'object', additionalProperties: false, properties: {}, required: [] },
+  enter_workbench: { type: 'object', additionalProperties: false, properties: {}, required: [] },
+  select_resource: { type: 'object', additionalProperties: false, required: ['resource_name'], properties: {
+    resource_name: { type: 'string', minLength: 1, maxLength: 120 },
+  }},
+  select_craft_action: { type: 'object', additionalProperties: false, required: ['action_id'], properties: {
+    action_id: { type: 'string', minLength: 1, maxLength: 120 },
+  }},
+  execute_craft_step: { type: 'object', additionalProperties: false, required: ['expected_step_id'], properties: {
+    expected_step_id: { type: 'string', minLength: 1, maxLength: 160 },
+  }},
+  verify_craft_step: { type: 'object', additionalProperties: false, required: ['expected_step_id', 'previous_step_index'], properties: {
+    expected_step_id: { type: 'string', minLength: 1, maxLength: 160 },
+    previous_step_index: { type: 'integer', minimum: 0, maximum: 500 },
+  }},
 });
 
 const META = Object.freeze({
@@ -65,6 +80,12 @@ const META = Object.freeze({
   stop_speaking: { description: '立即停止朗读', risk: risk.R0, confirm: false },
   set_voice_preferences: { description: '调整本地语音偏好', risk: risk.R2, confirm: false },
   show_help: { description: '显示当前页面可执行操作', risk: risk.R0, confirm: false },
+  inspect_workbench: { description: '读取工作台工序、材料、动作和执行状态', risk: risk.R0, confirm: false },
+  enter_workbench: { description: '进入当前非遗项目的粒子工作台', risk: risk.R1, confirm: false },
+  select_resource: { description: '把当前工序允许的材料或工具放到工作台', risk: risk.R1, confirm: false },
+  select_craft_action: { description: '选择当前工序的制作动作', risk: risk.R1, confirm: false },
+  execute_craft_step: { description: '执行已经备齐材料和动作的当前工序', risk: risk.R1, confirm: false },
+  verify_craft_step: { description: '核验工序执行后的工作台状态与预期效果', risk: risk.R0, confirm: false },
 });
 
 function fail(code, message, details = {}) {
@@ -148,6 +169,12 @@ export function createToolRegistry({ getContext, host = {}, voice = {} } = {}) {
   add('stop_speaking', async () => executeHost('stopSpeaking', {}));
   add('set_voice_preferences', async (args) => executeHost('setVoicePreferences', args));
   add('show_help', async () => executeHost('showHelp', { context: context() }));
+  add('inspect_workbench', async () => executeHost('inspectWorkbench', {}));
+  add('enter_workbench', async () => executeHost('enterWorkbench', {}));
+  add('select_resource', async (args) => executeHost('selectResource', args));
+  add('select_craft_action', async (args) => executeHost('selectCraftAction', args));
+  add('execute_craft_step', async (args) => executeHost('executeCraftStep', args));
+  add('verify_craft_step', async (args) => executeHost('verifyCraftStep', args));
 
   return {
     list: () => [...registry.values()].map(({ handler, ...tool }) => tool),

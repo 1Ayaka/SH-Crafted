@@ -38,6 +38,8 @@
     "agent:test-react": "node scripts/test-agent-react-tools.mjs",
     "agent:test-react-loop": "node scripts/test-agent-react-loop.mjs",
     "agent:test-react-api": "node scripts/test-agent-react-api.mjs",
+    "agent:test-workbench": "node scripts/test-workbench-agent.mjs",
+    "agent:test-workbench-ui": "node scripts/test-workbench-agent-ui.mjs",
     "material:test": "node scripts/test-material-flow.mjs",
     "model:test-new-ui": "node scripts/smoke-new-craft-models-ui.mjs",
     "graph:test": "node scripts/test-heritage-graph.mjs",

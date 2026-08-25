@@ -1,6 +1,6 @@
 // 非遗详情 + 粒子工作台（核心页）
 // 状态机：CRAFT_READING → CRAFT_PLAYING → finishing（一键完成作品）→ CRAFT_COMPLETED
-// 规则判定全部来自 process_steps.jsonl（真实数据），失败分级提示，绝不自动完成
+// 规则判定全部来自 process_steps.jsonl（真实数据）；用户明确要求时，智能体可按同一规则演示当前工序。
 // 本页已接入跨页系统：assets/bg-crafts/<id>/ 分层背景 + 底层环境墨晕 + transitions 转场登记
 // 工作区桌面：assets/t工作台.png；页面大背景始终沿用当前非遗详情页背景。
 // 模型（config.CRAFT_MODEL_PATHS）：未开始态显示松散细碎的成品预览；完成态用高精度成品揭晓。
@@ -20,6 +20,7 @@ import { graphId, heritageDetailTarget, parseGraphId } from '../agent/graph-adap
 import { materialTransformMap } from '../material-flow.js';
 import { createHeritageGraphState } from '../heritage-graph.js';
 import { mountHeritageGraph } from '../heritage-graph-3d.js';
+import { verifyWorkbenchTransition } from '../agent/workbench-orchestrator.js';
 
 const OUTPUT_PALETTE = [
   '#6F8C73', '#A56A4E', '#B48A42', '#5D7F84', '#9C6B76',
@@ -147,11 +148,15 @@ export async function craftView(root, { id }) {
     failures: 0,                 // 连续失败
     helpRefusedStep: null,
     log: [],                     // 操作回放
+    lastCompletedStepId: null,
+    lastTransition: '尚未进入工作台',
+    agentBusy: false,
   };
   const fields = [];
   const cleanups = [];
   const pmHandles = [];          // 粒子模型句柄（clearWorkbench/cleanup 时 dispose）
   const wbPreviewHandles = [];
+  let activeWorkbenchPhysics = null;
   let graphExplorer = null;
   let graphOverlay = null;
   let graphReturnFocus = null;
@@ -291,12 +296,34 @@ export async function craftView(root, { id }) {
     frag.appendChild(el('div', { class: 'chip-row' }, craft.actions.map((action) => el('span', { class: 'chip', text: action.label }))));
     frag.appendChild(el('h5', { text: isContentReviewed() ? '工序' : '工序（顺序为候选顺序，待审核）' }));
     craft.steps.forEach((s, i) => {
+      const image = s.step_image;
+      const sourceSeconds = Math.max(0, Math.floor(Number(image?.source_time_ms || 0) / 1000));
+      const sourceTimecode = `${String(Math.floor(sourceSeconds / 60)).padStart(2, '0')}:${String(sourceSeconds % 60).padStart(2, '0')}`;
+      const processImage = image?.image_url ? el('button', {
+        class: 'step-item-image', type: 'button',
+        'aria-label': `放大查看${s.displayName}工序影像`,
+        onclick: () => openModal({
+          title: `${s.displayName} · 工序影像`,
+          className: 'step-image-modal',
+          body: el('figure', { class: 'step-image-lightbox' }, [
+            el('img', { src: craftAssetUrl(craft, image.image_url), alt: image.alt || `${s.displayName}纪录片关键帧` }),
+            image.note ? el('figcaption', { text: `${image.note} 原片时间码 ${sourceTimecode}` }) : null,
+          ]),
+        }),
+      }, [
+        el('img', { src: craftAssetUrl(craft, image.image_url), alt: image.alt || `${s.displayName}纪录片关键帧`, loading: 'lazy' }),
+        el('span', { class: 'step-item-image-caption' }, [
+          el('strong', { text: image.match_level === 'direct' ? '工序实拍' : '关联画面' }),
+          el('span', { text: `原片 ${sourceTimecode} · 点击放大` }),
+        ]),
+      ]) : null;
       frag.appendChild(el('div', { class: 'step-item' }, [
         el('p', { class: 'st-title' }, [
           el('span', { class: 'order', text: `${i + 1}` }),
           el('span', { text: s.displayName + ' ' }),
           reviewTag(),
         ]),
+        processImage,
         el('p', { class: 'st-action', text: `为什么这样做：${s.action}` }),
         el('p', { class: 'st-meta', text: `资源：${s.interactionRule.allowed_resources.join('、') || '—'} · 动作：${s.interactionRule.action.label}` }),
         s.interactionRule.source === 'legacy_candidate'
@@ -479,6 +506,7 @@ export async function craftView(root, { id }) {
   function syncAgentContext() {
     agent.setContext({
       page: 'craft_experience',
+      workbench_phase: S.phase,
       current_step_id: currentStep()?.step_id || null,
       current_step_name: currentStep()?.displayName || '',
       inventory_states: [
@@ -494,7 +522,41 @@ export async function craftView(root, { id }) {
 
   function logAction(text, evidenceIds = []) {
     S.log.push({ t: new Date(), text, evidenceIds });
+    S.lastTransition = text;
     syncAgentContext();
+  }
+
+  function workbenchSnapshot() {
+    const step = currentStep();
+    const carried = [...S.materialItems.values()].map((item) => item.currentName);
+    const rule = step?.interactionRule;
+    return {
+      craft_id: craft.craftId,
+      craft_title: craft.title,
+      phase: S.phase,
+      step_index: S.stepIndex,
+      step_total: craft.steps.length,
+      current_step: step && rule ? {
+        id: step.step_id,
+        name: step.displayName,
+        guide: step.guide_text || step.action || '',
+        result: step.result || '',
+        allowed_resources: [...rule.allowed_resources],
+        resource_groups: rule.resource_groups.map((group) => ({
+          label: group.label, mode: group.mode, min: group.min, max: group.max, options: [...group.options],
+        })),
+        quick_fill_resources: [...(rule.quick_fill?.resources || [])],
+        carried_resources: carried,
+        action: { id: rule.action.id, label: rule.action.label },
+      } : null,
+      selected_resources: [...effectiveSelectedResources(step)],
+      selected_action_id: S.actionSlot,
+      table_items: carried,
+      last_completed_step_id: S.lastCompletedStepId,
+      last_transition: S.lastTransition,
+      failure_count: S.failures,
+      busy: S.agentBusy,
+    };
   }
 
   function clearWorkbench() {
@@ -502,6 +564,7 @@ export async function craftView(root, { id }) {
     // 卸载粒子模型并释放 GPU 资源
     pmHandles.splice(0).forEach((h) => { try { h.dispose(); } catch (_) {} });
     wbPreviewHandles.splice(0).forEach((h) => { try { h.dispose(); } catch (_) {} });
+    activeWorkbenchPhysics = null;
     workbench.innerHTML = '';
   }
 
@@ -516,7 +579,7 @@ export async function craftView(root, { id }) {
       frameWrap,
       el('h3', { text: '粒子工作台' }),
       el('p', { class: 'note', text: noteText }),
-      el('button', { class: 'btn btn-primary', text: '进入工作台', onclick: startPlay }),
+      el('button', { class: 'btn btn-primary', text: '进入工作台', 'data-agent-target': 'workbench-enter', onclick: startPlay }),
     ]));
     const cv = frameWrap.querySelector('canvas');
     const field = new InkField(cv, { maxParticles: 380 });
@@ -590,12 +653,13 @@ export async function craftView(root, { id }) {
       stage,
       el('h3', { text: '粒子工作台' }),
       el('p', { class: 'note', text: '三维轮廓会自动载入；完成前粒子更松散细碎，完成全部工序后显示高精度成品。' }),
-      el('button', { class: 'btn btn-primary', text: '进入工作台', onclick: startPlay }),
+      el('button', { class: 'btn btn-primary', text: '进入工作台', 'data-agent-target': 'workbench-enter', onclick: startPlay }),
     ]));
     requestAnimationFrame(() => { void startPreviewLoad(); });
   }
 
   function startPlay() {
+    if (S.phase === 'playing') return;
     S.phase = 'playing';
     body.classList.add('playing');
     body.classList.remove('reading-open');
@@ -604,44 +668,21 @@ export async function craftView(root, { id }) {
     renderPlay();
   }
 
-  function quickFillCurrentStep() {
+  async function quickFillCurrentStep() {
     const step = currentStep();
-    if (!step) return;
-    const rule = step.interactionRule;
-    S.selectedResources.clear();
-    const presetResources = Array.isArray(rule.quick_fill?.resources)
-      ? rule.quick_fill.resources.filter((name) => rule.allowed_resources.includes(name))
-      : [];
-    if (presetResources.length) {
-      presetResources.forEach((name) => {
-        if (craft.resourceKinds.get(name) === 'implement' || !carriedMaterialFor(name)) S.selectedResources.add(name);
-      });
-    } else {
-      for (const group of rule.resource_groups) {
-        if (group.mode === 'all') {
-          group.options.forEach((name) => {
-            if (craft.resourceKinds.get(name) === 'implement' || !carriedMaterialFor(name)) S.selectedResources.add(name);
-          });
-        } else {
-          const required = Math.max(0, group.min || 0);
-          const alreadyCarried = group.options.filter((name) => carriedMaterialFor(name)).length;
-          group.options
-            .filter((name) => !carriedMaterialFor(name))
-            .slice(0, Math.max(0, required - alreadyCarried))
-            .forEach((name) => S.selectedResources.add(name));
-        }
+    if (!step || S.agentBusy) return;
+    const feedback = workbench.querySelector('.wb-feedback');
+    if (feedback) {
+      feedback.className = 'wb-feedback ok';
+      feedback.textContent = `小蕉正在准备“${step.displayName}”所需材料，并会替你执行和核验本步。`;
+    }
+    const result = await agent.completeCurrentStep({ source: 'quick_fill_button' });
+    if (result?.ok === false) {
+      const currentFeedback = workbench.querySelector('.wb-feedback');
+      if (currentFeedback) {
+        currentFeedback.className = 'wb-feedback err';
+        currentFeedback.textContent = result.error?.message || '小蕉暂时无法完成这一步，请稍后再试。';
       }
-    }
-    // 兼容没有必选分组的旧数据：工作台当前仍要求至少选择一项资源。
-    if (!S.selectedResources.size && rule.allowed_resources.length) {
-      S.selectedResources.add(rule.allowed_resources[0]);
-    }
-    S.actionSlot = rule.quick_fill?.action_id || rule.action.id;
-    renderPlay();
-    const filledFeedback = workbench.querySelector('.wb-feedback');
-    if (filledFeedback) {
-      filledFeedback.className = 'wb-feedback ok';
-      filledFeedback.textContent = '已填入本步新增材料与动作；上一步产物已自动保留在工作台。';
     }
   }
 
@@ -730,8 +771,8 @@ export async function craftView(root, { id }) {
       feedback,
       el('div', { class: 'wb-actions' }, [
         el('button', {
-          class: 'btn-quick-fill', text: '一键填入',
-          title: '自动填入当前步骤所需材料与动作',
+          class: 'btn-quick-fill', text: '一键填入 · 小蕉完成',
+          title: '由小蕉自动填入材料、选择正确动作、执行并核验本步',
           onclick: quickFillCurrentStep,
         }),
         el('button', { class: 'btn btn-primary', text: '执行动作', onclick: () => processStep(feedback, resourceSlotEl, actionSlotEl) }),
@@ -893,7 +934,7 @@ export async function craftView(root, { id }) {
       ]),
       canvasArea, feedback,
       el('div', { class: 'wb-actions' }, [
-        el('button', { class: 'btn-quick-fill', text: '一键填入', title: '自动填入当前步骤所需材料与动作', onclick: quickFillCurrentStep }),
+        el('button', { class: 'btn-quick-fill', text: '一键填入 · 小蕉完成', title: '由小蕉自动填入材料、选择正确动作、执行并核验本步', onclick: quickFillCurrentStep }),
         el('button', { class: 'btn btn-primary', text: '执行动作', onclick: () => processStep(feedback, resourceSlotEl, actionSlotEl) }),
         el('button', { class: 'btn-ghost', text: '查看纪录片片段', onclick: () => openEvidenceModal(craft, step.evidence_ids, { title: `证据 · ${step.displayName}` }) }),
         el('span', { class: 'wb-note', text: '基于纪录片与审核资料简化，不构成真实工艺教学。卡住时可以问小蕉。' }),
@@ -929,7 +970,7 @@ export async function craftView(root, { id }) {
       let button;
       button = el('button', {
         class: `bp-item ${kind === 'implement' ? 'resource-implement' : state.cls}${selected || carried ? ' selected' : ''}${available ? '' : ' is-unavailable'}${carried ? ' is-carried' : ''}`,
-        type: 'button', disabled: !available, 'data-resource': name, 'data-drag-mode': available ? 'pointer' : '',
+        type: 'button', disabled: !available, 'data-resource': name, 'data-agent-resource': name, 'data-drag-mode': available ? 'pointer' : '',
         'aria-pressed': String(selected),
         title: carried ? `${carried.currentName}已从上一步保留在工作台` : (available ? `点击选择，或按住拖到桌面：${name}` : '当前工序不使用该工具'),
         onpointerdown: (event) => beginPointerResourceDrag(event, name, kind, button),
@@ -1179,6 +1220,7 @@ export async function craftView(root, { id }) {
     tableSurface = el('div', {
       class: `wb-table-surface${tableObjects.length ? ' has-objects' : ''}`,
       'data-slot': 'resources',
+      'data-agent-target': 'workbench-table',
       'aria-label': '桌面工作区',
       ondragover: (event) => {
         const types = [...(event.dataTransfer?.types || [])];
@@ -1210,7 +1252,7 @@ export async function craftView(root, { id }) {
       let card;
       card = el('button', {
         class: `action-card${S.actionSlot === action.id ? ' selected' : ''}`,
-        type: 'button', 'data-action': action.id, 'data-drag-mode': 'pointer',
+        type: 'button', 'data-action': action.id, 'data-agent-action': action.id, 'data-drag-mode': 'pointer',
         title: mobileTapMode ? '轻触选择动作，再点击下方“执行已选动作”' : '按住并向左拖到桌面，松开即可执行',
         onpointerdown: (event) => beginPointerActionDrag(event, action, card),
         onclick: () => {
@@ -1244,7 +1286,7 @@ export async function craftView(root, { id }) {
       el('div', { class: 'wb-stage-layout' }, [tableSurface, sideRail, documentary]),
       feedback,
       el('div', { class: 'wb-actions' }, [
-        el('button', { class: 'btn-quick-fill', text: '一键填入', title: '自动把当前步骤所需物品放到桌面', onclick: quickFillCurrentStep }),
+        el('button', { class: 'btn-quick-fill', text: '一键填入 · 小蕉完成', title: '由小蕉自动填入材料、选择正确动作、执行并核验本步', onclick: quickFillCurrentStep }),
         el('button', { class: 'btn btn-primary wb-mobile-execute', type: 'button', text: '执行已选动作', onclick: () => processStep(feedback, tableSurface, tableSurface) }),
         !documentary && step.evidence_ids?.length ? el('button', { class: 'btn-ghost', text: '查看纪录片证据', onclick: () => openEvidenceModal(craft, step.evidence_ids, { title: `证据 · ${step.displayName}` }) }) : null,
         el('span', { class: 'wb-note', text: mobileTapMode ? '手机端可轻触材料和动作，不需要拖动页面。' : '动作需要拖到桌面工作区后才会执行。' }),
@@ -1259,6 +1301,7 @@ export async function craftView(root, { id }) {
     // createWorkbenchSurface 会同步绘制首帧，后续帧再交给 rAF 动画循环。
     try {
       physicsHandle = createWorkbenchSurface(tableSurface, tableObjects, { stateStore: S.workbenchPhysics, interactive: !mobileTapMode });
+      activeWorkbenchPhysics = physicsHandle;
       wbPreviewHandles.push(physicsHandle);
     } catch (error) {
       tableSurface.appendChild(el('p', { class: 'wb-table-error', text: '当前浏览器无法显示粒子桌面，请继续使用背包和动作。' }));
@@ -1298,6 +1341,7 @@ export async function craftView(root, { id }) {
         { label: '不用了', onClick: () => { S.helpRefusedStep = step.step_id; } },
       ]);
     }
+    return { ok: false, error: { code: 'workbench_precondition_failed', message: msg }, snapshot: workbenchSnapshot() };
   }
 
   function processStep(feedback, resourceSlotEl, actionSlotEl) {
@@ -1307,12 +1351,10 @@ export async function craftView(root, { id }) {
     const effectiveSelected = effectiveSelectedResources(step);
     const selected = [...effectiveSelected];
     if (rule.allowed_resources.length && !selected.length) {
-      fail('请先选择这一步使用的材料或物件。可以多选。', feedback, resourceSlotEl);
-      return;
+      return fail('请先选择这一步使用的材料或物件。可以多选。', feedback, resourceSlotEl);
     }
     if (!S.actionSlot) {
-      fail('材料已经选好，还需要选择一个动作。', feedback, actionSlotEl);
-      return;
+      return fail('材料已经选好，还需要选择一个动作。', feedback, actionSlotEl);
     }
 
     const activeInherited = new Set(
@@ -1325,10 +1367,9 @@ export async function craftView(root, { id }) {
       const name = extras[0];
       const laterIdx = craft.steps.findIndex((s, i) => i > S.stepIndex && s.interactionRule.allowed_resources.includes(name));
       const earlierOk = craft.steps.some((s, i) => i < S.stepIndex && s.interactionRule.allowed_resources.includes(name));
-      if (laterIdx !== -1) fail(`「${name}」属于后面的工序，当前步骤暂时不用。`, feedback, resourceSlotEl);
-      else if (earlierOk) fail(`「${name}」已在前面的工序使用，当前步骤不需要再次选择。`, feedback, resourceSlotEl);
-      else fail(`「${name}」与当前工序「${step.displayName}」不匹配。`, feedback, resourceSlotEl);
-      return;
+      if (laterIdx !== -1) return fail(`「${name}」属于后面的工序，当前步骤暂时不用。`, feedback, resourceSlotEl);
+      if (earlierOk) return fail(`「${name}」已在前面的工序使用，当前步骤不需要再次选择。`, feedback, resourceSlotEl);
+      return fail(`「${name}」与当前工序「${step.displayName}」不匹配。`, feedback, resourceSlotEl);
     }
 
     for (const group of rule.resource_groups) {
@@ -1336,23 +1377,19 @@ export async function craftView(root, { id }) {
       if (group.mode === 'all') {
         const missing = group.options.filter((name) => !effectiveSelected.has(name));
         if (missing.length) {
-          fail(`还缺少${group.label}。请检查当前选择。`, feedback, resourceSlotEl);
-          return;
+          return fail(`还缺少${group.label}。请检查当前选择。`, feedback, resourceSlotEl);
         }
       } else if (chosen.length < group.min) {
-        fail(`还需要从“${group.label}”中选择至少 ${group.min} 项。`, feedback, resourceSlotEl);
-        return;
+        return fail(`还需要从“${group.label}”中选择至少 ${group.min} 项。`, feedback, resourceSlotEl);
       }
       if (group.max != null && chosen.length > group.max) {
-        fail(`“${group.label}”最多选择 ${group.max} 项。`, feedback, resourceSlotEl);
-        return;
+        return fail(`“${group.label}”最多选择 ${group.max} 项。`, feedback, resourceSlotEl);
       }
     }
 
     if (S.actionSlot !== rule.action.id) {
       const chosenAction = craft.actions.find((action) => action.id === S.actionSlot)?.label || '当前动作';
-      fail(`动作「${chosenAction}」不适用于当前工序。材料选择会保留，可以重新选择动作。`, feedback, actionSlotEl);
-      return;
+      return fail(`动作「${chosenAction}」不适用于当前工序。材料选择会保留，可以重新选择动作。`, feedback, actionSlotEl);
     }
 
     S.failures = 0;
@@ -1404,6 +1441,7 @@ export async function craftView(root, { id }) {
     [...S.selectedResources]
       .filter((name) => craft.resourceKinds.get(name) === 'implement')
       .forEach((name) => S.workbenchPhysics.delete(`tool:${name}`));
+    S.lastCompletedStepId = step.step_id;
     S.stepIndex++;
     // Only warm the large finished asset when the visitor is approaching the
     // reveal. It stays out of the critical path for home, map and early steps.
@@ -1418,7 +1456,7 @@ export async function craftView(root, { id }) {
       logAction('全部工序执行完成，可以完成作品');
       S.phase = 'finishing';
       renderFinishing();
-      return;
+      return { ok: true, message: `已完成工序“${step.displayName}”。`, completed_step_id: step.step_id, evidence_ids: step.evidence_ids, snapshot: workbenchSnapshot() };
     }
 
     renderPlay();
@@ -1431,7 +1469,8 @@ export async function craftView(root, { id }) {
         onclick: () => openEvidenceModal(craft, step.evidence_ids, { title: `证据 · ${step.displayName}` }),
       }),
     );
-    agent.say(`你完成了「${step.displayName}」。下一步是「${currentStep().displayName}」。`);
+    if (!S.agentBusy) agent.say(`你完成了「${step.displayName}」。下一步是「${currentStep().displayName}」。`);
+    return { ok: true, message: `已完成工序“${step.displayName}”。`, completed_step_id: step.step_id, evidence_ids: step.evidence_ids, snapshot: workbenchSnapshot() };
   }
 
   // --- 收尾：全部工序完成 → 一键完成作品 ---
@@ -1820,7 +1859,11 @@ export async function craftView(root, { id }) {
           visible_nodes: [], breadcrumbs: [graphId('heritage', craft.craftId)],
         }),
         history: S.log.slice(-8),
-        available_actions: graphContext?.available_actions || ['get_current_context', 'search_graph', 'expand_branch', 'open_node', 'open_heritage_detail', 'open_region', 'go_back', 'return_to_root', 'focus_model', 'read_summary', 'stop_speaking', 'show_help'],
+        available_actions: graphContext?.available_actions || [
+          'get_current_context', 'search_graph', 'expand_branch', 'open_node', 'open_heritage_detail', 'open_region',
+          'go_back', 'return_to_root', 'focus_model', 'read_summary', 'stop_speaking', 'show_help',
+          'inspect_workbench', 'enter_workbench', 'select_resource', 'select_craft_action', 'execute_craft_step', 'verify_craft_step',
+        ],
         context_revision: `craft:${craft.craftId}:${currentStep()?.step_id || 'idle'}:${S.log.length}:${graphContext?.selected_node?.id || ''}`,
       };
     },
@@ -1853,7 +1896,76 @@ export async function craftView(root, { id }) {
     },
     async stopSpeaking() { agent.stopSpeaking(); return { ok: true }; },
     async setVoicePreferences(args) { return agent.setVoicePreferences(args); },
-    async showHelp() { agent.say('当前可以说：展开位于、属于传统、使用材料，打开另一个项目，返回，回到完成品，或把项目摘要读给我听。'); return { ok: true }; },
+    async showHelp() { agent.say('当前可以让我演示或完成这一步，也可以说：展开位于、属于传统、使用材料，打开另一个项目、返回或朗读摘要。'); return { ok: true }; },
+    async inspectWorkbench() { return { ok: true, snapshot: workbenchSnapshot() }; },
+    async enterWorkbench() {
+      if (S.phase === 'playing') return { ok: true, message: '工作台已经打开。', snapshot: workbenchSnapshot() };
+      if (S.phase !== 'reading') return { ok: false, error: { code: 'workbench_phase_invalid', message: '当前阶段不能重新进入工作台。' } };
+      const target = workbench.querySelector('[data-agent-target="workbench-enter"]');
+      await agent.choreograph({ target, label: '进入工作台', phase: 'act' });
+      startPlay();
+      return { ok: true, message: '已进入粒子工作台。', snapshot: workbenchSnapshot() };
+    },
+    async selectResource({ resource_name }) {
+      const step = currentStep();
+      if (S.phase !== 'playing' || !step) return { ok: false, error: { code: 'workbench_not_playing', message: '请先进入工作台。' } };
+      if (!step.interactionRule.allowed_resources.includes(resource_name)) {
+        return { ok: false, error: { code: 'resource_not_allowed', message: `“${resource_name}”不属于当前工序。` } };
+      }
+      if (carriedMaterialFor(resource_name)) return { ok: true, message: `“${resource_name}”已从上一步保留在桌面。`, snapshot: workbenchSnapshot() };
+      const target = [...workbench.querySelectorAll('[data-agent-resource]')]
+        .find((node) => node.dataset.agentResource === resource_name);
+      if (!target || target.disabled) return { ok: false, error: { code: 'resource_unavailable', message: `当前无法选择“${resource_name}”。` } };
+      await agent.choreograph({ target, label: `放置${resource_name}`, phase: 'act' });
+      S.selectedResources.add(resource_name);
+      logAction(`智能体放置资源“${resource_name}”`);
+      renderPlay();
+      return { ok: true, message: `已把“${resource_name}”放到工作台。`, snapshot: workbenchSnapshot() };
+    },
+    async selectCraftAction({ action_id }) {
+      const step = currentStep();
+      if (S.phase !== 'playing' || !step) return { ok: false, error: { code: 'workbench_not_playing', message: '请先进入工作台。' } };
+      if (step.interactionRule.action.id !== action_id) {
+        return { ok: false, error: { code: 'action_not_allowed', message: '这个动作不符合当前工序规则。' } };
+      }
+      const target = [...workbench.querySelectorAll('[data-agent-action]')]
+        .find((node) => node.dataset.agentAction === action_id);
+      if (!target) return { ok: false, error: { code: 'action_unavailable', message: '当前工序没有这个动作。' } };
+      await agent.choreograph({ target, label: `选择${target.textContent.trim()}`, phase: 'act' });
+      S.actionSlot = action_id;
+      logAction(`智能体选择动作“${target.textContent.trim()}”`);
+      target.classList.add('selected');
+      return { ok: true, message: `已选择“${target.textContent.trim()}”。`, snapshot: workbenchSnapshot() };
+    },
+    async executeCraftStep({ expected_step_id }) {
+      const step = currentStep();
+      if (!step || step.step_id !== expected_step_id) return { ok: false, error: { code: 'step_changed', message: '当前工序已经变化，请重新观察后再执行。' } };
+      const table = workbench.querySelector('[data-agent-target="workbench-table"]');
+      await agent.choreograph({ target: table, label: `执行${step.displayName}`, phase: 'act' });
+      const feedback = workbench.querySelector('.wb-feedback');
+      if (!feedback || !table) return { ok: false, error: { code: 'workbench_surface_missing', message: '工作台界面尚未准备好。' } };
+      const rect = table.getBoundingClientRect();
+      feedback.className = 'wb-feedback ok';
+      feedback.textContent = '小蕉已把动作放到桌面，正在完成这道工序。';
+      activeWorkbenchPhysics?.ripple(rect.left + rect.width * 0.62, rect.top + rect.height * 0.58);
+      await new Promise((resolve) => setTimeout(resolve, 520));
+      return processStep(feedback, table, table) || { ok: false, error: { code: 'execution_no_result', message: '工序没有返回执行结果。' } };
+    },
+    async verifyCraftStep({ expected_step_id, previous_step_index }) {
+      const table = workbench.querySelector('[data-agent-target="workbench-table"]') || workbench;
+      await agent.choreograph({ target: table, label: '核验结果', phase: 'verify' });
+      const after = workbenchSnapshot();
+      const verification = verifyWorkbenchTransition({ step_index: previous_step_index, failure_count: 0 }, after, expected_step_id);
+      if (!verification.ok) return { ok: false, error: { code: 'verification_failed', message: '工序结果与预期状态不一致。', verification }, snapshot: after };
+      logAction(`智能体核验通过“${expected_step_id}”`);
+      return { ok: true, message: '工序状态、步骤推进和失败计数均已核验。', verification, snapshot: workbenchSnapshot() };
+    },
+    setAgentBusy(busy) {
+      S.agentBusy = Boolean(busy);
+      workbench.dataset.agentBusy = String(S.agentBusy);
+      workbench.setAttribute('aria-busy', String(S.agentBusy));
+      body.classList.toggle('agent-operating', S.agentBusy);
+    },
   });
   agent.onToggle((open) => { if (open) collapsePanelsForAgent(); });
   syncAgentContext();
@@ -1961,6 +2073,7 @@ export async function craftView(root, { id }) {
 
   return {
     cleanup() {
+      body.classList.remove('agent-operating');
       closeHeritageGraph();
       unregisterGestureContexts();
       cleanups.forEach((fn) => fn());

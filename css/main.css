@@ -646,6 +646,18 @@ a:hover { color: var(--terracotta); }
 .project-story-gallery figure { min-width: 0; }
 .project-story-gallery img { width: 100%; aspect-ratio: 4 / 3; display: block; object-fit: cover; border-radius: 16px; border: 1px solid rgba(96,108,56,0.28); }
 .project-story-gallery figcaption { margin-top: 4px; color: var(--ink-faint); font-size: 10.5px; line-height: 1.45; }
+.project-story-process-summary { margin: -2px 0 10px; font-size: 11px !important; line-height: 1.55 !important; }
+.project-story-process-gallery { gap: 12px 10px; }
+.project-story-process-frame { position: relative; }
+.project-story-process-index {
+  position: absolute; top: 7px; left: 7px; min-width: 27px; height: 22px; display: grid; place-items: center;
+  padding: 0 6px; border: 1px solid rgba(241,232,214,.68); border-radius: 999px;
+  color: #f4ead7; background: rgba(39,55,43,.78); font: 700 9px/1 var(--sans); letter-spacing: .06em;
+  backdrop-filter: blur(5px);
+}
+.project-story-process-gallery figcaption { display: grid; gap: 1px; }
+.project-story-process-gallery figcaption strong { overflow: hidden; color: var(--ink-soft); font-size: 11px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.project-story-process-gallery figcaption span { color: var(--ink-faint); font-size: 9.5px; font-variant-numeric: tabular-nums; }
 .project-story-action {
   flex: none; display: flex; justify-content: center;
   padding-top: 14px; border-top: 1px solid rgba(96,108,56,0.22);
@@ -813,6 +825,17 @@ a:hover { color: var(--terracotta); }
 .step-item { padding: 12px 0 12px 16px; border-left: 2.5px solid var(--sage); margin: 10px 0 10px 6px; }
 .step-item .st-title { font-weight: 600; font-size: 14.5px; margin-bottom: 4px; }
 .step-item .st-title .order { color: var(--terracotta); font-family: var(--serif); margin-right: 8px; }
+.step-item-image {
+  width: 100%; display: grid; grid-template-columns: minmax(0, 132px) minmax(0, 1fr); gap: 10px; align-items: center;
+  margin: 8px 0 10px; padding: 7px; border: 1px solid rgba(96,108,56,.24); border-radius: 13px;
+  color: var(--ink); background: rgba(241,232,214,.58); text-align: left;
+  transition: border-color var(--t-fast), background var(--t-fast), transform var(--t-fast);
+}
+.step-item-image:hover, .step-item-image:focus-visible { border-color: rgba(198,107,61,.5); background: rgba(241,232,214,.86); outline: none; transform: translateY(-1px); }
+.step-item-image > img { width: 100%; aspect-ratio: 16 / 10; display: block; object-fit: cover; border-radius: 9px; }
+.step-item-image-caption { min-width: 0; display: grid; gap: 4px; }
+.step-item-image-caption strong { color: var(--moss); font-size: 11px; letter-spacing: .08em; }
+.step-item-image-caption span { color: var(--ink-faint); font-size: 10px; font-variant-numeric: tabular-nums; }
 .step-item .st-action { font-size: 13.5px; color: var(--ink-soft); margin-bottom: 6px; }
 .step-item .st-meta { font-size: 12px; color: var(--ink-faint); margin-bottom: 6px; }
 .ev-link {
@@ -1271,6 +1294,42 @@ a:hover { color: var(--terracotta); }
   contain: layout paint style; will-change: transform;
 }
 .agent-panel.open { transform: none; }
+.agent-action-flight {
+  position: fixed; z-index: 2200; width: 74px; pointer-events: none;
+  transform: translate(-50%, -50%); filter: drop-shadow(0 10px 12px rgba(43,51,39,.24));
+}
+.agent-action-flight img { display: block; width: 58px; height: 58px; margin: auto; object-fit: contain; }
+.agent-action-flight span {
+  display: block; width: max-content; max-width: 150px; margin: -3px 0 0 50%; padding: 5px 9px;
+  transform: translateX(-50%); border: 1px solid rgba(96,108,56,.32); border-radius: 16px;
+  background: rgba(232,220,199,.96); color: var(--moss); font-size: 11px; line-height: 1.25;
+  box-shadow: 0 5px 16px rgba(43,51,39,.12);
+}
+.agent-action-flight[data-phase="verify"] span { color: var(--terracotta); border-color: rgba(198,107,61,.38); }
+.agent-action-target { position: relative; z-index: 7; animation: agentTargetBreath 560ms ease-in-out infinite alternate; }
+.workbench-col[data-agent-busy="true"] .backpack,
+.workbench-col[data-agent-busy="true"] .action-palette,
+.workbench-col[data-agent-busy="true"] .wb-actions { pointer-events: none; }
+.ap-execution-summary { margin-bottom: 9px; }
+.ap-execution-trace {
+  border: 1px solid rgba(96,108,56,.24); border-radius: 16px; overflow: hidden;
+  background: rgba(232,220,199,.46);
+}
+.ap-execution-trace summary { padding: 8px 11px; color: var(--moss); font-size: 12px; cursor: pointer; }
+.ap-execution-steps { display: grid; gap: 0; margin: 0; padding: 0 11px 9px; list-style: none; }
+.ap-execution-steps li {
+  display: grid; grid-template-columns: 9px minmax(0,1fr) auto; align-items: center; gap: 7px;
+  min-height: 29px; border-top: 1px solid rgba(96,108,56,.14); font-size: 11.5px;
+}
+.ap-execution-steps li::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: rgba(96,108,56,.25); }
+.ap-execution-steps li[data-state="running"]::before { background: var(--ochre); animation: voiceBreath 900ms ease-in-out infinite; }
+.ap-execution-steps li[data-state="success"]::before { background: var(--moss); }
+.ap-execution-steps li[data-state="error"]::before { background: var(--terracotta); }
+.ap-execution-steps small { color: var(--ink-faint); font-size: 10px; text-align: right; }
+@keyframes agentTargetBreath {
+  from { box-shadow: 0 0 0 2px rgba(192,142,58,.2), 0 0 0 5px rgba(192,142,58,.08); }
+  to { box-shadow: 0 0 0 4px rgba(192,142,58,.36), 0 0 0 10px rgba(192,142,58,.04); }
+}
 .agent-panel .ap-head {
   display: flex; align-items: center; gap: 12px; padding: 18px 20px 12px;
   border-bottom: 1px solid rgba(96,108,56,0.25);
@@ -1404,6 +1463,7 @@ a:hover { color: var(--terracotta); }
   50% { transform: translateY(-1px) scale(1.18); box-shadow: 0 0 0 5px rgba(198,107,61,.06); }
 }
 @media (prefers-reduced-motion: reduce) {
+  .agent-action-target, .ap-execution-steps li[data-state="running"]::before { animation: none !important; }
   .ap-relationship-dots i.is-awake:last-of-type { animation: none; }
   .ap-voice-status[data-voice-state="WAKE_LISTENING"]::before,
   .ap-voice-status[data-voice-state="LISTENING"]::before { animation: none; }
