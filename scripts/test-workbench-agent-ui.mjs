@@ -106,12 +106,25 @@ try {
   await send('Log.enable');
   await send('Emulation.setDeviceMetricsOverride', { width: 1600, height: 1000, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: `${base}/#/craft/SHIH_0001` });
-  await wait(4200);
-  await evaluate("document.querySelector('[data-agent-target=\"workbench-enter\"]')?.click()");
-  for (let attempt = 0; attempt < 40; attempt++) {
-    if (await evaluate("Boolean(document.querySelector('.btn-quick-fill'))")) break;
+  let entered = false;
+  for (let attempt = 0; attempt < 120; attempt++) {
+    entered = await evaluate(`(() => {
+      const button = document.querySelector('[data-agent-target="workbench-enter"]');
+      if (!button) return false;
+      button.click();
+      return true;
+    })()`);
+    if (entered) break;
     await wait(100);
   }
+  assert.equal(entered, true, '项目详情页未能加载工作台入口');
+  let quickFillReady = false;
+  for (let attempt = 0; attempt < 120; attempt++) {
+    quickFillReady = await evaluate("Boolean(document.querySelector('.btn-quick-fill'))");
+    if (quickFillReady) break;
+    await wait(100);
+  }
+  assert.equal(quickFillReady, true, '进入工作台后未出现一键填入按钮');
   assert.equal(await evaluate("document.querySelector('.agent-panel')?.classList.contains('open') || false"), false, '点击一键填入前智能体面板不应强制打开');
   await evaluate(`(() => {
     window.__agentFlightObserved = 0;
